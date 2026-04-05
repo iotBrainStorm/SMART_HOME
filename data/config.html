@@ -68,12 +68,14 @@
       /* ── Tab Navigation ── */
       .tabs {
         display: flex;
-        gap: 6px;
-        padding: 16px 16px 0;
+        gap: 0;
+        padding: 20px 16px 0;
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
         justify-content: center;
+        background: rgba(255, 255, 255, 0.02);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
       }
 
       .tabs::-webkit-scrollbar {
@@ -81,26 +83,43 @@
       }
 
       .tab {
-        width: 110px;
-        padding: 10px 8px;
-        border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        background: rgba(255, 255, 255, 0.03);
+        padding: 14px 24px;
+        border: none;
+        border-bottom: 3px solid transparent;
+        background: transparent;
         color: #64748b;
-        font-size: 0.78rem;
+        font-size: 0.85rem;
         font-weight: 600;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
         cursor: pointer;
         white-space: nowrap;
         flex-shrink: 0;
-        transition: all 0.2s;
+        transition: all 0.2s ease;
         text-align: center;
+        position: relative;
+      }
+
+      .tab:hover {
+        color: #94a3b8;
+        background: rgba(255, 255, 255, 0.03);
       }
 
       .tab.active {
-        background: rgba(37, 99, 235, 0.15);
-        border-color: rgba(37, 99, 235, 0.3);
         color: #60a5fa;
+        border-bottom-color: #2563eb;
+        background: transparent;
+      }
+
+      .tab.active::after {
+        content: "";
+        position: absolute;
+        bottom: -1px;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: linear-gradient(90deg, #2563eb, #60a5fa);
+        border-radius: 3px 3px 0 0;
       }
 
       /* ── Layout ── */
@@ -116,36 +135,65 @@
 
       /* ── Sidebar ── */
       .sidebar {
-        width: 180px;
+        width: 160px;
         flex-shrink: 0;
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 2px;
+        background: rgba(255, 255, 255, 0.02);
+        border-radius: 12px;
+        padding: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.04);
       }
 
       .sidebar-item {
-        width: 110px;
-        padding: 11px 8px;
-        border-radius: 12px;
-        font-size: 0.82rem;
+        width: 100%;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 0.8rem;
         font-weight: 500;
-        color: #64748b;
+        color: #94a3b8;
         cursor: pointer;
         transition: all 0.15s;
-        border: 1px solid transparent;
-        text-align: center;
+        border: none;
+        text-align: left;
+        position: relative;
+        padding-left: 20px;
+      }
+
+      .sidebar-item::before {
+        content: "";
+        position: absolute;
+        left: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: #475569;
+        transition: all 0.15s;
       }
 
       .sidebar-item:hover {
-        background: rgba(255, 255, 255, 0.04);
-        color: #94a3b8;
+        background: rgba(255, 255, 255, 0.05);
+        color: #e2e8f0;
+      }
+
+      .sidebar-item:hover::before {
+        background: #94a3b8;
       }
 
       .sidebar-item.active {
-        background: rgba(37, 99, 235, 0.12);
-        border-color: rgba(37, 99, 235, 0.2);
+        background: rgba(37, 99, 235, 0.15);
         color: #60a5fa;
         font-weight: 600;
+      }
+
+      .sidebar-item.active::before {
+        width: 6px;
+        height: 6px;
+        background: #60a5fa;
+        box-shadow: 0 0 8px rgba(96, 165, 250, 0.5);
       }
 
       /* ── Content Panel ── */
@@ -255,7 +303,7 @@
         background: rgba(255, 255, 255, 0.06);
         color: #e2e8f0;
         font-size: 0.82rem;
-        font-family: 'Consolas', 'Monaco', monospace;
+        font-family: "Consolas", "Monaco", monospace;
         outline: none;
         width: 100%;
         min-height: 150px;
@@ -549,6 +597,44 @@
         display: none;
       }
 
+      .modal-box {
+        background: #1e1e22;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 20px;
+        padding: 28px 24px 22px;
+        width: 100%;
+        max-width: 340px;
+        text-align: center;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+      }
+
+      .modal-actions {
+        display: flex;
+        gap: 12px;
+      }
+
+      .modal-actions button {
+        flex: 1;
+        padding: 12px;
+        border-radius: 12px;
+        border: none;
+        font-size: 0.88rem;
+        font-weight: 700;
+        cursor: pointer;
+        letter-spacing: 0.5px;
+      }
+
+      .modal-cancel {
+        background: rgba(255, 255, 255, 0.08);
+        color: #94a3b8;
+      }
+
+      .modal-confirm {
+        background: #2563eb;
+        color: #fff;
+        box-shadow: 0 2px 10px rgba(37, 99, 235, 0.3);
+      }
+
       .icon-modal {
         background: #1e1e22;
         border: 1px solid rgba(255, 255, 255, 0.1);
@@ -804,6 +890,7 @@
       <div class="tab" data-tab="wifi">WiFi</div>
       <div class="tab" data-tab="firebase">Firebase</div>
       <div class="tab" data-tab="user">User</div>
+      <div class="tab" data-tab="admin">Administrator</div>
     </div>
 
     <!-- ── Body ── -->
@@ -878,28 +965,48 @@
               <div class="setting-label">Switch 1 — Living Room</div>
               <div class="setting-sub">Current: Home icon</div>
             </div>
-            <button class="cfg-btn cfg-btn-secondary" onclick="openIconPicker(0)">Change</button>
+            <button
+              class="cfg-btn cfg-btn-secondary"
+              onclick="openIconPicker(0)"
+            >
+              Change
+            </button>
           </div>
           <div class="setting-row">
             <div class="setting-info">
               <div class="setting-label">Switch 2 — Bedroom</div>
               <div class="setting-sub">Current: Monitor icon</div>
             </div>
-            <button class="cfg-btn cfg-btn-secondary" onclick="openIconPicker(1)">Change</button>
+            <button
+              class="cfg-btn cfg-btn-secondary"
+              onclick="openIconPicker(1)"
+            >
+              Change
+            </button>
           </div>
           <div class="setting-row">
             <div class="setting-info">
               <div class="setting-label">Switch 3 — Kitchen</div>
               <div class="setting-sub">Current: Cup icon</div>
             </div>
-            <button class="cfg-btn cfg-btn-secondary" onclick="openIconPicker(2)">Change</button>
+            <button
+              class="cfg-btn cfg-btn-secondary"
+              onclick="openIconPicker(2)"
+            >
+              Change
+            </button>
           </div>
           <div class="setting-row">
             <div class="setting-info">
               <div class="setting-label">Switch 4 — Bathroom</div>
               <div class="setting-sub">Current: Droplet icon</div>
             </div>
-            <button class="cfg-btn cfg-btn-secondary" onclick="openIconPicker(3)">Change</button>
+            <button
+              class="cfg-btn cfg-btn-secondary"
+              onclick="openIconPicker(3)"
+            >
+              Change
+            </button>
           </div>
         </div>
 
@@ -907,116 +1014,176 @@
         <div class="panel" id="panel-sw-relay">
           <div class="panel-title">Relay Holding State</div>
           <div class="info-box">
-            <strong>Relay Holding State</strong> — Configure the default state of each relay when the device powers on or restarts.
+            <strong>Relay Holding State</strong> — Configure the default state
+            of each relay when the device powers on or restarts.
           </div>
-          
+
           <!-- Switch 1 -->
-          <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 12px;">
+          <div
+            class="setting-row"
+            style="flex-direction: column; align-items: flex-start; gap: 12px"
+          >
             <div class="setting-label">Switch 1 — Living Room</div>
             <div class="radio-group" data-switch="0">
               <label class="radio-option selected">
                 <input type="radio" name="relay-state-0" value="off" checked />
                 <div>
                   <div class="radio-option-label">Output OFF at startup</div>
-                  <div class="radio-option-desc">Relay will be OFF when device powers on</div>
+                  <div class="radio-option-desc">
+                    Relay will be OFF when device powers on
+                  </div>
                 </div>
               </label>
               <label class="radio-option">
                 <input type="radio" name="relay-state-0" value="on" />
                 <div>
                   <div class="radio-option-label">Output ON at startup</div>
-                  <div class="radio-option-desc">Relay will be ON when device powers on</div>
+                  <div class="radio-option-desc">
+                    Relay will be ON when device powers on
+                  </div>
                 </div>
               </label>
               <label class="radio-option">
                 <input type="radio" name="relay-state-0" value="remember" />
                 <div>
-                  <div class="radio-option-label">Remember last state of output</div>
-                  <div class="radio-option-desc">Relay will restore its last known state</div>
+                  <div class="radio-option-label">
+                    Remember last state of output
+                  </div>
+                  <div class="radio-option-desc">
+                    Relay will restore its last known state
+                  </div>
                 </div>
               </label>
             </div>
           </div>
 
           <!-- Switch 2 -->
-          <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 12px; margin-top: 20px;">
+          <div
+            class="setting-row"
+            style="
+              flex-direction: column;
+              align-items: flex-start;
+              gap: 12px;
+              margin-top: 20px;
+            "
+          >
             <div class="setting-label">Switch 2 — Bedroom</div>
             <div class="radio-group" data-switch="1">
               <label class="radio-option selected">
                 <input type="radio" name="relay-state-1" value="off" checked />
                 <div>
                   <div class="radio-option-label">Output OFF at startup</div>
-                  <div class="radio-option-desc">Relay will be OFF when device powers on</div>
+                  <div class="radio-option-desc">
+                    Relay will be OFF when device powers on
+                  </div>
                 </div>
               </label>
               <label class="radio-option">
                 <input type="radio" name="relay-state-1" value="on" />
                 <div>
                   <div class="radio-option-label">Output ON at startup</div>
-                  <div class="radio-option-desc">Relay will be ON when device powers on</div>
+                  <div class="radio-option-desc">
+                    Relay will be ON when device powers on
+                  </div>
                 </div>
               </label>
               <label class="radio-option">
                 <input type="radio" name="relay-state-1" value="remember" />
                 <div>
-                  <div class="radio-option-label">Remember last state of output</div>
-                  <div class="radio-option-desc">Relay will restore its last known state</div>
+                  <div class="radio-option-label">
+                    Remember last state of output
+                  </div>
+                  <div class="radio-option-desc">
+                    Relay will restore its last known state
+                  </div>
                 </div>
               </label>
             </div>
           </div>
 
           <!-- Switch 3 -->
-          <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 12px; margin-top: 20px;">
+          <div
+            class="setting-row"
+            style="
+              flex-direction: column;
+              align-items: flex-start;
+              gap: 12px;
+              margin-top: 20px;
+            "
+          >
             <div class="setting-label">Switch 3 — Kitchen</div>
             <div class="radio-group" data-switch="2">
               <label class="radio-option selected">
                 <input type="radio" name="relay-state-2" value="off" checked />
                 <div>
                   <div class="radio-option-label">Output OFF at startup</div>
-                  <div class="radio-option-desc">Relay will be OFF when device powers on</div>
+                  <div class="radio-option-desc">
+                    Relay will be OFF when device powers on
+                  </div>
                 </div>
               </label>
               <label class="radio-option">
                 <input type="radio" name="relay-state-2" value="on" />
                 <div>
                   <div class="radio-option-label">Output ON at startup</div>
-                  <div class="radio-option-desc">Relay will be ON when device powers on</div>
+                  <div class="radio-option-desc">
+                    Relay will be ON when device powers on
+                  </div>
                 </div>
               </label>
               <label class="radio-option">
                 <input type="radio" name="relay-state-2" value="remember" />
                 <div>
-                  <div class="radio-option-label">Remember last state of output</div>
-                  <div class="radio-option-desc">Relay will restore its last known state</div>
+                  <div class="radio-option-label">
+                    Remember last state of output
+                  </div>
+                  <div class="radio-option-desc">
+                    Relay will restore its last known state
+                  </div>
                 </div>
               </label>
             </div>
           </div>
 
           <!-- Switch 4 -->
-          <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 12px; margin-top: 20px;">
+          <div
+            class="setting-row"
+            style="
+              flex-direction: column;
+              align-items: flex-start;
+              gap: 12px;
+              margin-top: 20px;
+            "
+          >
             <div class="setting-label">Switch 4 — Bathroom</div>
             <div class="radio-group" data-switch="3">
               <label class="radio-option selected">
                 <input type="radio" name="relay-state-3" value="off" checked />
                 <div>
                   <div class="radio-option-label">Output OFF at startup</div>
-                  <div class="radio-option-desc">Relay will be OFF when device powers on</div>
+                  <div class="radio-option-desc">
+                    Relay will be OFF when device powers on
+                  </div>
                 </div>
               </label>
               <label class="radio-option">
                 <input type="radio" name="relay-state-3" value="on" />
                 <div>
                   <div class="radio-option-label">Output ON at startup</div>
-                  <div class="radio-option-desc">Relay will be ON when device powers on</div>
+                  <div class="radio-option-desc">
+                    Relay will be ON when device powers on
+                  </div>
                 </div>
               </label>
               <label class="radio-option">
                 <input type="radio" name="relay-state-3" value="remember" />
                 <div>
-                  <div class="radio-option-label">Remember last state of output</div>
-                  <div class="radio-option-desc">Relay will restore its last known state</div>
+                  <div class="radio-option-label">
+                    Remember last state of output
+                  </div>
+                  <div class="radio-option-desc">
+                    Relay will restore its last known state
+                  </div>
                 </div>
               </label>
             </div>
@@ -1107,13 +1274,23 @@
         <div class="panel" id="panel-auto-schedule">
           <div class="panel-title">Set Schedule</div>
           <div class="info-box">
-            <strong>Schedule</strong> — Set up to 6 daily recurring schedules per switch to turn switches on/off at specific times. Overlapping schedules will be flagged.
+            <strong>Schedule</strong> — Set daily recurring schedules per switch
+            to turn switches on/off at specific times. Overlapping schedules
+            will be flagged.
           </div>
-          <div class="setting-row">
+          <div
+            class="setting-row"
+            style="justify-content: space-between; align-items: center"
+          >
             <div class="setting-info">
               <div class="setting-label">Select Switch</div>
             </div>
-            <select class="cfg-input" style="max-width: 200px" id="scheduleSwitch" onchange="loadSchedulesForSwitch()">
+            <select
+              class="cfg-input"
+              style="max-width: 200px"
+              id="scheduleSwitch"
+              onchange="loadSchedulesForSwitch()"
+            >
               <option value="0">Switch 1 — Living Room</option>
               <option value="1">Switch 2 — Bedroom</option>
               <option value="2">Switch 3 — Kitchen</option>
@@ -1121,204 +1298,31 @@
             </select>
           </div>
 
+          <div style="margin-bottom: 16px; text-align: left">
+            <button
+              class="cfg-btn cfg-btn-secondary"
+              onclick="addScheduleSlot()"
+              style="display: inline-flex; align-items: center; gap: 6px"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                style="
+                  width: 16px;
+                  height: 16px;
+                  fill: none;
+                  stroke: currentColor;
+                  stroke-width: 2;
+                "
+              >
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Add Schedule
+            </button>
+          </div>
+
           <div id="scheduleContainer">
-            <!-- Schedule Slot 1 -->
-            <div class="schedule-slot" data-slot="0">
-              <div class="schedule-slot-header">
-                <div class="schedule-slot-title">Schedule 1</div>
-                <div class="schedule-slot-actions">
-                  <label class="sm-toggle">
-                    <input type="checkbox" class="schedule-enable" />
-                    <span class="sm-toggle-track"></span>
-                  </label>
-                </div>
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Turn ON:</span>
-                <input class="cfg-input schedule-on" type="time" style="max-width: 140px" />
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Turn OFF:</span>
-                <input class="cfg-input schedule-off" type="time" style="max-width: 140px" />
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Repeat:</span>
-                <div class="day-pills">
-                  <span class="day-pill" data-day="mon">Mon</span>
-                  <span class="day-pill" data-day="tue">Tue</span>
-                  <span class="day-pill" data-day="wed">Wed</span>
-                  <span class="day-pill" data-day="thu">Thu</span>
-                  <span class="day-pill" data-day="fri">Fri</span>
-                  <span class="day-pill" data-day="sat">Sat</span>
-                  <span class="day-pill" data-day="sun">Sun</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Schedule Slot 2 -->
-            <div class="schedule-slot" data-slot="1">
-              <div class="schedule-slot-header">
-                <div class="schedule-slot-title">Schedule 2</div>
-                <div class="schedule-slot-actions">
-                  <label class="sm-toggle">
-                    <input type="checkbox" class="schedule-enable" />
-                    <span class="sm-toggle-track"></span>
-                  </label>
-                </div>
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Turn ON:</span>
-                <input class="cfg-input schedule-on" type="time" style="max-width: 140px" />
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Turn OFF:</span>
-                <input class="cfg-input schedule-off" type="time" style="max-width: 140px" />
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Repeat:</span>
-                <div class="day-pills">
-                  <span class="day-pill" data-day="mon">Mon</span>
-                  <span class="day-pill" data-day="tue">Tue</span>
-                  <span class="day-pill" data-day="wed">Wed</span>
-                  <span class="day-pill" data-day="thu">Thu</span>
-                  <span class="day-pill" data-day="fri">Fri</span>
-                  <span class="day-pill" data-day="sat">Sat</span>
-                  <span class="day-pill" data-day="sun">Sun</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Schedule Slot 3 -->
-            <div class="schedule-slot" data-slot="2">
-              <div class="schedule-slot-header">
-                <div class="schedule-slot-title">Schedule 3</div>
-                <div class="schedule-slot-actions">
-                  <label class="sm-toggle">
-                    <input type="checkbox" class="schedule-enable" />
-                    <span class="sm-toggle-track"></span>
-                  </label>
-                </div>
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Turn ON:</span>
-                <input class="cfg-input schedule-on" type="time" style="max-width: 140px" />
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Turn OFF:</span>
-                <input class="cfg-input schedule-off" type="time" style="max-width: 140px" />
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Repeat:</span>
-                <div class="day-pills">
-                  <span class="day-pill" data-day="mon">Mon</span>
-                  <span class="day-pill" data-day="tue">Tue</span>
-                  <span class="day-pill" data-day="wed">Wed</span>
-                  <span class="day-pill" data-day="thu">Thu</span>
-                  <span class="day-pill" data-day="fri">Fri</span>
-                  <span class="day-pill" data-day="sat">Sat</span>
-                  <span class="day-pill" data-day="sun">Sun</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Schedule Slot 4 -->
-            <div class="schedule-slot" data-slot="3">
-              <div class="schedule-slot-header">
-                <div class="schedule-slot-title">Schedule 4</div>
-                <div class="schedule-slot-actions">
-                  <label class="sm-toggle">
-                    <input type="checkbox" class="schedule-enable" />
-                    <span class="sm-toggle-track"></span>
-                  </label>
-                </div>
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Turn ON:</span>
-                <input class="cfg-input schedule-on" type="time" style="max-width: 140px" />
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Turn OFF:</span>
-                <input class="cfg-input schedule-off" type="time" style="max-width: 140px" />
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Repeat:</span>
-                <div class="day-pills">
-                  <span class="day-pill" data-day="mon">Mon</span>
-                  <span class="day-pill" data-day="tue">Tue</span>
-                  <span class="day-pill" data-day="wed">Wed</span>
-                  <span class="day-pill" data-day="thu">Thu</span>
-                  <span class="day-pill" data-day="fri">Fri</span>
-                  <span class="day-pill" data-day="sat">Sat</span>
-                  <span class="day-pill" data-day="sun">Sun</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Schedule Slot 5 -->
-            <div class="schedule-slot" data-slot="4">
-              <div class="schedule-slot-header">
-                <div class="schedule-slot-title">Schedule 5</div>
-                <div class="schedule-slot-actions">
-                  <label class="sm-toggle">
-                    <input type="checkbox" class="schedule-enable" />
-                    <span class="sm-toggle-track"></span>
-                  </label>
-                </div>
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Turn ON:</span>
-                <input class="cfg-input schedule-on" type="time" style="max-width: 140px" />
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Turn OFF:</span>
-                <input class="cfg-input schedule-off" type="time" style="max-width: 140px" />
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Repeat:</span>
-                <div class="day-pills">
-                  <span class="day-pill" data-day="mon">Mon</span>
-                  <span class="day-pill" data-day="tue">Tue</span>
-                  <span class="day-pill" data-day="wed">Wed</span>
-                  <span class="day-pill" data-day="thu">Thu</span>
-                  <span class="day-pill" data-day="fri">Fri</span>
-                  <span class="day-pill" data-day="sat">Sat</span>
-                  <span class="day-pill" data-day="sun">Sun</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Schedule Slot 6 -->
-            <div class="schedule-slot" data-slot="5">
-              <div class="schedule-slot-header">
-                <div class="schedule-slot-title">Schedule 6</div>
-                <div class="schedule-slot-actions">
-                  <label class="sm-toggle">
-                    <input type="checkbox" class="schedule-enable" />
-                    <span class="sm-toggle-track"></span>
-                  </label>
-                </div>
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Turn ON:</span>
-                <input class="cfg-input schedule-on" type="time" style="max-width: 140px" />
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Turn OFF:</span>
-                <input class="cfg-input schedule-off" type="time" style="max-width: 140px" />
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Repeat:</span>
-                <div class="day-pills">
-                  <span class="day-pill" data-day="mon">Mon</span>
-                  <span class="day-pill" data-day="tue">Tue</span>
-                  <span class="day-pill" data-day="wed">Wed</span>
-                  <span class="day-pill" data-day="thu">Thu</span>
-                  <span class="day-pill" data-day="fri">Fri</span>
-                  <span class="day-pill" data-day="sat">Sat</span>
-                  <span class="day-pill" data-day="sun">Sun</span>
-                </div>
-              </div>
-            </div>
+            <!-- Dynamic schedules will be added here -->
           </div>
 
           <div id="scheduleValidation"></div>
@@ -1331,8 +1335,15 @@
               justify-content: flex-end;
             "
           >
-            <button class="cfg-btn cfg-btn-secondary" onclick="clearAllSchedules()">Clear All</button>
-            <button class="cfg-btn cfg-btn-primary" onclick="saveSchedules()">Save Schedules</button>
+            <button
+              class="cfg-btn cfg-btn-secondary"
+              onclick="clearAllSchedules()"
+            >
+              Clear All
+            </button>
+            <button class="cfg-btn cfg-btn-primary" onclick="saveSchedules()">
+              Save Schedules
+            </button>
           </div>
         </div>
 
@@ -1340,13 +1351,22 @@
         <div class="panel" id="panel-auto-future">
           <div class="panel-title">Set Future Schedule</div>
           <div class="info-box">
-            <strong>Future Schedule</strong> — Set up to 6 one-time schedules for a specific date and time in the future for each switch.
+            <strong>Future Schedule</strong> — Set one-time schedules for a
+            specific date and time in the future for each switch.
           </div>
-          <div class="setting-row">
+          <div
+            class="setting-row"
+            style="justify-content: space-between; align-items: center"
+          >
             <div class="setting-info">
               <div class="setting-label">Select Switch</div>
             </div>
-            <select class="cfg-input" style="max-width: 200px" id="futureScheduleSwitch" onchange="loadFutureSchedulesForSwitch()">
+            <select
+              class="cfg-input"
+              style="max-width: 200px"
+              id="futureScheduleSwitch"
+              onchange="loadFutureSchedulesForSwitch()"
+            >
               <option value="0">Switch 1 — Living Room</option>
               <option value="1">Switch 2 — Bedroom</option>
               <option value="2">Switch 3 — Kitchen</option>
@@ -1354,174 +1374,31 @@
             </select>
           </div>
 
+          <div style="margin-bottom: 16px; text-align: left">
+            <button
+              class="cfg-btn cfg-btn-secondary"
+              onclick="addFutureScheduleSlot()"
+              style="display: inline-flex; align-items: center; gap: 6px"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                style="
+                  width: 16px;
+                  height: 16px;
+                  fill: none;
+                  stroke: currentColor;
+                  stroke-width: 2;
+                "
+              >
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Add Future Schedule
+            </button>
+          </div>
+
           <div id="futureScheduleContainer">
-            <!-- Future Schedule Slot 1 -->
-            <div class="schedule-slot" data-slot="0">
-              <div class="schedule-slot-header">
-                <div class="schedule-slot-title">Future Schedule 1</div>
-                <div class="schedule-slot-actions">
-                  <label class="sm-toggle">
-                    <input type="checkbox" class="future-enable" />
-                    <span class="sm-toggle-track"></span>
-                  </label>
-                </div>
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Action:</span>
-                <select class="cfg-input future-action" style="max-width: 140px">
-                  <option value="on">Turn ON</option>
-                  <option value="off">Turn OFF</option>
-                </select>
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Date:</span>
-                <input class="cfg-input future-date" type="date" style="max-width: 160px" />
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Time:</span>
-                <input class="cfg-input future-time" type="time" style="max-width: 140px" />
-              </div>
-            </div>
-
-            <!-- Future Schedule Slot 2 -->
-            <div class="schedule-slot" data-slot="1">
-              <div class="schedule-slot-header">
-                <div class="schedule-slot-title">Future Schedule 2</div>
-                <div class="schedule-slot-actions">
-                  <label class="sm-toggle">
-                    <input type="checkbox" class="future-enable" />
-                    <span class="sm-toggle-track"></span>
-                  </label>
-                </div>
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Action:</span>
-                <select class="cfg-input future-action" style="max-width: 140px">
-                  <option value="on">Turn ON</option>
-                  <option value="off">Turn OFF</option>
-                </select>
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Date:</span>
-                <input class="cfg-input future-date" type="date" style="max-width: 160px" />
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Time:</span>
-                <input class="cfg-input future-time" type="time" style="max-width: 140px" />
-              </div>
-            </div>
-
-            <!-- Future Schedule Slot 3 -->
-            <div class="schedule-slot" data-slot="2">
-              <div class="schedule-slot-header">
-                <div class="schedule-slot-title">Future Schedule 3</div>
-                <div class="schedule-slot-actions">
-                  <label class="sm-toggle">
-                    <input type="checkbox" class="future-enable" />
-                    <span class="sm-toggle-track"></span>
-                  </label>
-                </div>
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Action:</span>
-                <select class="cfg-input future-action" style="max-width: 140px">
-                  <option value="on">Turn ON</option>
-                  <option value="off">Turn OFF</option>
-                </select>
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Date:</span>
-                <input class="cfg-input future-date" type="date" style="max-width: 160px" />
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Time:</span>
-                <input class="cfg-input future-time" type="time" style="max-width: 140px" />
-              </div>
-            </div>
-
-            <!-- Future Schedule Slot 4 -->
-            <div class="schedule-slot" data-slot="3">
-              <div class="schedule-slot-header">
-                <div class="schedule-slot-title">Future Schedule 4</div>
-                <div class="schedule-slot-actions">
-                  <label class="sm-toggle">
-                    <input type="checkbox" class="future-enable" />
-                    <span class="sm-toggle-track"></span>
-                  </label>
-                </div>
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Action:</span>
-                <select class="cfg-input future-action" style="max-width: 140px">
-                  <option value="on">Turn ON</option>
-                  <option value="off">Turn OFF</option>
-                </select>
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Date:</span>
-                <input class="cfg-input future-date" type="date" style="max-width: 160px" />
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Time:</span>
-                <input class="cfg-input future-time" type="time" style="max-width: 140px" />
-              </div>
-            </div>
-
-            <!-- Future Schedule Slot 5 -->
-            <div class="schedule-slot" data-slot="4">
-              <div class="schedule-slot-header">
-                <div class="schedule-slot-title">Future Schedule 5</div>
-                <div class="schedule-slot-actions">
-                  <label class="sm-toggle">
-                    <input type="checkbox" class="future-enable" />
-                    <span class="sm-toggle-track"></span>
-                  </label>
-                </div>
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Action:</span>
-                <select class="cfg-input future-action" style="max-width: 140px">
-                  <option value="on">Turn ON</option>
-                  <option value="off">Turn OFF</option>
-                </select>
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Date:</span>
-                <input class="cfg-input future-date" type="date" style="max-width: 160px" />
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Time:</span>
-                <input class="cfg-input future-time" type="time" style="max-width: 140px" />
-              </div>
-            </div>
-
-            <!-- Future Schedule Slot 6 -->
-            <div class="schedule-slot" data-slot="5">
-              <div class="schedule-slot-header">
-                <div class="schedule-slot-title">Future Schedule 6</div>
-                <div class="schedule-slot-actions">
-                  <label class="sm-toggle">
-                    <input type="checkbox" class="future-enable" />
-                    <span class="sm-toggle-track"></span>
-                  </label>
-                </div>
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Action:</span>
-                <select class="cfg-input future-action" style="max-width: 140px">
-                  <option value="on">Turn ON</option>
-                  <option value="off">Turn OFF</option>
-                </select>
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Date:</span>
-                <input class="cfg-input future-date" type="date" style="max-width: 160px" />
-              </div>
-              <div class="schedule-row">
-                <span class="schedule-label">Time:</span>
-                <input class="cfg-input future-time" type="time" style="max-width: 140px" />
-              </div>
-            </div>
+            <!-- Dynamic future schedules will be added here -->
           </div>
 
           <div id="futureScheduleValidation"></div>
@@ -1534,8 +1411,18 @@
               justify-content: flex-end;
             "
           >
-            <button class="cfg-btn cfg-btn-secondary" onclick="clearAllFutureSchedules()">Clear All</button>
-            <button class="cfg-btn cfg-btn-primary" onclick="saveFutureSchedules()">Save Future Schedules</button>
+            <button
+              class="cfg-btn cfg-btn-secondary"
+              onclick="clearAllFutureSchedules()"
+            >
+              Clear All
+            </button>
+            <button
+              class="cfg-btn cfg-btn-primary"
+              onclick="saveFutureSchedules()"
+            >
+              Save Future Schedules
+            </button>
           </div>
         </div>
 
@@ -1594,6 +1481,12 @@
             style="flex-direction: column; align-items: flex-start; gap: 10px"
           >
             <div class="setting-label">Change Password</div>
+            <input
+              class="cfg-input"
+              type="password"
+              placeholder="Current password"
+              style="max-width: 100%"
+            />
             <input
               class="cfg-input"
               type="password"
@@ -1667,7 +1560,20 @@
               style="max-width: 100%"
             />
           </div>
-          <div style="margin-top: 16px; text-align: right">
+          <div
+            style="
+              margin-top: 16px;
+              display: flex;
+              gap: 10px;
+              justify-content: flex-end;
+            "
+          >
+            <button
+              class="cfg-btn cfg-btn-secondary"
+              onclick="showWifiScanModal()"
+            >
+              Scan
+            </button>
             <button class="cfg-btn cfg-btn-primary">Connect</button>
           </div>
         </div>
@@ -1714,14 +1620,19 @@
         <!-- IP Settings -->
         <div class="panel" id="panel-wifi-ip">
           <div class="panel-title">IP Settings</div>
-          
+
           <div class="setting-row">
             <div class="setting-info">
               <div class="setting-label">DHCP</div>
               <div class="setting-sub">Automatically obtain IP address</div>
             </div>
             <label class="sm-toggle">
-              <input type="checkbox" id="dhcpToggle" checked onchange="toggleDHCP()" />
+              <input
+                type="checkbox"
+                id="dhcpToggle"
+                checked
+                onchange="toggleDHCP()"
+              />
               <span class="sm-toggle-track"></span>
             </label>
           </div>
@@ -1729,57 +1640,72 @@
           <div class="setting-row">
             <div class="setting-info">
               <div class="setting-label">MAC Address</div>
-              <div class="setting-sub" style="font-family: monospace;">AA:BB:CC:DD:EE:FF</div>
+              <div class="setting-sub" style="font-family: monospace">
+                AA:BB:CC:DD:EE:FF
+              </div>
             </div>
-            <span style="font-size: 0.75rem; color: #64748b;">(Read Only)</span>
+            <span style="font-size: 0.75rem; color: #64748b">(Read Only)</span>
           </div>
 
           <div id="staticIpSection" class="static-ip-section hidden">
             <div class="info-box">
-              <strong>Static IP Configuration</strong> — Enter network settings manually when DHCP is disabled.
+              <strong>Static IP Configuration</strong> — Enter network settings
+              manually when DHCP is disabled.
             </div>
 
-            <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 10px;">
+            <div
+              class="setting-row"
+              style="flex-direction: column; align-items: flex-start; gap: 10px"
+            >
               <div class="setting-label">Static IP Address</div>
               <input
                 class="cfg-input"
                 type="text"
                 id="staticIp"
                 placeholder="192.168.1.100"
-                style="max-width: 100%; font-family: monospace;"
+                style="max-width: 100%; font-family: monospace"
               />
             </div>
 
-            <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 10px;">
+            <div
+              class="setting-row"
+              style="flex-direction: column; align-items: flex-start; gap: 10px"
+            >
               <div class="setting-label">Subnet Mask</div>
               <input
                 class="cfg-input"
                 type="text"
                 id="subnetMask"
                 placeholder="255.255.255.0"
-                style="max-width: 100%; font-family: monospace;"
+                style="max-width: 100%; font-family: monospace"
               />
             </div>
 
-            <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 10px;">
+            <div
+              class="setting-row"
+              style="flex-direction: column; align-items: flex-start; gap: 10px"
+            >
               <div class="setting-label">Default Gateway</div>
               <input
                 class="cfg-input"
                 type="text"
                 id="defaultGateway"
                 placeholder="192.168.1.1"
-                style="max-width: 100%; font-family: monospace;"
+                style="max-width: 100%; font-family: monospace"
               />
             </div>
 
-            <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 10px;">
+            <div
+              class="setting-row"
+              style="flex-direction: column; align-items: flex-start; gap: 10px"
+            >
               <div class="setting-label">DNS Server</div>
               <input
                 class="cfg-input"
                 type="text"
                 id="dnsServer"
                 placeholder="8.8.8.8"
-                style="max-width: 100%; font-family: monospace;"
+                style="max-width: 100%; font-family: monospace"
               />
             </div>
 
@@ -1788,24 +1714,99 @@
             </div>
           </div>
 
-          <div id="dhcpInfo" class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 16px;">
-            <div class="setting-sub" style="color: #64748b;">Current IP (via DHCP):</div>
-            <div style="display: grid; gap: 6px; width: 100%;">
-              <div style="display: flex; justify-content: space-between; padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 8px;">
-                <span style="color: #94a3b8; font-size: 0.82rem;">IP Address</span>
-                <span style="color: #e2e8f0; font-size: 0.82rem; font-family: monospace;">192.168.1.100</span>
+          <div
+            id="dhcpInfo"
+            class="setting-row"
+            style="
+              flex-direction: column;
+              align-items: flex-start;
+              gap: 8px;
+              margin-top: 16px;
+            "
+          >
+            <div class="setting-sub" style="color: #64748b">
+              Current IP (via DHCP):
+            </div>
+            <div style="display: grid; gap: 6px; width: 100%">
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  padding: 8px 12px;
+                  background: rgba(255, 255, 255, 0.03);
+                  border-radius: 8px;
+                "
+              >
+                <span style="color: #94a3b8; font-size: 0.82rem"
+                  >IP Address</span
+                >
+                <span
+                  style="
+                    color: #e2e8f0;
+                    font-size: 0.82rem;
+                    font-family: monospace;
+                  "
+                  >192.168.1.100</span
+                >
               </div>
-              <div style="display: flex; justify-content: space-between; padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 8px;">
-                <span style="color: #94a3b8; font-size: 0.82rem;">Subnet Mask</span>
-                <span style="color: #e2e8f0; font-size: 0.82rem; font-family: monospace;">255.255.255.0</span>
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  padding: 8px 12px;
+                  background: rgba(255, 255, 255, 0.03);
+                  border-radius: 8px;
+                "
+              >
+                <span style="color: #94a3b8; font-size: 0.82rem"
+                  >Subnet Mask</span
+                >
+                <span
+                  style="
+                    color: #e2e8f0;
+                    font-size: 0.82rem;
+                    font-family: monospace;
+                  "
+                  >255.255.255.0</span
+                >
               </div>
-              <div style="display: flex; justify-content: space-between; padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 8px;">
-                <span style="color: #94a3b8; font-size: 0.82rem;">Gateway</span>
-                <span style="color: #e2e8f0; font-size: 0.82rem; font-family: monospace;">192.168.1.1</span>
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  padding: 8px 12px;
+                  background: rgba(255, 255, 255, 0.03);
+                  border-radius: 8px;
+                "
+              >
+                <span style="color: #94a3b8; font-size: 0.82rem">Gateway</span>
+                <span
+                  style="
+                    color: #e2e8f0;
+                    font-size: 0.82rem;
+                    font-family: monospace;
+                  "
+                  >192.168.1.1</span
+                >
               </div>
-              <div style="display: flex; justify-content: space-between; padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 8px;">
-                <span style="color: #94a3b8; font-size: 0.82rem;">DNS</span>
-                <span style="color: #e2e8f0; font-size: 0.82rem; font-family: monospace;">8.8.8.8</span>
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  padding: 8px 12px;
+                  background: rgba(255, 255, 255, 0.03);
+                  border-radius: 8px;
+                "
+              >
+                <span style="color: #94a3b8; font-size: 0.82rem">DNS</span>
+                <span
+                  style="
+                    color: #e2e8f0;
+                    font-size: 0.82rem;
+                    font-family: monospace;
+                  "
+                  >8.8.8.8</span
+                >
               </div>
             </div>
           </div>
@@ -1916,7 +1917,8 @@
 }'
             ></textarea>
             <div class="setting-sub">
-              Enter your Firebase Realtime Database security rules in JSON format
+              Enter your Firebase Realtime Database security rules in JSON
+              format
             </div>
           </div>
           <div
@@ -1927,7 +1929,12 @@
               justify-content: flex-end;
             "
           >
-            <button class="cfg-btn cfg-btn-secondary" onclick="validateFirebaseRules()">Validate JSON</button>
+            <button
+              class="cfg-btn cfg-btn-secondary"
+              onclick="validateFirebaseRules()"
+            >
+              Validate JSON
+            </button>
             <button class="cfg-btn cfg-btn-primary">Save Rules</button>
           </div>
         </div>
@@ -1974,6 +1981,7 @@
             <input
               class="cfg-input"
               type="text"
+              id="newUserId"
               placeholder="Enter new user ID"
               style="max-width: 100%"
             />
@@ -1986,6 +1994,7 @@
             <input
               class="cfg-input"
               type="password"
+              id="newUserPassword"
               placeholder="Set password"
               style="max-width: 100%"
             />
@@ -1995,13 +2004,18 @@
             style="flex-direction: column; align-items: flex-start; gap: 10px"
           >
             <div class="setting-label">Role</div>
-            <select class="cfg-input" style="max-width: 100%">
+            <select class="cfg-input" id="newUserRole" style="max-width: 100%">
               <option>User</option>
               <option>Admin</option>
             </select>
           </div>
           <div style="margin-top: 16px; text-align: right">
-            <button class="cfg-btn cfg-btn-primary">Add User</button>
+            <button
+              class="cfg-btn cfg-btn-primary"
+              onclick="confirmUserAction('add')"
+            >
+              Add User
+            </button>
           </div>
         </div>
 
@@ -2022,10 +2036,384 @@
             <button
               class="cfg-btn cfg-btn-danger"
               style="padding: 6px 14px; font-size: 0.78rem"
+              onclick="confirmUserAction('remove', 'mrinal')"
             >
               Remove
             </button>
           </div>
+        </div>
+
+        <!-- ═══════════ ADMINISTRATOR ═══════════ -->
+        <!-- Reset Storage -->
+        <div class="panel" id="panel-admin-storage">
+          <div class="panel-title">Reset Storage</div>
+          <div class="info-box">
+            <strong>Warning:</strong> This will clear all stored data including
+            schedules, timers, and custom settings. User accounts and WiFi
+            credentials will be preserved.
+          </div>
+          <div
+            class="setting-row"
+            style="flex-direction: column; align-items: flex-start; gap: 14px"
+          >
+            <div class="setting-info">
+              <div class="setting-label">Clear Application Storage</div>
+              <div class="setting-sub">
+                Removes schedules, automation settings, and cached data
+              </div>
+            </div>
+            <button
+              class="cfg-btn cfg-btn-danger"
+              onclick="confirmAdminAction('storage')"
+            >
+              Reset Storage
+            </button>
+          </div>
+        </div>
+
+        <!-- Reset Settings -->
+        <div class="panel" id="panel-admin-settings">
+          <div class="panel-title">Reset Settings</div>
+          <div class="info-box">
+            <strong>Warning:</strong> This will reset all configuration settings
+            to their default values. Switch names, icons, and relay states will
+            be restored to defaults.
+          </div>
+          <div
+            class="setting-row"
+            style="flex-direction: column; align-items: flex-start; gap: 14px"
+          >
+            <div class="setting-info">
+              <div class="setting-label">Reset All Settings</div>
+              <div class="setting-sub">
+                Restores switch names, icons, Bluetooth name, and other settings
+                to defaults
+              </div>
+            </div>
+            <button
+              class="cfg-btn cfg-btn-danger"
+              onclick="confirmAdminAction('settings')"
+            >
+              Reset Settings
+            </button>
+          </div>
+        </div>
+
+        <!-- Factory Reset -->
+        <div class="panel" id="panel-admin-factory">
+          <div class="panel-title">Factory Reset</div>
+          <div
+            class="info-box"
+            style="
+              background: rgba(239, 68, 68, 0.1);
+              border-color: rgba(239, 68, 68, 0.2);
+            "
+          >
+            <strong style="color: #f87171">⚠ Danger Zone:</strong><br />
+            This will completely erase ALL data including user accounts, WiFi
+            credentials, Firebase settings, and restore the device to its
+            original factory state. This action cannot be undone!
+          </div>
+          <div
+            class="setting-row"
+            style="flex-direction: column; align-items: flex-start; gap: 14px"
+          >
+            <div class="setting-info">
+              <div class="setting-label" style="color: #f87171">
+                Factory Reset Device
+              </div>
+              <div class="setting-sub">
+                Erases everything and restores device to factory defaults
+              </div>
+            </div>
+            <button
+              class="cfg-btn cfg-btn-danger"
+              style="background: rgba(239, 68, 68, 0.3)"
+              onclick="confirmFactoryReset()"
+            >
+              Factory Reset
+            </button>
+          </div>
+        </div>
+
+        <!-- Time Setup -->
+        <div class="panel" id="panel-admin-time">
+          <div class="panel-title">Time Setup</div>
+          <div class="info-box">
+            Configure time synchronization and timezone settings for accurate
+            scheduling and automation.
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Synced Time</div>
+              <div class="setting-sub">Sync device time with NTP server</div>
+            </div>
+            <button
+              class="cfg-btn cfg-btn-secondary"
+              onclick="syncTimeNow()"
+              style="
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 8px 14px;
+              "
+            >
+              <svg
+                viewBox="0 0 24 24"
+                style="
+                  width: 16px;
+                  height: 16px;
+                  fill: none;
+                  stroke: currentColor;
+                  stroke-width: 2;
+                "
+              >
+                <path d="M1 4v6h6" />
+                <path d="M23 20v-6h-6" />
+                <path
+                  d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"
+                />
+              </svg>
+              Sync Now
+            </button>
+          </div>
+          <div
+            class="setting-row"
+            style="flex-direction: column; align-items: flex-start; gap: 10px"
+          >
+            <div class="setting-label">NTP Server</div>
+            <input
+              class="cfg-input"
+              type="text"
+              id="ntpServer"
+              value="pool.ntp.org"
+              placeholder="NTP server address"
+              style="max-width: 100%; font-family: monospace"
+            />
+          </div>
+          <div
+            class="setting-row"
+            style="flex-direction: column; align-items: flex-start; gap: 10px"
+          >
+            <div class="setting-label">Time Zone</div>
+            <select
+              class="cfg-input"
+              id="timezoneSelect"
+              style="max-width: 100%"
+            >
+              <option value="-12:00">
+                (UTC-12:00) International Date Line West
+              </option>
+              <option value="-11:00">(UTC-11:00) Midway Island, Samoa</option>
+              <option value="-10:00">(UTC-10:00) Hawaii</option>
+              <option value="-09:00">(UTC-09:00) Alaska</option>
+              <option value="-08:00">
+                (UTC-08:00) Pacific Time (US & Canada)
+              </option>
+              <option value="-07:00">
+                (UTC-07:00) Mountain Time (US & Canada)
+              </option>
+              <option value="-06:00">
+                (UTC-06:00) Central Time (US & Canada)
+              </option>
+              <option value="-05:00">
+                (UTC-05:00) Eastern Time (US & Canada)
+              </option>
+              <option value="-04:00">(UTC-04:00) Atlantic Time (Canada)</option>
+              <option value="-03:00">(UTC-03:00) Buenos Aires, Brasilia</option>
+              <option value="-02:00">(UTC-02:00) Mid-Atlantic</option>
+              <option value="-01:00">(UTC-01:00) Azores</option>
+              <option value="+00:00">(UTC+00:00) London, Dublin, Lisbon</option>
+              <option value="+01:00">(UTC+01:00) Paris, Berlin, Rome</option>
+              <option value="+02:00">
+                (UTC+02:00) Cairo, Athens, Helsinki
+              </option>
+              <option value="+03:00">
+                (UTC+03:00) Moscow, Baghdad, Kuwait
+              </option>
+              <option value="+04:00">(UTC+04:00) Dubai, Baku</option>
+              <option value="+05:00">(UTC+05:00) Karachi, Tashkent</option>
+              <option value="+05:30" selected>
+                (UTC+05:30) India Standard Time
+              </option>
+              <option value="+06:00">(UTC+06:00) Dhaka, Almaty</option>
+              <option value="+07:00">(UTC+07:00) Bangkok, Jakarta</option>
+              <option value="+08:00">(UTC+08:00) Singapore, Hong Kong</option>
+              <option value="+09:00">(UTC+09:00) Tokyo, Seoul</option>
+              <option value="+10:00">(UTC+10:00) Sydney, Melbourne</option>
+              <option value="+11:00">(UTC+11:00) Solomon Islands</option>
+              <option value="+12:00">(UTC+12:00) Auckland, Fiji</option>
+            </select>
+          </div>
+          <div
+            class="setting-row"
+            style="flex-direction: column; align-items: flex-start; gap: 10px"
+          >
+            <div class="setting-label">Current Device Time</div>
+            <div
+              id="currentDeviceTime"
+              style="
+                font-size: 1.1rem;
+                color: #60a5fa;
+                font-family: monospace;
+                padding: 12px 16px;
+                background: rgba(255, 255, 255, 0.04);
+                border-radius: 10px;
+                width: fit-content;
+              "
+            >
+              --:--:-- --/--/----
+            </div>
+          </div>
+          <div style="margin-top: 16px; text-align: right">
+            <button
+              class="cfg-btn cfg-btn-primary"
+              onclick="saveTimeSettings()"
+            >
+              Save Time Settings
+            </button>
+          </div>
+        </div>
+
+        <!-- Restart -->
+        <div class="panel" id="panel-admin-restart">
+          <div class="panel-title">Restart Device</div>
+          <div class="info-box">
+            Restart the ESP32 device. All current operations will be stopped and
+            the device will reboot. This may take a few seconds.
+          </div>
+          <div
+            class="setting-row"
+            style="flex-direction: column; align-items: flex-start; gap: 14px"
+          >
+            <div class="setting-info">
+              <div class="setting-label">Restart ESP32</div>
+              <div class="setting-sub">
+                Performs a soft restart of the device
+              </div>
+            </div>
+            <button
+              class="cfg-btn cfg-btn-secondary"
+              style="
+                background: rgba(37, 99, 235, 0.15);
+                border-color: rgba(37, 99, 235, 0.3);
+                color: #60a5fa;
+              "
+              onclick="confirmRestart()"
+            >
+              <span style="display: inline-flex; align-items: center; gap: 8px">
+                <svg
+                  viewBox="0 0 24 24"
+                  style="
+                    width: 16px;
+                    height: 16px;
+                    fill: none;
+                    stroke: currentColor;
+                    stroke-width: 2;
+                  "
+                >
+                  <path d="M1 4v6h6" />
+                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                </svg>
+                Restart Device
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Password Confirmation Modal ── -->
+    <div class="modal-overlay hidden" id="passwordModal">
+      <div class="modal-box">
+        <div
+          class="modal-title"
+          style="
+            font-size: 1rem;
+            font-weight: 600;
+            color: #e2e8f0;
+            margin-bottom: 16px;
+          "
+        >
+          Confirm Password
+        </div>
+        <p
+          id="passwordModalMsg"
+          style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 16px"
+        >
+          Enter your password to continue
+        </p>
+        <input
+          type="password"
+          id="confirmPasswordInput"
+          class="cfg-input"
+          placeholder="Enter password"
+          style="width: 100%; margin-bottom: 18px"
+        />
+        <div class="modal-actions">
+          <button class="modal-cancel" onclick="closePasswordModal()">
+            Cancel
+          </button>
+          <button class="modal-confirm" onclick="verifyPasswordAndExecute()">
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── WiFi Scan Info Modal ── -->
+    <div class="modal-overlay hidden" id="wifiScanModal">
+      <div class="modal-box">
+        <div
+          class="modal-title"
+          style="
+            font-size: 1rem;
+            font-weight: 600;
+            color: #e2e8f0;
+            margin-bottom: 16px;
+          "
+        >
+          WiFi Setup Instructions
+        </div>
+        <div
+          style="
+            text-align: left;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.04);
+            border-radius: 12px;
+            margin-bottom: 18px;
+          "
+        >
+          <div style="margin-bottom: 12px">
+            <div style="font-size: 0.78rem; color: #64748b; margin-bottom: 4px">
+              Hotspot Name
+            </div>
+            <div style="font-size: 0.95rem; color: #60a5fa; font-weight: 600">
+              ESP HOME
+            </div>
+          </div>
+          <div>
+            <div style="font-size: 0.78rem; color: #64748b; margin-bottom: 4px">
+              IP Address
+            </div>
+            <div
+              style="font-size: 0.95rem; color: #60a5fa; font-family: monospace"
+            >
+              192.168.4.1
+            </div>
+          </div>
+        </div>
+        <p style="font-size: 0.82rem; color: #94a3b8; margin-bottom: 18px">
+          Connect to the ESP HOME hotspot and navigate to the IP address above
+          to configure WiFi settings.
+        </p>
+        <div class="modal-actions">
+          <button class="modal-cancel" onclick="closeWifiScanModal()">
+            Cancel
+          </button>
+          <button class="modal-confirm" onclick="closeWifiScanModal()">
+            Got it
+          </button>
         </div>
       </div>
     </div>
@@ -2034,39 +2422,92 @@
     <div class="modal-overlay hidden" id="iconPickerModal">
       <div class="icon-modal">
         <div class="icon-modal-title">Select Icon</div>
-        
+
         <div class="icon-category">
           <div class="icon-category-title">Devices</div>
           <div class="icon-grid">
             <div class="icon-option" data-icon="bulb" title="Light Bulb">
-              <svg viewBox="0 0 24 24"><path d="M9 21h6"/><path d="M12 3a6 6 0 0 0-6 6c0 2.22 1.21 4.16 3 5.19V17a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-2.81c1.79-1.03 3-2.97 3-5.19a6 6 0 0 0-6-6z"/></svg>
+              <svg viewBox="0 0 24 24">
+                <path d="M9 21h6" />
+                <path
+                  d="M12 3a6 6 0 0 0-6 6c0 2.22 1.21 4.16 3 5.19V17a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-2.81c1.79-1.03 3-2.97 3-5.19a6 6 0 0 0-6-6z"
+                />
+              </svg>
             </div>
             <div class="icon-option" data-icon="fan" title="Fan">
-              <svg viewBox="0 0 24 24"><path d="M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/><path d="M12 2c3.5 0 3.5 6 0 9"/><path d="M12 22c-3.5 0 -3.5 -6 0 -9"/><path d="M2 12c0 -3.5 6 -3.5 9 0"/><path d="M22 12c0 3.5 -6 3.5 -9 0"/></svg>
+              <svg viewBox="0 0 24 24">
+                <path d="M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
+                <path d="M12 2c3.5 0 3.5 6 0 9" />
+                <path d="M12 22c-3.5 0 -3.5 -6 0 -9" />
+                <path d="M2 12c0 -3.5 6 -3.5 9 0" />
+                <path d="M22 12c0 3.5 -6 3.5 -9 0" />
+              </svg>
             </div>
             <div class="icon-option" data-icon="tv" title="TV">
-              <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>
+              <svg viewBox="0 0 24 24">
+                <rect x="2" y="7" width="20" height="15" rx="2" />
+                <polyline points="17 2 12 7 7 2" />
+              </svg>
             </div>
             <div class="icon-option" data-icon="ac" title="Air Conditioner">
-              <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="8" rx="2"/><path d="M6 12v2"/><path d="M10 12v4"/><path d="M14 12v6"/><path d="M18 12v4"/></svg>
+              <svg viewBox="0 0 24 24">
+                <rect x="2" y="4" width="20" height="8" rx="2" />
+                <path d="M6 12v2" />
+                <path d="M10 12v4" />
+                <path d="M14 12v6" />
+                <path d="M18 12v4" />
+              </svg>
             </div>
             <div class="icon-option" data-icon="plug" title="Power Plug">
-              <svg viewBox="0 0 24 24"><path d="M12 22v-6"/><path d="M9 8V2"/><path d="M15 8V2"/><rect x="6" y="8" width="12" height="8" rx="2"/></svg>
+              <svg viewBox="0 0 24 24">
+                <path d="M12 22v-6" />
+                <path d="M9 8V2" />
+                <path d="M15 8V2" />
+                <rect x="6" y="8" width="12" height="8" rx="2" />
+              </svg>
             </div>
             <div class="icon-option" data-icon="speaker" title="Speaker">
-              <svg viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><circle cx="12" cy="14" r="4"/><line x1="12" y1="6" x2="12" y2="6.01"/></svg>
+              <svg viewBox="0 0 24 24">
+                <rect x="4" y="2" width="16" height="20" rx="2" />
+                <circle cx="12" cy="14" r="4" />
+                <line x1="12" y1="6" x2="12" y2="6.01" />
+              </svg>
             </div>
             <div class="icon-option" data-icon="washer" title="Washing Machine">
-              <svg viewBox="0 0 24 24"><rect x="3" y="2" width="18" height="20" rx="2"/><circle cx="12" cy="13" r="5"/><line x1="7" y1="6" x2="7" y2="6.01"/><line x1="10" y1="6" x2="10" y2="6.01"/></svg>
+              <svg viewBox="0 0 24 24">
+                <rect x="3" y="2" width="18" height="20" rx="2" />
+                <circle cx="12" cy="13" r="5" />
+                <line x1="7" y1="6" x2="7" y2="6.01" />
+                <line x1="10" y1="6" x2="10" y2="6.01" />
+              </svg>
             </div>
             <div class="icon-option" data-icon="fridge" title="Refrigerator">
-              <svg viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="4" y1="10" x2="20" y2="10"/><line x1="17" y1="6" x2="17" y2="6.01"/><line x1="17" y1="14" x2="17" y2="17"/></svg>
+              <svg viewBox="0 0 24 24">
+                <rect x="4" y="2" width="16" height="20" rx="2" />
+                <line x1="4" y1="10" x2="20" y2="10" />
+                <line x1="17" y1="6" x2="17" y2="6.01" />
+                <line x1="17" y1="14" x2="17" y2="17" />
+              </svg>
             </div>
             <div class="icon-option" data-icon="lamp" title="Lamp">
-              <svg viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>
+              <svg viewBox="0 0 24 24">
+                <path d="M9 18h6" />
+                <path d="M10 22h4" />
+                <path
+                  d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"
+                />
+              </svg>
             </div>
             <div class="icon-option" data-icon="heater" title="Heater">
-              <svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" rx="1"/><path d="M8 6v4"/><path d="M12 6v4"/><path d="M16 6v4"/><path d="M8 3c0 1.5 1.5 2 1.5 3"/><path d="M12 3c0 1.5 1.5 2 1.5 3"/><path d="M16 3c0 1.5 1.5 2 1.5 3"/></svg>
+              <svg viewBox="0 0 24 24">
+                <rect x="4" y="10" width="16" height="10" rx="1" />
+                <path d="M8 6v4" />
+                <path d="M12 6v4" />
+                <path d="M16 6v4" />
+                <path d="M8 3c0 1.5 1.5 2 1.5 3" />
+                <path d="M12 3c0 1.5 1.5 2 1.5 3" />
+                <path d="M16 3c0 1.5 1.5 2 1.5 3" />
+              </svg>
             </div>
           </div>
         </div>
@@ -2075,41 +2516,96 @@
           <div class="icon-category-title">Rooms</div>
           <div class="icon-grid">
             <div class="icon-option" data-icon="home" title="Home">
-              <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+              <svg viewBox="0 0 24 24">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                <polyline points="9 22 9 12 15 12 15 22" />
+              </svg>
             </div>
             <div class="icon-option" data-icon="bedroom" title="Bedroom">
-              <svg viewBox="0 0 24 24"><path d="M2 4v16h20V4H2zm2 2h16v9H4V6z"/><path d="M9 20h6" stroke-width="1.8" fill="none"/></svg>
+              <svg viewBox="0 0 24 24">
+                <path d="M2 4v16h20V4H2zm2 2h16v9H4V6z" />
+                <path d="M9 20h6" stroke-width="1.8" fill="none" />
+              </svg>
             </div>
             <div class="icon-option" data-icon="kitchen" title="Kitchen">
-              <svg viewBox="0 0 24 24"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+              <svg viewBox="0 0 24 24">
+                <path d="M18 8h1a4 4 0 0 1 0 8h-1" />
+                <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" />
+                <line x1="6" y1="1" x2="6" y2="4" />
+                <line x1="10" y1="1" x2="10" y2="4" />
+                <line x1="14" y1="1" x2="14" y2="4" />
+              </svg>
             </div>
             <div class="icon-option" data-icon="bathroom" title="Bathroom">
-              <svg viewBox="0 0 24 24"><path d="M9 6l.463-.536a5 5 0 0 1 7.071 7.072L12 17l-4.534-4.464A5 5 0 0 1 9 6z" fill="none"/><path d="M12 17v5"/><path d="M8 22h8"/></svg>
+              <svg viewBox="0 0 24 24">
+                <path
+                  d="M9 6l.463-.536a5 5 0 0 1 7.071 7.072L12 17l-4.534-4.464A5 5 0 0 1 9 6z"
+                  fill="none"
+                />
+                <path d="M12 17v5" />
+                <path d="M8 22h8" />
+              </svg>
             </div>
             <div class="icon-option" data-icon="garage" title="Garage">
-              <svg viewBox="0 0 24 24"><path d="M4 20V9a2 2 0 0 1 .7-1.52l6.3-5.4a2 2 0 0 1 2 0l6.3 5.4A2 2 0 0 1 20 9v11"/><path d="M4 20h16"/><path d="M9 14h6"/><path d="M9 17h6"/></svg>
+              <svg viewBox="0 0 24 24">
+                <path
+                  d="M4 20V9a2 2 0 0 1 .7-1.52l6.3-5.4a2 2 0 0 1 2 0l6.3 5.4A2 2 0 0 1 20 9v11"
+                />
+                <path d="M4 20h16" />
+                <path d="M9 14h6" />
+                <path d="M9 17h6" />
+              </svg>
             </div>
             <div class="icon-option" data-icon="garden" title="Garden">
-              <svg viewBox="0 0 24 24"><path d="M12 10a6 6 0 0 0-6 6c0 3.31 2.69 6 6 6"/><path d="M12 10a6 6 0 0 1 6 6c0 3.31-2.69 6-6 6"/><path d="M12 2v8"/><path d="M8 5l4-3 4 3"/></svg>
+              <svg viewBox="0 0 24 24">
+                <path d="M12 10a6 6 0 0 0-6 6c0 3.31 2.69 6 6 6" />
+                <path d="M12 10a6 6 0 0 1 6 6c0 3.31-2.69 6-6 6" />
+                <path d="M12 2v8" />
+                <path d="M8 5l4-3 4 3" />
+              </svg>
             </div>
             <div class="icon-option" data-icon="office" title="Office">
-              <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01"/><path d="M10 10h.01"/><path d="M14 10h.01"/><path d="M18 10h.01"/><path d="M8 14h8"/></svg>
+              <svg viewBox="0 0 24 24">
+                <rect x="2" y="6" width="20" height="12" rx="2" />
+                <path d="M6 10h.01" />
+                <path d="M10 10h.01" />
+                <path d="M14 10h.01" />
+                <path d="M18 10h.01" />
+                <path d="M8 14h8" />
+              </svg>
             </div>
             <div class="icon-option" data-icon="door" title="Door">
-              <svg viewBox="0 0 24 24"><path d="M5 2h11a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><circle cx="14" cy="12" r="1"/></svg>
+              <svg viewBox="0 0 24 24">
+                <path
+                  d="M5 2h11a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"
+                />
+                <circle cx="14" cy="12" r="1" />
+              </svg>
             </div>
             <div class="icon-option" data-icon="stairs" title="Stairs">
-              <svg viewBox="0 0 24 24"><path d="M22 5v3h-5v3h-5v3H7v3H2v3"/></svg>
+              <svg viewBox="0 0 24 24">
+                <path d="M22 5v3h-5v3h-5v3H7v3H2v3" />
+              </svg>
             </div>
             <div class="icon-option" data-icon="balcony" title="Balcony">
-              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="10" rx="1"/><path d="M3 13h18"/><path d="M6 13v8"/><path d="M12 13v8"/><path d="M18 13v8"/></svg>
+              <svg viewBox="0 0 24 24">
+                <rect x="3" y="3" width="18" height="10" rx="1" />
+                <path d="M3 13h18" />
+                <path d="M6 13v8" />
+                <path d="M12 13v8" />
+                <path d="M18 13v8" />
+              </svg>
             </div>
           </div>
         </div>
 
         <div class="icon-modal-actions">
-          <button class="cfg-btn cfg-btn-secondary" onclick="closeIconPicker()">Cancel</button>
-          <button class="cfg-btn cfg-btn-primary" onclick="selectIcon()">Select</button>
+          <button class="cfg-btn cfg-btn-secondary" onclick="closeIconPicker()">
+            Cancel
+          </button>
+          <button class="cfg-btn cfg-btn-primary" onclick="selectIcon()">
+            Select
+          </button>
         </div>
       </div>
     </div>
@@ -2154,6 +2650,13 @@
           { label: "Show Users", panel: "panel-usr-show" },
           { label: "Add User", panel: "panel-usr-add" },
           { label: "Remove User", panel: "panel-usr-remove" },
+        ],
+        admin: [
+          { label: "Time Setup", panel: "panel-admin-time" },
+          { label: "Restart", panel: "panel-admin-restart" },
+          { label: "Reset Storage", panel: "panel-admin-storage" },
+          { label: "Reset Settings", panel: "panel-admin-settings" },
+          { label: "Factory Reset", panel: "panel-admin-factory" },
         ],
       };
 
@@ -2240,7 +2743,7 @@
         currentIconSwitch = switchIndex;
         selectedIcon = null;
         // Reset selection
-        document.querySelectorAll(".icon-option").forEach(function(opt) {
+        document.querySelectorAll(".icon-option").forEach(function (opt) {
           opt.classList.remove("selected");
         });
         iconPickerModal.classList.remove("hidden");
@@ -2253,15 +2756,17 @@
       function selectIcon() {
         if (selectedIcon) {
           // Update the switch icon (in a real app, save to ESP32)
-          console.log("Switch " + currentIconSwitch + " icon set to: " + selectedIcon);
+          console.log(
+            "Switch " + currentIconSwitch + " icon set to: " + selectedIcon,
+          );
           closeIconPicker();
         }
       }
 
       // Icon option click
-      document.querySelectorAll(".icon-option").forEach(function(opt) {
-        opt.addEventListener("click", function() {
-          document.querySelectorAll(".icon-option").forEach(function(o) {
+      document.querySelectorAll(".icon-option").forEach(function (opt) {
+        opt.addEventListener("click", function () {
+          document.querySelectorAll(".icon-option").forEach(function (o) {
             o.classList.remove("selected");
           });
           this.classList.add("selected");
@@ -2272,24 +2777,169 @@
       /* ══════════════════════════════════════════════════════════════
          RELAY HOLDING STATE
       ══════════════════════════════════════════════════════════════ */
-      document.querySelectorAll(".radio-option input[type='radio']").forEach(function(radio) {
-        radio.addEventListener("change", function() {
-          var group = this.closest(".radio-group");
-          group.querySelectorAll(".radio-option").forEach(function(opt) {
-            opt.classList.remove("selected");
+      document
+        .querySelectorAll(".radio-option input[type='radio']")
+        .forEach(function (radio) {
+          radio.addEventListener("change", function () {
+            var group = this.closest(".radio-group");
+            group.querySelectorAll(".radio-option").forEach(function (opt) {
+              opt.classList.remove("selected");
+            });
+            this.closest(".radio-option").classList.add("selected");
           });
-          this.closest(".radio-option").classList.add("selected");
         });
+
+      /* ══════════════════════════════════════════════════════════════
+         DAY PILLS TOGGLE (delegated for dynamic elements)
+      ══════════════════════════════════════════════════════════════ */
+      document.addEventListener("click", function (e) {
+        if (e.target.classList.contains("day-pill")) {
+          e.target.classList.toggle("active");
+        }
       });
 
       /* ══════════════════════════════════════════════════════════════
-         DAY PILLS TOGGLE
+         DYNAMIC SCHEDULE MANAGEMENT
       ══════════════════════════════════════════════════════════════ */
-      document.querySelectorAll(".day-pill").forEach(function(pill) {
-        pill.addEventListener("click", function() {
-          this.classList.toggle("active");
+      var scheduleCounter = 0;
+      var futureScheduleCounter = 0;
+
+      function createScheduleSlotHTML(slotNumber) {
+        return (
+          '<div class="schedule-slot" data-slot="' +
+          (slotNumber - 1) +
+          '">' +
+          '<div class="schedule-slot-header">' +
+          '<div class="schedule-slot-title">Schedule ' +
+          slotNumber +
+          "</div>" +
+          '<div class="schedule-slot-actions" style="display: flex; align-items: center; gap: 10px;">' +
+          '<label class="sm-toggle">' +
+          '<input type="checkbox" class="schedule-enable" />' +
+          '<span class="sm-toggle-track"></span>' +
+          "</label>" +
+          '<button class="cfg-btn cfg-btn-danger" style="padding: 4px 10px; font-size: 0.72rem;" onclick="removeScheduleSlot(this)">' +
+          '<svg viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>' +
+          "</button>" +
+          "</div>" +
+          "</div>" +
+          '<div class="schedule-row">' +
+          '<span class="schedule-label">Turn ON:</span>' +
+          '<input class="cfg-input schedule-on" type="time" style="max-width: 140px" />' +
+          "</div>" +
+          '<div class="schedule-row">' +
+          '<span class="schedule-label">Turn OFF:</span>' +
+          '<input class="cfg-input schedule-off" type="time" style="max-width: 140px" />' +
+          "</div>" +
+          '<div class="schedule-row">' +
+          '<span class="schedule-label">Repeat:</span>' +
+          '<div class="day-pills">' +
+          '<span class="day-pill" data-day="mon">Mon</span>' +
+          '<span class="day-pill" data-day="tue">Tue</span>' +
+          '<span class="day-pill" data-day="wed">Wed</span>' +
+          '<span class="day-pill" data-day="thu">Thu</span>' +
+          '<span class="day-pill" data-day="fri">Fri</span>' +
+          '<span class="day-pill" data-day="sat">Sat</span>' +
+          '<span class="day-pill" data-day="sun">Sun</span>' +
+          "</div>" +
+          "</div>" +
+          "</div>"
+        );
+      }
+
+      function addScheduleSlot() {
+        scheduleCounter++;
+        var container = document.getElementById("scheduleContainer");
+        var tempDiv = document.createElement("div");
+        tempDiv.innerHTML = createScheduleSlotHTML(scheduleCounter);
+        container.appendChild(tempDiv.firstChild);
+        renumberScheduleSlots();
+      }
+
+      function removeScheduleSlot(button) {
+        var slot = button.closest(".schedule-slot");
+        if (slot) {
+          slot.remove();
+          renumberScheduleSlots();
+        }
+      }
+
+      function renumberScheduleSlots() {
+        var container = document.getElementById("scheduleContainer");
+        var slots = container.querySelectorAll(".schedule-slot");
+        scheduleCounter = slots.length;
+        slots.forEach(function (slot, index) {
+          slot.setAttribute("data-slot", index);
+          slot.querySelector(".schedule-slot-title").textContent =
+            "Schedule " + (index + 1);
         });
-      });
+      }
+
+      function createFutureScheduleSlotHTML(slotNumber) {
+        return (
+          '<div class="schedule-slot" data-slot="' +
+          (slotNumber - 1) +
+          '">' +
+          '<div class="schedule-slot-header">' +
+          '<div class="schedule-slot-title">Future Schedule ' +
+          slotNumber +
+          "</div>" +
+          '<div class="schedule-slot-actions" style="display: flex; align-items: center; gap: 10px;">' +
+          '<label class="sm-toggle">' +
+          '<input type="checkbox" class="future-enable" />' +
+          '<span class="sm-toggle-track"></span>' +
+          "</label>" +
+          '<button class="cfg-btn cfg-btn-danger" style="padding: 4px 10px; font-size: 0.72rem;" onclick="removeFutureScheduleSlot(this)">' +
+          '<svg viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>' +
+          "</button>" +
+          "</div>" +
+          "</div>" +
+          '<div class="schedule-row">' +
+          '<span class="schedule-label">Action:</span>' +
+          '<select class="cfg-input future-action" style="max-width: 140px">' +
+          '<option value="on">Turn ON</option>' +
+          '<option value="off">Turn OFF</option>' +
+          "</select>" +
+          "</div>" +
+          '<div class="schedule-row">' +
+          '<span class="schedule-label">Date:</span>' +
+          '<input class="cfg-input future-date" type="date" style="max-width: 160px" />' +
+          "</div>" +
+          '<div class="schedule-row">' +
+          '<span class="schedule-label">Time:</span>' +
+          '<input class="cfg-input future-time" type="time" style="max-width: 140px" />' +
+          "</div>" +
+          "</div>"
+        );
+      }
+
+      function addFutureScheduleSlot() {
+        futureScheduleCounter++;
+        var container = document.getElementById("futureScheduleContainer");
+        var tempDiv = document.createElement("div");
+        tempDiv.innerHTML = createFutureScheduleSlotHTML(futureScheduleCounter);
+        container.appendChild(tempDiv.firstChild);
+        renumberFutureScheduleSlots();
+      }
+
+      function removeFutureScheduleSlot(button) {
+        var slot = button.closest(".schedule-slot");
+        if (slot) {
+          slot.remove();
+          renumberFutureScheduleSlots();
+        }
+      }
+
+      function renumberFutureScheduleSlots() {
+        var container = document.getElementById("futureScheduleContainer");
+        var slots = container.querySelectorAll(".schedule-slot");
+        futureScheduleCounter = slots.length;
+        slots.forEach(function (slot, index) {
+          slot.setAttribute("data-slot", index);
+          slot.querySelector(".schedule-slot-title").textContent =
+            "Future Schedule " + (index + 1);
+        });
+      }
 
       /* ══════════════════════════════════════════════════════════════
          SCHEDULE VALIDATION
@@ -2307,7 +2957,7 @@
           var onA = timeToMinutes(schedules[i].onTime);
           var offA = timeToMinutes(schedules[i].offTime);
           if (onA === null || offA === null) continue;
-          
+
           for (var j = i + 1; j < schedules.length; j++) {
             if (!schedules[j].enabled) continue;
             var onB = timeToMinutes(schedules[j].onTime);
@@ -2315,7 +2965,7 @@
             if (onB === null || offB === null) continue;
 
             // Check if days overlap
-            var daysOverlap = schedules[i].days.some(function(day) {
+            var daysOverlap = schedules[i].days.some(function (day) {
               return schedules[j].days.includes(day);
             });
 
@@ -2324,7 +2974,7 @@
               var overlap = false;
               if (offA > onA && offB > onB) {
                 // Normal case (no midnight crossing)
-                overlap = (onA < offB && offA > onB);
+                overlap = onA < offB && offA > onB;
               } else {
                 // Handle midnight crossing case
                 overlap = true; // Simplified - flag as potential overlap
@@ -2333,7 +2983,7 @@
               if (overlap) {
                 overlaps.push({
                   slot1: i + 1,
-                  slot2: j + 1
+                  slot2: j + 1,
                 });
               }
             }
@@ -2345,14 +2995,21 @@
       function saveSchedules() {
         var container = document.getElementById("scheduleContainer");
         var slots = container.querySelectorAll(".schedule-slot");
+
+        if (slots.length === 0) {
+          document.getElementById("scheduleValidation").innerHTML =
+            '<div class="schedule-error">No schedules to save. Add at least one schedule.</div>';
+          return;
+        }
+
         var schedules = [];
 
-        slots.forEach(function(slot) {
+        slots.forEach(function (slot) {
           var enabled = slot.querySelector(".schedule-enable").checked;
           var onTime = slot.querySelector(".schedule-on").value;
           var offTime = slot.querySelector(".schedule-off").value;
           var days = [];
-          slot.querySelectorAll(".day-pill.active").forEach(function(pill) {
+          slot.querySelectorAll(".day-pill.active").forEach(function (pill) {
             days.push(pill.getAttribute("data-day"));
           });
 
@@ -2360,7 +3017,7 @@
             enabled: enabled,
             onTime: onTime,
             offTime: offTime,
-            days: days
+            days: days,
           });
         });
 
@@ -2369,27 +3026,29 @@
 
         if (overlaps.length > 0) {
           var msg = "Warning: Overlapping schedules detected! ";
-          overlaps.forEach(function(o) {
-            msg += "Schedule " + o.slot1 + " overlaps with Schedule " + o.slot2 + ". ";
+          overlaps.forEach(function (o) {
+            msg +=
+              "Schedule " +
+              o.slot1 +
+              " overlaps with Schedule " +
+              o.slot2 +
+              ". ";
           });
-          validationDiv.innerHTML = '<div class="schedule-error">' + msg + '</div>';
+          validationDiv.innerHTML =
+            '<div class="schedule-error">' + msg + "</div>";
         } else {
-          validationDiv.innerHTML = '<div class="schedule-success">Schedules saved successfully!</div>';
+          validationDiv.innerHTML =
+            '<div class="schedule-success">' +
+            slots.length +
+            " schedule(s) saved successfully!</div>";
           console.log("Schedules saved:", schedules);
         }
       }
 
       function clearAllSchedules() {
         var container = document.getElementById("scheduleContainer");
-        container.querySelectorAll(".schedule-enable").forEach(function(cb) {
-          cb.checked = false;
-        });
-        container.querySelectorAll(".schedule-on, .schedule-off").forEach(function(input) {
-          input.value = "";
-        });
-        container.querySelectorAll(".day-pill").forEach(function(pill) {
-          pill.classList.remove("active");
-        });
+        container.innerHTML = "";
+        scheduleCounter = 0;
         document.getElementById("scheduleValidation").innerHTML = "";
       }
 
@@ -2409,8 +3068,10 @@
           for (var j = i + 1; j < schedules.length; j++) {
             if (!schedules[j].enabled) continue;
             // Check if same date and time
-            if (schedules[i].date === schedules[j].date && 
-                schedules[i].time === schedules[j].time) {
+            if (
+              schedules[i].date === schedules[j].date &&
+              schedules[i].time === schedules[j].time
+            ) {
               overlaps.push({ slot1: i + 1, slot2: j + 1 });
             }
           }
@@ -2421,9 +3082,16 @@
       function saveFutureSchedules() {
         var container = document.getElementById("futureScheduleContainer");
         var slots = container.querySelectorAll(".schedule-slot");
+
+        if (slots.length === 0) {
+          document.getElementById("futureScheduleValidation").innerHTML =
+            '<div class="schedule-error">No future schedules to save. Add at least one schedule.</div>';
+          return;
+        }
+
         var schedules = [];
 
-        slots.forEach(function(slot) {
+        slots.forEach(function (slot) {
           var enabled = slot.querySelector(".future-enable").checked;
           var action = slot.querySelector(".future-action").value;
           var date = slot.querySelector(".future-date").value;
@@ -2433,7 +3101,7 @@
             enabled: enabled,
             action: action,
             date: date,
-            time: time
+            time: time,
           });
         });
 
@@ -2442,27 +3110,29 @@
 
         if (overlaps.length > 0) {
           var msg = "Warning: Duplicate schedules detected! ";
-          overlaps.forEach(function(o) {
-            msg += "Schedule " + o.slot1 + " conflicts with Schedule " + o.slot2 + ". ";
+          overlaps.forEach(function (o) {
+            msg +=
+              "Schedule " +
+              o.slot1 +
+              " conflicts with Schedule " +
+              o.slot2 +
+              ". ";
           });
-          validationDiv.innerHTML = '<div class="schedule-error">' + msg + '</div>';
+          validationDiv.innerHTML =
+            '<div class="schedule-error">' + msg + "</div>";
         } else {
-          validationDiv.innerHTML = '<div class="schedule-success">Future schedules saved successfully!</div>';
+          validationDiv.innerHTML =
+            '<div class="schedule-success">' +
+            slots.length +
+            " future schedule(s) saved successfully!</div>";
           console.log("Future schedules saved:", schedules);
         }
       }
 
       function clearAllFutureSchedules() {
         var container = document.getElementById("futureScheduleContainer");
-        container.querySelectorAll(".future-enable").forEach(function(cb) {
-          cb.checked = false;
-        });
-        container.querySelectorAll(".future-action").forEach(function(sel) {
-          sel.value = "on";
-        });
-        container.querySelectorAll(".future-date, .future-time").forEach(function(input) {
-          input.value = "";
-        });
+        container.innerHTML = "";
+        futureScheduleCounter = 0;
         document.getElementById("futureScheduleValidation").innerHTML = "";
       }
 
@@ -2494,7 +3164,7 @@
       function validateFirebaseRules() {
         var rulesTextarea = document.getElementById("firebaseRules");
         var rulesText = rulesTextarea.value.trim();
-        
+
         if (!rulesText) {
           alert("Please enter database rules JSON");
           return;
@@ -2505,6 +3175,198 @@
           alert("JSON is valid!");
         } catch (e) {
           alert("Invalid JSON: " + e.message);
+        }
+      }
+
+      /* ══════════════════════════════════════════════════════════════
+         PASSWORD CONFIRMATION MODAL
+      ══════════════════════════════════════════════════════════════ */
+      var passwordModal = document.getElementById("passwordModal");
+      var passwordModalMsg = document.getElementById("passwordModalMsg");
+      var confirmPasswordInput = document.getElementById(
+        "confirmPasswordInput",
+      );
+      var pendingPasswordAction = null;
+      var pendingActionData = null;
+
+      // Default password (should be fetched from ESP32 in real app)
+      var adminPassword = "1234";
+
+      function showPasswordModal(message, action, data) {
+        passwordModalMsg.textContent = message;
+        pendingPasswordAction = action;
+        pendingActionData = data;
+        confirmPasswordInput.value = "";
+        passwordModal.classList.remove("hidden");
+        confirmPasswordInput.focus();
+      }
+
+      function closePasswordModal() {
+        passwordModal.classList.add("hidden");
+        pendingPasswordAction = null;
+        pendingActionData = null;
+        confirmPasswordInput.value = "";
+      }
+
+      function verifyPasswordAndExecute() {
+        var enteredPassword = confirmPasswordInput.value;
+        if (enteredPassword === adminPassword) {
+          closePasswordModal();
+          if (pendingPasswordAction) {
+            pendingPasswordAction(pendingActionData);
+          }
+        } else {
+          alert("Incorrect password!");
+          confirmPasswordInput.value = "";
+          confirmPasswordInput.focus();
+        }
+      }
+
+      // Allow Enter key to submit
+      confirmPasswordInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          verifyPasswordAndExecute();
+        }
+      });
+
+      /* ══════════════════════════════════════════════════════════════
+         USER MANAGEMENT ACTIONS
+      ══════════════════════════════════════════════════════════════ */
+      function confirmUserAction(actionType, userId) {
+        if (actionType === "add") {
+          var newUserId = document.getElementById("newUserId").value.trim();
+          var newUserPassword =
+            document.getElementById("newUserPassword").value;
+          var newUserRole = document.getElementById("newUserRole").value;
+
+          if (!newUserId || !newUserPassword) {
+            alert("Please fill in all fields");
+            return;
+          }
+
+          showPasswordModal("Enter your password to add new user", function () {
+            // Execute add user action
+            console.log("Adding user:", newUserId, "Role:", newUserRole);
+            alert("User '" + newUserId + "' added successfully!");
+            document.getElementById("newUserId").value = "";
+            document.getElementById("newUserPassword").value = "";
+          });
+        } else if (actionType === "remove") {
+          showPasswordModal(
+            "Enter your password to remove user '" + userId + "'",
+            function () {
+              // Execute remove user action
+              console.log("Removing user:", userId);
+              alert("User '" + userId + "' removed successfully!");
+            },
+            userId,
+          );
+        }
+      }
+
+      /* ══════════════════════════════════════════════════════════════
+         ADMINISTRATOR ACTIONS
+      ══════════════════════════════════════════════════════════════ */
+      function confirmAdminAction(actionType) {
+        var message = "";
+        var successMsg = "";
+
+        if (actionType === "storage") {
+          message = "Enter your password to reset storage";
+          successMsg = "Storage has been reset successfully!";
+        } else if (actionType === "settings") {
+          message = "Enter your password to reset settings";
+          successMsg = "Settings have been reset to defaults!";
+        }
+
+        showPasswordModal(message, function () {
+          console.log("Executing admin action:", actionType);
+          alert(successMsg);
+        });
+      }
+
+      function confirmFactoryReset() {
+        if (
+          confirm(
+            "⚠ WARNING: This will erase ALL data and restore factory defaults. This action cannot be undone!\n\nAre you sure you want to continue?",
+          )
+        ) {
+          showPasswordModal(
+            "Enter your password to confirm factory reset",
+            function () {
+              console.log("Executing factory reset");
+              alert("Factory reset initiated. Device will restart...");
+              // In real app, send command to ESP32 to perform factory reset
+            },
+          );
+        }
+      }
+
+      /* ══════════════════════════════════════════════════════════════
+         WIFI SCAN MODAL
+      ══════════════════════════════════════════════════════════════ */
+      var wifiScanModal = document.getElementById("wifiScanModal");
+
+      function showWifiScanModal() {
+        wifiScanModal.classList.remove("hidden");
+      }
+
+      function closeWifiScanModal() {
+        wifiScanModal.classList.add("hidden");
+      }
+
+      /* ══════════════════════════════════════════════════════════════
+         TIME SETUP
+      ══════════════════════════════════════════════════════════════ */
+      function updateDeviceTime() {
+        var now = new Date();
+        var timeStr = now.toLocaleTimeString("en-US", { hour12: false });
+        var dateStr = now.toLocaleDateString("en-GB");
+        var display = document.getElementById("currentDeviceTime");
+        if (display) {
+          display.textContent = timeStr + " " + dateStr;
+        }
+      }
+
+      // Update device time every second
+      setInterval(updateDeviceTime, 1000);
+      updateDeviceTime();
+
+      function syncTimeNow() {
+        var ntpServer = document.getElementById("ntpServer").value;
+        var timezone = document.getElementById("timezoneSelect").value;
+        console.log("Syncing time with NTP server:", ntpServer);
+        // In real app, send sync command to ESP32
+        alert("Time synchronized successfully!");
+        updateDeviceTime();
+      }
+
+      function saveTimeSettings() {
+        var ntpServer = document.getElementById("ntpServer").value;
+        var timezone = document.getElementById("timezoneSelect").value;
+
+        console.log("Time settings saved:", {
+          ntpServer: ntpServer,
+          timezone: timezone,
+        });
+
+        alert("Time settings saved successfully!");
+      }
+
+      /* ══════════════════════════════════════════════════════════════
+         RESTART DEVICE
+      ══════════════════════════════════════════════════════════════ */
+      function confirmRestart() {
+        if (
+          confirm(
+            "Are you sure you want to restart the device?\n\nThe device will be temporarily unavailable during restart.",
+          )
+        ) {
+          console.log("Device restart initiated");
+          alert(
+            "Restarting device... Please wait a few seconds and refresh the page.",
+          );
+          // In real app, send restart command to ESP32
         }
       }
     </script>

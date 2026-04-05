@@ -611,7 +611,13 @@
         </div>
         <div class="login-field">
           <label>Password</label>
-          <input type="password" id="loginPass" name="password" placeholder="Enter password" autocomplete="current-password" />
+          <input
+            type="password"
+            id="loginPass"
+            name="password"
+            placeholder="Enter password"
+            autocomplete="current-password"
+          />
         </div>
         <div class="remember-field">
           <input type="checkbox" id="rememberMe" />
@@ -645,6 +651,13 @@
                 d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
               />
               <circle cx="12" cy="12" r="3" />
+            </svg>
+          </button>
+          <button class="settings-btn" title="Logout" id="logoutBtn">
+            <svg viewBox="0 0 24 24">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
             </svg>
           </button>
         </div>
@@ -881,9 +894,10 @@
       function logout() {
         sessionStorage.removeItem(SESSION_KEY);
         localStorage.removeItem(REMEMBER_KEY);
+        window.location.reload();
       }
 
-      /* ── Login Elements ── */
+      /* ── DOM Elements ── */
       var loginScreen = document.getElementById("loginScreen");
       var dashboard = document.getElementById("dashboard");
       var loginBtn = document.getElementById("loginBtn");
@@ -892,42 +906,33 @@
       var loginPassInput = document.getElementById("loginPass");
       var rememberMeCheckbox = document.getElementById("rememberMe");
 
-      /* Auto-login if session exists or remembered */
-      function initSession() {
-        if (isLoggedIn() || checkRemembered()) {
-          if (checkRemembered()) {
-            sessionStorage.setItem(SESSION_KEY, "true");
-          }
-          loginScreen.classList.add("hidden");
-          dashboard.classList.remove("hidden");
-          updateClock();
-        }
+      /* ── Toggle Cards (defined early for proper initialization) ── */
+      var cards = document.querySelectorAll(".card");
+      var toggles = document.querySelectorAll(".toggle input");
+
+      /* ── Confirmation Modal ── */
+      var modal = document.getElementById("confirmModal");
+      var confirmMsg = document.getElementById("confirmMsg");
+      var modalConfirm = document.getElementById("modalConfirm");
+      var modalCancel = document.getElementById("modalCancel");
+      var pendingAction = null;
+
+      function showConfirm(msg, action) {
+        confirmMsg.textContent = msg;
+        pendingAction = action;
+        modal.classList.remove("hidden");
       }
 
-      initSession();
-
-      loginBtn.addEventListener("click", doLogin);
-      loginPassInput.addEventListener("keydown", function (e) {
-        if (e.key === "Enter") doLogin();
-      });
-      loginUserInput.addEventListener("keydown", function (e) {
-        if (e.key === "Enter") doLogin();
+      modalCancel.addEventListener("click", function () {
+        modal.classList.add("hidden");
+        pendingAction = null;
       });
 
-      function doLogin() {
-        var u = loginUserInput.value.trim();
-        var p = loginPassInput.value;
-        if (u === validUser && p === validPass) {
-          setLoggedIn(rememberMeCheckbox.checked);
-          loginScreen.classList.add("hidden");
-          dashboard.classList.remove("hidden");
-          loginError.textContent = "";
-          updateClock();
-        } else {
-          loginError.textContent = "Invalid user ID or password";
-          loginPassInput.value = "";
-        }
-      }
+      modalConfirm.addEventListener("click", function () {
+        modal.classList.add("hidden");
+        if (pendingAction) pendingAction();
+        pendingAction = null;
+      });
 
       /* ── Clock ── */
       var months = [
@@ -955,12 +960,8 @@
         document.getElementById("datetime").textContent =
           h + ":" + m + ":" + s + "  " + d + " " + mon + " " + y;
       }
-      setInterval(updateClock, 1000);
 
-      /* ── Toggle Cards ── */
-      var cards = document.querySelectorAll(".card");
-      var toggles = document.querySelectorAll(".toggle input");
-
+      /* ── Toggle Card Event Listeners ── */
       toggles.forEach(function (t) {
         t.addEventListener("change", function () {
           var card = this.closest(".card");
@@ -973,30 +974,6 @@
             status.textContent = "Off";
           }
         });
-      });
-
-      /* ── Confirmation Modal ── */
-      var modal = document.getElementById("confirmModal");
-      var confirmMsg = document.getElementById("confirmMsg");
-      var modalConfirm = document.getElementById("modalConfirm");
-      var modalCancel = document.getElementById("modalCancel");
-      var pendingAction = null;
-
-      function showConfirm(msg, action) {
-        confirmMsg.textContent = msg;
-        pendingAction = action;
-        modal.classList.remove("hidden");
-      }
-
-      modalCancel.addEventListener("click", function () {
-        modal.classList.add("hidden");
-        pendingAction = null;
-      });
-
-      modalConfirm.addEventListener("click", function () {
-        modal.classList.add("hidden");
-        if (pendingAction) pendingAction();
-        pendingAction = null;
       });
 
       /* ── ALL ON / ALL OFF ── */
@@ -1022,12 +999,61 @@
           });
         });
 
-      /* ── Settings Redirect (session persists) ── */
+      /* ── Settings Redirect ── */
       document
         .getElementById("settingsBtn")
         .addEventListener("click", function () {
           window.location.href = "config.html";
         });
+
+      /* ── Logout Button ── */
+      document
+        .getElementById("logoutBtn")
+        .addEventListener("click", function () {
+          showConfirm("Are you sure you want to logout?", function () {
+            logout();
+          });
+        });
+
+      /* ── Login Functions ── */
+      function doLogin() {
+        var u = loginUserInput.value.trim();
+        var p = loginPassInput.value;
+        if (u === validUser && p === validPass) {
+          setLoggedIn(rememberMeCheckbox.checked);
+          loginScreen.classList.add("hidden");
+          dashboard.classList.remove("hidden");
+          loginError.textContent = "";
+          updateClock();
+        } else {
+          loginError.textContent = "Invalid user ID or password";
+          loginPassInput.value = "";
+        }
+      }
+
+      loginBtn.addEventListener("click", doLogin);
+      loginPassInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") doLogin();
+      });
+      loginUserInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") doLogin();
+      });
+
+      /* ── Auto-login if session exists or remembered ── */
+      function initSession() {
+        if (isLoggedIn() || checkRemembered()) {
+          if (checkRemembered()) {
+            sessionStorage.setItem(SESSION_KEY, "true");
+          }
+          loginScreen.classList.add("hidden");
+          dashboard.classList.remove("hidden");
+          updateClock();
+        }
+      }
+
+      /* ── Initialize ── */
+      initSession();
+      setInterval(updateClock, 1000);
     </script>
   </body>
 </html>
