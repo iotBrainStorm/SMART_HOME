@@ -97,6 +97,26 @@
         color: #475569;
       }
 
+      .remember-field {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 18px;
+      }
+
+      .remember-field input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        accent-color: #2563eb;
+        cursor: pointer;
+      }
+
+      .remember-field label {
+        font-size: 0.82rem;
+        color: #94a3b8;
+        cursor: pointer;
+      }
+
       .login-btn {
         width: 100%;
         padding: 14px;
@@ -584,13 +604,18 @@
           <input
             type="text"
             id="loginUser"
+            name="username"
             placeholder="Enter user ID"
-            autocomplete="off"
+            autocomplete="username"
           />
         </div>
         <div class="login-field">
           <label>Password</label>
-          <input type="password" id="loginPass" placeholder="Enter password" />
+          <input type="password" id="loginPass" name="password" placeholder="Enter password" autocomplete="current-password" />
+        </div>
+        <div class="remember-field">
+          <input type="checkbox" id="rememberMe" />
+          <label for="rememberMe">Remember me</label>
         </div>
         <button class="login-btn" id="loginBtn">SIGN IN</button>
         <div class="login-error" id="loginError"></div>
@@ -834,13 +859,52 @@
       var validUser = "mrinal";
       var validPass = "1234";
 
-      /* ── Login ── */
+      /* ── Session Management ── */
+      var SESSION_KEY = "smartHomeSession";
+      var REMEMBER_KEY = "smartHomeRemember";
+
+      function isLoggedIn() {
+        return sessionStorage.getItem(SESSION_KEY) === "true";
+      }
+
+      function setLoggedIn(remember) {
+        sessionStorage.setItem(SESSION_KEY, "true");
+        if (remember) {
+          localStorage.setItem(REMEMBER_KEY, "true");
+        }
+      }
+
+      function checkRemembered() {
+        return localStorage.getItem(REMEMBER_KEY) === "true";
+      }
+
+      function logout() {
+        sessionStorage.removeItem(SESSION_KEY);
+        localStorage.removeItem(REMEMBER_KEY);
+      }
+
+      /* ── Login Elements ── */
       var loginScreen = document.getElementById("loginScreen");
       var dashboard = document.getElementById("dashboard");
       var loginBtn = document.getElementById("loginBtn");
       var loginError = document.getElementById("loginError");
       var loginUserInput = document.getElementById("loginUser");
       var loginPassInput = document.getElementById("loginPass");
+      var rememberMeCheckbox = document.getElementById("rememberMe");
+
+      /* Auto-login if session exists or remembered */
+      function initSession() {
+        if (isLoggedIn() || checkRemembered()) {
+          if (checkRemembered()) {
+            sessionStorage.setItem(SESSION_KEY, "true");
+          }
+          loginScreen.classList.add("hidden");
+          dashboard.classList.remove("hidden");
+          updateClock();
+        }
+      }
+
+      initSession();
 
       loginBtn.addEventListener("click", doLogin);
       loginPassInput.addEventListener("keydown", function (e) {
@@ -854,6 +918,7 @@
         var u = loginUserInput.value.trim();
         var p = loginPassInput.value;
         if (u === validUser && p === validPass) {
+          setLoggedIn(rememberMeCheckbox.checked);
           loginScreen.classList.add("hidden");
           dashboard.classList.remove("hidden");
           loginError.textContent = "";
@@ -957,7 +1022,7 @@
           });
         });
 
-      /* ── Settings Redirect ── */
+      /* ── Settings Redirect (session persists) ── */
       document
         .getElementById("settingsBtn")
         .addEventListener("click", function () {
