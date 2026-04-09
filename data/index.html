@@ -868,20 +868,21 @@
     </div>
 
     <script>
-      /* ── Default Credentials ── */
-      var validUser = "mrinal";
-      var validPass = "1234";
-
       /* ── Session Management ── */
       var SESSION_KEY = "smartHomeSession";
       var REMEMBER_KEY = "smartHomeRemember";
+      var ROLE_KEY = "smartHomeRole";
 
       function isLoggedIn() {
         return sessionStorage.getItem(SESSION_KEY) === "true";
       }
 
-      function setLoggedIn(remember) {
+      var USER_KEY = "smartHomeUser";
+
+      function setLoggedIn(remember, role, user) {
         sessionStorage.setItem(SESSION_KEY, "true");
+        sessionStorage.setItem(ROLE_KEY, role || "user");
+        if (user) sessionStorage.setItem(USER_KEY, user);
         if (remember) {
           localStorage.setItem(REMEMBER_KEY, "true");
         }
@@ -893,6 +894,8 @@
 
       function logout() {
         sessionStorage.removeItem(SESSION_KEY);
+        sessionStorage.removeItem(ROLE_KEY);
+        sessionStorage.removeItem(USER_KEY);
         localStorage.removeItem(REMEMBER_KEY);
         window.location.reload();
       }
@@ -906,7 +909,7 @@
       var loginPassInput = document.getElementById("loginPass");
       var rememberMeCheckbox = document.getElementById("rememberMe");
 
-      /* ── Toggle Cards (defined early for proper initialization) ── */
+      /* ── Toggle Cards ── */
       var cards = document.querySelectorAll(".card");
       var toggles = document.querySelectorAll(".toggle input");
 
@@ -961,18 +964,56 @@
           h + ":" + m + ":" + s + "  " + d + " " + mon + " " + y;
       }
 
-      /* ── Toggle Card Event Listeners ── */
+      /* ── Load Switch Data from ESP32 ── */
+      function loadSwitches() {
+        fetch("/api/switches")
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function (data) {
+            cards.forEach(function (card, i) {
+              var nameEl = card.querySelector(".card-name");
+              var statusEl = card.querySelector(".card-status");
+              var toggle = card.querySelector(".toggle input");
+              if (data.names && data.names[i])
+                nameEl.textContent = data.names[i];
+              if (data.states && data.states[i]) {
+                toggle.checked = true;
+                card.classList.add("on");
+                statusEl.textContent = "On";
+              } else {
+                toggle.checked = false;
+                card.classList.remove("on");
+                statusEl.textContent = "Off";
+              }
+            });
+          })
+          .catch(function (err) {
+            console.log("Switch load error:", err);
+          });
+      }
+
+      /* ── Toggle Switch via API ── */
       toggles.forEach(function (t) {
         t.addEventListener("change", function () {
           var card = this.closest(".card");
+          var idx = card.getAttribute("data-index");
           var status = card.querySelector(".card-status");
-          if (this.checked) {
+          var checked = this.checked;
+          if (checked) {
             card.classList.add("on");
             status.textContent = "On";
           } else {
             card.classList.remove("on");
             status.textContent = "Off";
           }
+          fetch("/api/switch/toggle", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: "index=" + idx + "&state=" + checked,
+          }).catch(function (err) {
+            console.log("Toggle error:", err);
+          });
         });
       });
 
@@ -1015,20 +1056,47 @@
           });
         });
 
-      /* ── Login Functions ── */
+      /* ── Login via API ── */
       function doLogin() {
         var u = loginUserInput.value.trim();
         var p = loginPassInput.value;
-        if (u === validUser && p === validPass) {
-          setLoggedIn(rememberMeCheckbox.checked);
-          loginScreen.classList.add("hidden");
-          dashboard.classList.remove("hidden");
-          loginError.textContent = "";
-          updateClock();
-        } else {
-          loginError.textContent = "Invalid user ID or password";
-          loginPassInput.value = "";
+        if (!u || !p) {
+          loginError.textContent = "Please enter credentials";
+          return;
         }
+        loginBtn.disabled = true;
+        loginBtn.textContent = "SIGNING IN...";
+        fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body:
+            "user=" + encodeURIComponent(u) + "&pass=" + encodeURIComponent(p),
+        })
+          .then(function (r) {
+            return r.json().then(function (d) {
+              return { ok: r.ok, data: d };
+            });
+          })
+          .then(function (res) {
+            loginBtn.disabled = false;
+            loginBtn.textContent = "SIGN IN";
+            if (res.ok && res.data.ok) {
+              setLoggedIn(rememberMeCheckbox.checked, res.data.role, u);
+              loginScreen.classList.add("hidden");
+              dashboard.classList.remove("hidden");
+              loginError.textContent = "";
+              updateClock();
+              loadSwitches();
+            } else {
+              loginError.textContent = res.data.error || "Invalid credentials";
+              loginPassInput.value = "";
+            }
+          })
+          .catch(function () {
+            loginBtn.disabled = false;
+            loginBtn.textContent = "SIGN IN";
+            loginError.textContent = "Connection failed";
+          });
       }
 
       loginBtn.addEventListener("click", doLogin);
@@ -1048,8 +1116,18 @@
           loginScreen.classList.add("hidden");
           dashboard.classList.remove("hidden");
           updateClock();
+          loadSwitches();
         }
       }
+
+      /* ── Periodic switch state refresh ── */
+      setInterval(function () {
+        if (
+          !document.getElementById("dashboard").classList.contains("hidden")
+        ) {
+          loadSwitches();
+        }
+      }, 5000);
 
       /* ── Initialize ── */
       initSession();

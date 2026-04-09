@@ -2752,6 +2752,13 @@
           Enter your password to continue
         </p>
         <input
+          type="text"
+          id="confirmAdminUser"
+          class="cfg-input"
+          placeholder="Admin username"
+          style="width: 100%; margin-bottom: 10px"
+        />
+        <input
           type="password"
           id="confirmPasswordInput"
           class="cfg-input"
@@ -2819,7 +2826,13 @@
           <button class="modal-cancel" onclick="closeWifiScanModal()">
             Cancel
           </button>
-          <button class="modal-confirm" onclick="closeWifiScanModal()">
+          <button
+            class="modal-confirm"
+            onclick="
+              closeWifiScanModal();
+              apiPost('/api/wifi/scan', '');
+            "
+          >
             Got it
           </button>
         </div>
@@ -3024,6 +3037,22 @@
     </div>
 
     <script>
+      /* ── API Helper ── */
+      function apiPost(url, body) {
+        return fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: body,
+        }).then(function (r) {
+          return r.json();
+        });
+      }
+      function apiGet(url) {
+        return fetch(url).then(function (r) {
+          return r.json();
+        });
+      }
+
       /* ── Data: tabs → sidebar items → panel IDs ── */
       var tabConfig = {
         switches: [
@@ -3205,10 +3234,11 @@
       var btShowBtn = document.getElementById("btShowPass");
       var btPassEl = document.getElementById("btPassDisplay");
       var btPassVisible = false;
+      var btStoredPass = "";
       if (btShowBtn) {
         btShowBtn.addEventListener("click", function () {
           btPassVisible = !btPassVisible;
-          btPassEl.textContent = btPassVisible ? "1234" : "••••••";
+          btPassEl.textContent = btPassVisible ? btStoredPass : "••••••";
           btShowBtn.textContent = btPassVisible ? "Hide" : "Show";
         });
       }
@@ -3236,10 +3266,18 @@
 
       function selectIcon() {
         if (selectedIcon) {
-          // Update the switch icon (in a real app, save to ESP32)
-          console.log(
-            "Switch " + currentIconSwitch + " icon set to: " + selectedIcon,
-          );
+          var body =
+            "icon" + currentIconSwitch + "=" + encodeURIComponent(selectedIcon);
+          apiPost("/api/switches/icons", body).then(function (d) {
+            if (d.ok) {
+              var panel = document.getElementById("panel-sw-icon");
+              var rows = panel.querySelectorAll(".setting-row");
+              if (rows[currentIconSwitch]) {
+                var sub = rows[currentIconSwitch].querySelector(".setting-sub");
+                if (sub) sub.textContent = "Current: " + selectedIcon + " icon";
+              }
+            }
+          });
           closeIconPicker();
         }
       }
@@ -3518,11 +3556,31 @@
           validationDiv.innerHTML =
             '<div class="schedule-error">' + msg + "</div>";
         } else {
-          validationDiv.innerHTML =
-            '<div class="schedule-success">' +
-            slots.length +
-            " schedule(s) saved successfully!</div>";
-          console.log("Schedules saved:", schedules);
+          var sw = document.getElementById("scheduleSwitch").value;
+          apiPost(
+            "/api/schedules",
+            "sw=" +
+              sw +
+              "&data=" +
+              encodeURIComponent(JSON.stringify(schedules)),
+          )
+            .then(function (d) {
+              if (d.ok) {
+                validationDiv.innerHTML =
+                  '<div class="schedule-success">' +
+                  slots.length +
+                  " schedule(s) saved successfully!</div>";
+              } else {
+                validationDiv.innerHTML =
+                  '<div class="schedule-error">' +
+                  (d.error || "Save failed") +
+                  "</div>";
+              }
+            })
+            .catch(function () {
+              validationDiv.innerHTML =
+                '<div class="schedule-error">Connection error</div>';
+            });
         }
       }
 
@@ -3534,9 +3592,29 @@
       }
 
       function loadSchedulesForSwitch() {
-        // In real app, load schedules for selected switch from ESP32
         clearAllSchedules();
         document.getElementById("scheduleValidation").innerHTML = "";
+        var sw = document.getElementById("scheduleSwitch").value;
+        apiGet("/api/schedules?sw=" + sw)
+          .then(function (arr) {
+            if (!Array.isArray(arr)) return;
+            arr.forEach(function (s) {
+              addScheduleSlot();
+              var slots = document.querySelectorAll(
+                "#scheduleContainer .schedule-slot",
+              );
+              var slot = slots[slots.length - 1];
+              slot.querySelector(".schedule-enable").checked = !!s.enabled;
+              slot.querySelector(".schedule-on").value = s.onTime || "";
+              slot.querySelector(".schedule-off").value = s.offTime || "";
+              var days = s.days || [];
+              slot.querySelectorAll(".day-pill").forEach(function (pill) {
+                if (days.indexOf(pill.textContent.trim()) >= 0)
+                  pill.classList.add("active");
+              });
+            });
+          })
+          .catch(function () {});
       }
 
       /* ══════════════════════════════════════════════════════════════
@@ -3602,11 +3680,31 @@
           validationDiv.innerHTML =
             '<div class="schedule-error">' + msg + "</div>";
         } else {
-          validationDiv.innerHTML =
-            '<div class="schedule-success">' +
-            slots.length +
-            " future schedule(s) saved successfully!</div>";
-          console.log("Future schedules saved:", schedules);
+          var sw = document.getElementById("futureScheduleSwitch").value;
+          apiPost(
+            "/api/fschedules",
+            "sw=" +
+              sw +
+              "&data=" +
+              encodeURIComponent(JSON.stringify(schedules)),
+          )
+            .then(function (d) {
+              if (d.ok) {
+                validationDiv.innerHTML =
+                  '<div class="schedule-success">' +
+                  slots.length +
+                  " future schedule(s) saved successfully!</div>";
+              } else {
+                validationDiv.innerHTML =
+                  '<div class="schedule-error">' +
+                  (d.error || "Save failed") +
+                  "</div>";
+              }
+            })
+            .catch(function () {
+              validationDiv.innerHTML =
+                '<div class="schedule-error">Connection error</div>';
+            });
         }
       }
 
@@ -3620,6 +3718,23 @@
       function loadFutureSchedulesForSwitch() {
         clearAllFutureSchedules();
         document.getElementById("futureScheduleValidation").innerHTML = "";
+        var sw = document.getElementById("futureScheduleSwitch").value;
+        apiGet("/api/fschedules?sw=" + sw)
+          .then(function (arr) {
+            if (!Array.isArray(arr)) return;
+            arr.forEach(function (s) {
+              addFutureScheduleSlot();
+              var slots = document.querySelectorAll(
+                "#futureScheduleContainer .schedule-slot",
+              );
+              var slot = slots[slots.length - 1];
+              slot.querySelector(".future-enable").checked = !!s.enabled;
+              slot.querySelector(".future-action").value = s.action || "on";
+              slot.querySelector(".future-date").value = s.date || "";
+              slot.querySelector(".future-time").value = s.time || "";
+            });
+          })
+          .catch(function () {});
       }
 
       /* ══════════════════════════════════════════════════════════════
@@ -3670,13 +3785,12 @@
       var pendingPasswordAction = null;
       var pendingActionData = null;
 
-      // Default password (should be fetched from ESP32 in real app)
-      var adminPassword = "1234";
-
       function showPasswordModal(message, action, data) {
         passwordModalMsg.textContent = message;
         pendingPasswordAction = action;
         pendingActionData = data;
+        var adminUserInput = document.getElementById("confirmAdminUser");
+        adminUserInput.value = sessionStorage.getItem("smartHomeUser") || "";
         confirmPasswordInput.value = "";
         passwordModal.classList.remove("hidden");
         confirmPasswordInput.focus();
@@ -3686,20 +3800,22 @@
         passwordModal.classList.add("hidden");
         pendingPasswordAction = null;
         pendingActionData = null;
+        document.getElementById("confirmAdminUser").value = "";
         confirmPasswordInput.value = "";
       }
 
       function verifyPasswordAndExecute() {
-        var enteredPassword = confirmPasswordInput.value;
-        if (enteredPassword === adminPassword) {
-          closePasswordModal();
-          if (pendingPasswordAction) {
-            pendingPasswordAction(pendingActionData);
-          }
-        } else {
-          alert("Incorrect password!");
-          confirmPasswordInput.value = "";
-          confirmPasswordInput.focus();
+        var adminUser = document
+          .getElementById("confirmAdminUser")
+          .value.trim();
+        var adminPass = confirmPasswordInput.value;
+        if (!adminUser || !adminPass) {
+          alert("Please enter admin username and password");
+          return;
+        }
+        closePasswordModal();
+        if (pendingPasswordAction) {
+          pendingPasswordAction(pendingActionData, adminUser, adminPass);
         }
       }
 
@@ -3719,26 +3835,65 @@
           var newUserPassword =
             document.getElementById("newUserPassword").value;
           var newUserRole = document.getElementById("newUserRole").value;
-
           if (!newUserId || !newUserPassword) {
             alert("Please fill in all fields");
             return;
           }
-
-          showPasswordModal("Enter your password to add new user", function () {
-            // Execute add user action
-            console.log("Adding user:", newUserId, "Role:", newUserRole);
-            alert("User '" + newUserId + "' added successfully!");
-            document.getElementById("newUserId").value = "";
-            document.getElementById("newUserPassword").value = "";
-          });
+          showPasswordModal(
+            "Enter admin credentials to add new user",
+            function (data, adminUser, adminPass) {
+              apiPost(
+                "/api/users/add",
+                "id=" +
+                  encodeURIComponent(newUserId) +
+                  "&pass=" +
+                  encodeURIComponent(newUserPassword) +
+                  "&role=" +
+                  encodeURIComponent(newUserRole) +
+                  "&adminUser=" +
+                  encodeURIComponent(adminUser) +
+                  "&adminPass=" +
+                  encodeURIComponent(adminPass),
+              )
+                .then(function (d) {
+                  if (d.ok) {
+                    alert("User '" + newUserId + "' added successfully!");
+                    document.getElementById("newUserId").value = "";
+                    document.getElementById("newUserPassword").value = "";
+                    loadUsers();
+                  } else {
+                    alert(d.error || "Failed to add user");
+                  }
+                })
+                .catch(function () {
+                  alert("Connection error");
+                });
+            },
+          );
         } else if (actionType === "remove") {
           showPasswordModal(
-            "Enter your password to remove user '" + userId + "'",
-            function () {
-              // Execute remove user action
-              console.log("Removing user:", userId);
-              alert("User '" + userId + "' removed successfully!");
+            "Enter admin credentials to remove user '" + userId + "'",
+            function (data, adminUser, adminPass) {
+              apiPost(
+                "/api/users/remove",
+                "id=" +
+                  encodeURIComponent(userId) +
+                  "&adminUser=" +
+                  encodeURIComponent(adminUser) +
+                  "&adminPass=" +
+                  encodeURIComponent(adminPass),
+              )
+                .then(function (d) {
+                  if (d.ok) {
+                    alert("User '" + userId + "' removed successfully!");
+                    loadUsers();
+                  } else {
+                    alert(d.error || "Failed to remove user");
+                  }
+                })
+                .catch(function () {
+                  alert("Connection error");
+                });
             },
             userId,
           );
@@ -3750,19 +3905,32 @@
       ══════════════════════════════════════════════════════════════ */
       function confirmAdminAction(actionType) {
         var message = "";
-        var successMsg = "";
-
+        var endpoint = "";
         if (actionType === "storage") {
-          message = "Enter your password to reset storage";
-          successMsg = "Storage has been reset successfully!";
+          message = "Enter admin credentials to reset storage";
+          endpoint = "/api/admin/reset/storage";
         } else if (actionType === "settings") {
-          message = "Enter your password to reset settings";
-          successMsg = "Settings have been reset to defaults!";
+          message = "Enter admin credentials to reset settings";
+          endpoint = "/api/admin/reset/settings";
         }
-
-        showPasswordModal(message, function () {
-          console.log("Executing admin action:", actionType);
-          alert(successMsg);
+        showPasswordModal(message, function (data, adminUser, adminPass) {
+          apiPost(
+            endpoint,
+            "adminUser=" +
+              encodeURIComponent(adminUser) +
+              "&adminPass=" +
+              encodeURIComponent(adminPass),
+          )
+            .then(function (d) {
+              if (d.ok) {
+                alert(d.msg || "Reset completed successfully!");
+              } else {
+                alert(d.error || "Reset failed");
+              }
+            })
+            .catch(function () {
+              alert("Connection error");
+            });
         });
       }
 
@@ -3773,11 +3941,28 @@
           )
         ) {
           showPasswordModal(
-            "Enter your password to confirm factory reset",
-            function () {
-              console.log("Executing factory reset");
-              alert("Factory reset initiated. Device will restart...");
-              // In real app, send command to ESP32 to perform factory reset
+            "Enter admin credentials to confirm factory reset",
+            function (data, adminUser, adminPass) {
+              apiPost(
+                "/api/admin/reset/factory",
+                "adminUser=" +
+                  encodeURIComponent(adminUser) +
+                  "&adminPass=" +
+                  encodeURIComponent(adminPass),
+              )
+                .then(function (d) {
+                  if (d.ok) {
+                    alert(
+                      d.msg ||
+                        "Factory reset initiated. Device will restart...",
+                    );
+                  } else {
+                    alert(d.error || "Factory reset failed");
+                  }
+                })
+                .catch(function () {
+                  alert("Connection error");
+                });
             },
           );
         }
@@ -3814,24 +3999,40 @@
       updateDeviceTime();
 
       function syncTimeNow() {
-        var ntpServer = document.getElementById("ntpServer").value;
-        var timezone = document.getElementById("timezoneSelect").value;
-        console.log("Syncing time with NTP server:", ntpServer);
-        // In real app, send sync command to ESP32
-        alert("Time synchronized successfully!");
-        updateDeviceTime();
+        apiPost("/api/admin/time/sync", "")
+          .then(function (d) {
+            if (d.ok) {
+              alert("Time synchronized successfully!");
+              fetchDeviceTime();
+            } else {
+              alert(d.error || "Time sync failed");
+            }
+          })
+          .catch(function () {
+            alert("Connection error");
+          });
       }
 
       function saveTimeSettings() {
         var ntpServer = document.getElementById("ntpServer").value;
         var timezone = document.getElementById("timezoneSelect").value;
-
-        console.log("Time settings saved:", {
-          ntpServer: ntpServer,
-          timezone: timezone,
-        });
-
-        alert("Time settings saved successfully!");
+        apiPost(
+          "/api/admin/time",
+          "ntp=" +
+            encodeURIComponent(ntpServer) +
+            "&tz=" +
+            encodeURIComponent(timezone),
+        )
+          .then(function (d) {
+            if (d.ok) {
+              alert("Time settings saved successfully!");
+            } else {
+              alert(d.error || "Save failed");
+            }
+          })
+          .catch(function () {
+            alert("Connection error");
+          });
       }
 
       /* ══════════════════════════════════════════════════════════════
@@ -3920,11 +4121,23 @@
           return;
         }
 
-        console.log("Location saved:", { latitude: lat, longitude: lon });
-        updateLocationDisplay(lat.toFixed(6), lon.toFixed(6));
-        statusDiv.innerHTML =
-          '<div class="schedule-success">Location saved successfully!</div>';
-        // In real app, send to ESP32
+        apiPost("/api/admin/location", "lat=" + lat + "&lon=" + lon)
+          .then(function (d) {
+            if (d.ok) {
+              updateLocationDisplay(lat.toFixed(6), lon.toFixed(6));
+              statusDiv.innerHTML =
+                '<div class="schedule-success">Location saved successfully!</div>';
+            } else {
+              statusDiv.innerHTML =
+                '<div class="schedule-error">' +
+                (d.error || "Save failed") +
+                "</div>";
+            }
+          })
+          .catch(function () {
+            statusDiv.innerHTML =
+              '<div class="schedule-error">Connection error</div>';
+          });
       }
 
       /* ══════════════════════════════════════════════════════════════
@@ -3986,9 +4199,20 @@
           }
         }
 
-        console.log("Temperature control saved:", settings);
-        alert("Temperature control settings saved successfully!");
-        // In real app, send to ESP32
+        apiPost(
+          "/api/sensor/temp",
+          "data=" + encodeURIComponent(JSON.stringify(settings)),
+        )
+          .then(function (d) {
+            if (d.ok) {
+              alert("Temperature control settings saved successfully!");
+            } else {
+              alert(d.error || "Save failed");
+            }
+          })
+          .catch(function () {
+            alert("Connection error");
+          });
       }
 
       function saveHumidControl() {
@@ -4019,9 +4243,20 @@
           }
         }
 
-        console.log("Humidity control saved:", settings);
-        alert("Humidity control settings saved successfully!");
-        // In real app, send to ESP32
+        apiPost(
+          "/api/sensor/humid",
+          "data=" + encodeURIComponent(JSON.stringify(settings)),
+        )
+          .then(function (d) {
+            if (d.ok) {
+              alert("Humidity control settings saved successfully!");
+            } else {
+              alert(d.error || "Save failed");
+            }
+          })
+          .catch(function () {
+            alert("Connection error");
+          });
       }
 
       function saveSunControl() {
@@ -4039,9 +4274,20 @@
           enabled: enabled,
         };
 
-        console.log("Sunset/Sunrise control saved:", settings);
-        alert("Sunset/Sunrise control settings saved successfully!");
-        // In real app, send to ESP32
+        apiPost(
+          "/api/sensor/sun",
+          "data=" + encodeURIComponent(JSON.stringify(settings)),
+        )
+          .then(function (d) {
+            if (d.ok) {
+              alert("Sunset/Sunrise control settings saved successfully!");
+            } else {
+              alert(d.error || "Save failed");
+            }
+          })
+          .catch(function () {
+            alert("Connection error");
+          });
       }
 
       /* ══════════════════════════════════════════════════════════════
@@ -4053,13 +4299,719 @@
             "Are you sure you want to restart the device?\n\nThe device will be temporarily unavailable during restart.",
           )
         ) {
-          console.log("Device restart initiated");
-          alert(
-            "Restarting device... Please wait a few seconds and refresh the page.",
+          showPasswordModal(
+            "Enter admin credentials to restart",
+            function (data, adminUser, adminPass) {
+              apiPost(
+                "/api/admin/restart",
+                "adminUser=" +
+                  encodeURIComponent(adminUser) +
+                  "&adminPass=" +
+                  encodeURIComponent(adminPass),
+              )
+                .then(function (d) {
+                  if (d.ok) {
+                    alert(
+                      d.msg ||
+                        "Restarting device... Please wait and refresh the page.",
+                    );
+                  } else {
+                    alert(d.error || "Restart failed");
+                  }
+                })
+                .catch(function () {
+                  alert("Connection error");
+                });
+            },
           );
-          // In real app, send restart command to ESP32
         }
       }
+
+      /* ══════════════════════════════════════════════════════════════
+         FETCH DEVICE TIME FROM ESP32
+      ══════════════════════════════════════════════════════════════ */
+      function fetchDeviceTime() {
+        apiGet("/api/admin/time/current")
+          .then(function (d) {
+            var display = document.getElementById("currentDeviceTime");
+            if (display && d.time) display.textContent = d.time;
+          })
+          .catch(function () {});
+      }
+
+      /* ══════════════════════════════════════════════════════════════
+         LOAD USERS LIST
+      ══════════════════════════════════════════════════════════════ */
+      function loadUsers() {
+        apiGet("/api/users")
+          .then(function (users) {
+            if (!Array.isArray(users)) return;
+            // Update user table
+            var tbody = document.querySelector(
+              "#panel-usr-show .user-list tbody",
+            );
+            if (tbody) {
+              tbody.innerHTML = "";
+              users.forEach(function (u, i) {
+                var tr = document.createElement("tr");
+                tr.innerHTML =
+                  "<td>" +
+                  (i + 1) +
+                  "</td><td>" +
+                  u.id +
+                  '</td><td><span class="user-badge badge-' +
+                  u.role +
+                  '">' +
+                  (u.role === "admin" ? "Admin" : "User") +
+                  "</span></td>";
+                tbody.appendChild(tr);
+              });
+            }
+            // Update remove user panel
+            var removePanel = document.getElementById("panel-usr-remove");
+            if (removePanel) {
+              var infoBox = removePanel.querySelector(".info-box");
+              var rows = removePanel.querySelectorAll(".action-row");
+              rows.forEach(function (r) {
+                r.remove();
+              });
+              users.forEach(function (u) {
+                var row = document.createElement("div");
+                row.className = "action-row";
+                row.innerHTML =
+                  '<div><span class="action-label">' +
+                  u.id +
+                  '</span><span class="user-badge badge-' +
+                  u.role +
+                  '" style="margin-left:8px">' +
+                  (u.role === "admin" ? "Admin" : "User") +
+                  "</span></div>" +
+                  '<button class="cfg-btn cfg-btn-danger" style="padding:6px 14px;font-size:0.78rem" onclick="confirmUserAction(\'remove\',\'' +
+                  u.id +
+                  "')\">Remove</button>";
+                removePanel.appendChild(row);
+              });
+            }
+          })
+          .catch(function () {});
+      }
+
+      /* ══════════════════════════════════════════════════════════════
+         PAGE INITIALIZATION — Load data from ESP32 & attach listeners
+      ══════════════════════════════════════════════════════════════ */
+      (function init() {
+        /* — Switch Names: Save button — */
+        var swNamePanel = document.getElementById("panel-sw-name");
+        var swNameBtn = swNamePanel
+          ? swNamePanel.querySelector(".cfg-btn-primary")
+          : null;
+        if (swNameBtn) {
+          swNameBtn.addEventListener("click", function () {
+            var inputs = swNamePanel.querySelectorAll(".cfg-input");
+            var body = "";
+            for (var i = 0; i < inputs.length; i++) {
+              if (i > 0) body += "&";
+              body += "name" + i + "=" + encodeURIComponent(inputs[i].value);
+            }
+            apiPost("/api/switches/names", body)
+              .then(function (d) {
+                if (d.ok) alert("Names saved!");
+                else alert(d.error || "Save failed");
+              })
+              .catch(function () {
+                alert("Connection error");
+              });
+          });
+        }
+
+        /* — Relay State: Save button — */
+        var relayPanel = document.getElementById("panel-sw-relay");
+        var relayBtn = relayPanel
+          ? relayPanel.querySelector(".cfg-btn-primary")
+          : null;
+        if (relayBtn) {
+          relayBtn.addEventListener("click", function () {
+            var body = "";
+            for (var i = 0; i < 4; i++) {
+              var checked = document.querySelector(
+                'input[name="relay-state-' + i + '"]:checked',
+              );
+              if (i > 0) body += "&";
+              body += "relay" + i + "=" + (checked ? checked.value : "off");
+            }
+            apiPost("/api/switches/relay", body)
+              .then(function (d) {
+                if (d.ok) alert("Relay settings saved!");
+                else alert(d.error || "Save failed");
+              })
+              .catch(function () {
+                alert("Connection error");
+              });
+          });
+        }
+
+        /* — Timer: Set / Clear buttons — */
+        var timerPanel = document.getElementById("panel-auto-timer");
+        if (timerPanel) {
+          var timerBtns = timerPanel.querySelectorAll(".cfg-btn");
+          var timerClearBtn = null,
+            timerSetBtn = null;
+          timerBtns.forEach(function (btn) {
+            if (btn.textContent.trim() === "Clear") timerClearBtn = btn;
+            if (btn.textContent.trim() === "Set Timer") timerSetBtn = btn;
+          });
+          if (timerSetBtn) {
+            timerSetBtn.addEventListener("click", function () {
+              var selects = timerPanel.querySelectorAll("select");
+              var nums = timerPanel.querySelectorAll('input[type="number"]');
+              var sw = selects[0] ? selects[0].selectedIndex : 0;
+              var action =
+                selects[1] && selects[1].selectedIndex === 1 ? "on" : "off";
+              var h = nums[0] ? nums[0].value : 0;
+              var m = nums[1] ? nums[1].value : 0;
+              var s = nums[2] ? nums[2].value : 0;
+              apiPost(
+                "/api/timer/set",
+                "sw=" +
+                  sw +
+                  "&h=" +
+                  h +
+                  "&m=" +
+                  m +
+                  "&s=" +
+                  s +
+                  "&action=" +
+                  action,
+              )
+                .then(function (d) {
+                  if (d.ok) alert("Timer set!");
+                  else alert(d.error || "Failed");
+                })
+                .catch(function () {
+                  alert("Connection error");
+                });
+            });
+          }
+          if (timerClearBtn) {
+            timerClearBtn.addEventListener("click", function () {
+              var selects = timerPanel.querySelectorAll("select");
+              var sw = selects[0] ? selects[0].selectedIndex : 0;
+              apiPost("/api/timer/clear", "sw=" + sw)
+                .then(function (d) {
+                  if (d.ok) alert("Timer cleared!");
+                })
+                .catch(function () {});
+            });
+          }
+        }
+
+        /* — Bluetooth Toggle — */
+        var btTogglePanel = document.getElementById("panel-bt-toggle");
+        if (btTogglePanel) {
+          var btToggle = btTogglePanel.querySelector('input[type="checkbox"]');
+          if (btToggle) {
+            btToggle.addEventListener("change", function () {
+              apiPost("/api/bt/toggle", "enabled=" + this.checked)
+                .then(function (d) {
+                  if (!d.ok) alert(d.error || "Toggle failed");
+                })
+                .catch(function () {
+                  alert("Connection error");
+                });
+            });
+          }
+        }
+
+        /* — Bluetooth Name Save — */
+        var btNamePanel = document.getElementById("panel-bt-name");
+        var btNameBtn = btNamePanel
+          ? btNamePanel.querySelector(".cfg-btn-primary")
+          : null;
+        if (btNameBtn) {
+          btNameBtn.addEventListener("click", function () {
+            var input = btNamePanel.querySelector(".cfg-input");
+            apiPost("/api/bt/name", "name=" + encodeURIComponent(input.value))
+              .then(function (d) {
+                if (d.ok) alert("Bluetooth name saved!");
+                else alert(d.error || "Save failed");
+              })
+              .catch(function () {
+                alert("Connection error");
+              });
+          });
+        }
+
+        /* — Bluetooth Password Update — */
+        var btPassPanel = document.getElementById("panel-bt-pass");
+        var btPassBtn = btPassPanel
+          ? btPassPanel.querySelector(".cfg-btn-primary")
+          : null;
+        if (btPassBtn) {
+          btPassBtn.addEventListener("click", function () {
+            var inputs = btPassPanel.querySelectorAll('input[type="password"]');
+            var current = inputs[0] ? inputs[0].value : "";
+            var newPass = inputs[1] ? inputs[1].value : "";
+            var confirm = inputs[2] ? inputs[2].value : "";
+            if (!current || !newPass) {
+              alert("Please fill all password fields");
+              return;
+            }
+            if (newPass !== confirm) {
+              alert("New passwords do not match");
+              return;
+            }
+            apiPost(
+              "/api/bt/password",
+              "current=" +
+                encodeURIComponent(current) +
+                "&newpass=" +
+                encodeURIComponent(newPass),
+            )
+              .then(function (d) {
+                if (d.ok) {
+                  alert("Password updated!");
+                  btStoredPass = newPass;
+                  inputs.forEach(function (inp) {
+                    inp.value = "";
+                  });
+                } else {
+                  alert(d.error || "Update failed");
+                }
+              })
+              .catch(function () {
+                alert("Connection error");
+              });
+          });
+        }
+
+        /* — WiFi Connect — */
+        var wifiPanel = document.getElementById("panel-wifi-connect");
+        if (wifiPanel) {
+          var wifiBtn = wifiPanel.querySelector(".cfg-btn-primary");
+          if (wifiBtn) {
+            wifiBtn.addEventListener("click", function () {
+              var inputs = wifiPanel.querySelectorAll(".cfg-input");
+              var ssid = inputs[0] ? inputs[0].value : "";
+              var pass = inputs[1] ? inputs[1].value : "";
+              if (!ssid) {
+                alert("Enter SSID");
+                return;
+              }
+              apiPost(
+                "/api/wifi/connect",
+                "ssid=" +
+                  encodeURIComponent(ssid) +
+                  "&pass=" +
+                  encodeURIComponent(pass),
+              )
+                .then(function (d) {
+                  if (d.ok) alert("Connected! IP: " + (d.ip || ""));
+                  else alert(d.error || "Connection failed");
+                })
+                .catch(function () {
+                  alert("Connection error");
+                });
+            });
+          }
+        }
+
+        /* — WiFi Disconnect — */
+        var wifiDiscPanel = document.getElementById("panel-wifi-disconnect");
+        if (wifiDiscPanel) {
+          var discBtn = wifiDiscPanel.querySelector(".cfg-btn-danger");
+          if (discBtn) {
+            discBtn.addEventListener("click", function () {
+              apiPost("/api/wifi/disconnect", "")
+                .then(function (d) {
+                  if (d.ok) alert("Disconnected from WiFi");
+                  else alert(d.error || "Failed");
+                })
+                .catch(function () {
+                  alert("Connection error");
+                });
+            });
+          }
+        }
+
+        /* — WiFi IP Settings Save — */
+        var wifiIpPanel = document.getElementById("panel-wifi-ip");
+        if (wifiIpPanel) {
+          var ipBtn = wifiIpPanel.querySelector(".cfg-btn-primary");
+          if (ipBtn) {
+            ipBtn.addEventListener("click", function () {
+              var dhcp = document.getElementById("dhcpToggle").checked;
+              var body = "dhcp=" + dhcp;
+              if (!dhcp) {
+                body +=
+                  "&ip=" +
+                  encodeURIComponent(document.getElementById("staticIp").value);
+                body +=
+                  "&mask=" +
+                  encodeURIComponent(
+                    document.getElementById("subnetMask").value,
+                  );
+                body +=
+                  "&gw=" +
+                  encodeURIComponent(
+                    document.getElementById("defaultGateway").value,
+                  );
+                body +=
+                  "&dns=" +
+                  encodeURIComponent(
+                    document.getElementById("dnsServer").value,
+                  );
+              }
+              apiPost("/api/wifi/ip", body)
+                .then(function (d) {
+                  if (d.ok) alert("IP settings saved!");
+                  else alert(d.error || "Save failed");
+                })
+                .catch(function () {
+                  alert("Connection error");
+                });
+            });
+          }
+        }
+
+        /* — Firebase Toggle — */
+        var fbToggle = document.getElementById("firebaseToggle");
+        if (fbToggle) {
+          fbToggle.addEventListener("change", function () {
+            apiPost("/api/fb/toggle", "enabled=" + this.checked)
+              .then(function (d) {
+                if (!d.ok) alert(d.error || "Toggle failed");
+              })
+              .catch(function () {
+                alert("Connection error");
+              });
+          });
+        }
+
+        /* — Firebase URL Save — */
+        var fbUrlPanel = document.getElementById("panel-fb-url");
+        if (fbUrlPanel) {
+          var fbUrlBtn = fbUrlPanel.querySelector(".cfg-btn-primary");
+          if (fbUrlBtn) {
+            fbUrlBtn.addEventListener("click", function () {
+              var input = fbUrlPanel.querySelector(".cfg-input");
+              apiPost("/api/fb/url", "url=" + encodeURIComponent(input.value))
+                .then(function (d) {
+                  if (d.ok) alert("Firebase URL saved!");
+                  else alert(d.error || "Save failed");
+                })
+                .catch(function () {
+                  alert("Connection error");
+                });
+            });
+          }
+        }
+
+        /* — Firebase Token Save & Test — */
+        var fbTokenPanel = document.getElementById("panel-fb-token");
+        if (fbTokenPanel) {
+          var saveTkBtn = fbTokenPanel.querySelector(".cfg-btn-primary");
+          var testBtn = document.getElementById("testFbBtn");
+          if (saveTkBtn) {
+            saveTkBtn.addEventListener("click", function () {
+              var input = fbTokenPanel.querySelector(".cfg-input");
+              apiPost(
+                "/api/fb/token",
+                "token=" + encodeURIComponent(input.value),
+              )
+                .then(function (d) {
+                  if (d.ok) alert("Token saved!");
+                  else alert(d.error || "Save failed");
+                })
+                .catch(function () {
+                  alert("Connection error");
+                });
+            });
+          }
+          if (testBtn) {
+            testBtn.addEventListener("click", function () {
+              testBtn.textContent = "Testing...";
+              testBtn.disabled = true;
+              apiPost("/api/fb/test", "")
+                .then(function (d) {
+                  testBtn.textContent = "Test Connection";
+                  testBtn.disabled = false;
+                  if (d.ok) alert(d.msg || "Connection successful!");
+                  else alert(d.error || "Test failed");
+                })
+                .catch(function () {
+                  testBtn.textContent = "Test Connection";
+                  testBtn.disabled = false;
+                  alert("Connection error");
+                });
+            });
+          }
+        }
+
+        /* — Firebase Rules Save — */
+        var fbRulesPanel = document.getElementById("panel-fb-rules");
+        if (fbRulesPanel) {
+          var rulesBtn = fbRulesPanel.querySelector(".cfg-btn-primary");
+          if (rulesBtn) {
+            rulesBtn.addEventListener("click", function () {
+              var rules = document.getElementById("firebaseRules").value.trim();
+              if (!rules) {
+                alert("Enter rules JSON");
+                return;
+              }
+              try {
+                JSON.parse(rules);
+              } catch (e) {
+                alert("Invalid JSON: " + e.message);
+                return;
+              }
+              apiPost("/api/fb/rules", "rules=" + encodeURIComponent(rules))
+                .then(function (d) {
+                  if (d.ok) alert(d.msg || "Rules saved!");
+                  else alert(d.error || "Save failed");
+                })
+                .catch(function () {
+                  alert("Connection error");
+                });
+            });
+          }
+        }
+
+        /* ═══ LOAD INITIAL DATA FROM ESP32 ═══ */
+
+        /* Load switch data */
+        apiGet("/api/switches")
+          .then(function (d) {
+            var nameInputs = document.querySelectorAll(
+              "#panel-sw-name .cfg-input",
+            );
+            var iconRows = document.querySelectorAll(
+              "#panel-sw-icon .setting-row",
+            );
+            for (var i = 0; i < 4; i++) {
+              if (d.names && d.names[i] && nameInputs[i]) {
+                nameInputs[i].value = d.names[i];
+                var sub = nameInputs[i]
+                  .closest(".setting-row")
+                  .querySelector(".setting-sub");
+                if (sub) sub.textContent = d.names[i];
+              }
+              if (d.icons && d.icons[i] && iconRows[i]) {
+                var iconSub = iconRows[i].querySelector(".setting-sub");
+                if (iconSub)
+                  iconSub.textContent = "Current: " + d.icons[i] + " icon";
+              }
+              if (d.relays && d.relays[i]) {
+                var radio = document.querySelector(
+                  'input[name="relay-state-' +
+                    i +
+                    '"][value="' +
+                    d.relays[i] +
+                    '"]',
+                );
+                if (radio) {
+                  radio.checked = true;
+                  var group = radio.closest(".radio-group");
+                  if (group) {
+                    group
+                      .querySelectorAll(".radio-option")
+                      .forEach(function (o) {
+                        o.classList.remove("selected");
+                      });
+                    radio.closest(".radio-option").classList.add("selected");
+                  }
+                }
+              }
+            }
+            // Update switch labels in timer/schedule selects
+            var allSwitchSelects = document.querySelectorAll(
+              "#scheduleSwitch, #futureScheduleSwitch, #tempSwitch, #humidSwitch, #sunSwitch",
+            );
+            allSwitchSelects.forEach(function (sel) {
+              for (var i = 0; i < sel.options.length && i < 4; i++) {
+                if (d.names && d.names[i]) {
+                  sel.options[i].textContent =
+                    "Switch " + (i + 1) + " — " + d.names[i];
+                }
+              }
+            });
+            var timerSelects = document.querySelectorAll(
+              "#panel-auto-timer select",
+            );
+            if (timerSelects[0] && d.names) {
+              for (
+                var i = 0;
+                i < timerSelects[0].options.length && i < 4;
+                i++
+              ) {
+                if (d.names[i])
+                  timerSelects[0].options[i].textContent =
+                    "Switch " + (i + 1) + " — " + d.names[i];
+              }
+            }
+          })
+          .catch(function () {});
+
+        /* Load Bluetooth settings */
+        apiGet("/api/bt")
+          .then(function (d) {
+            var btToggle = document.querySelector(
+              '#panel-bt-toggle input[type="checkbox"]',
+            );
+            if (btToggle) btToggle.checked = !!d.enabled;
+            var btNameInput = document.querySelector(
+              "#panel-bt-name .cfg-input",
+            );
+            if (btNameInput && d.name) btNameInput.value = d.name;
+            if (d.password) btStoredPass = d.password;
+          })
+          .catch(function () {});
+
+        /* Load Bluetooth paired devices */
+        apiGet("/api/bt/devices")
+          .then(function (devices) {
+            var panel = document.getElementById("panel-bt-devices");
+            if (!panel || !Array.isArray(devices)) return;
+            var existing = panel.querySelectorAll(".action-row");
+            existing.forEach(function (r) {
+              r.remove();
+            });
+            devices.forEach(function (dev) {
+              var row = document.createElement("div");
+              row.className = "action-row";
+              row.innerHTML =
+                '<span class="action-label">' +
+                (dev.name || dev.addr) +
+                "</span>" +
+                '<button class="cfg-btn cfg-btn-danger" style="padding:6px 14px;font-size:0.78rem">Remove</button>';
+              row
+                .querySelector("button")
+                .addEventListener("click", function () {
+                  apiPost(
+                    "/api/bt/device/remove",
+                    "addr=" + encodeURIComponent(dev.addr),
+                  ).then(function (d) {
+                    if (d.ok) row.remove();
+                  });
+                });
+              panel.appendChild(row);
+            });
+          })
+          .catch(function () {});
+
+        /* Load WiFi status */
+        apiGet("/api/wifi/status")
+          .then(function (d) {
+            var discPanel = document.getElementById("panel-wifi-disconnect");
+            if (discPanel) {
+              var sub = discPanel.querySelector(".setting-sub");
+              if (sub)
+                sub.textContent = d.connected
+                  ? "Connected to: " + d.ssid
+                  : "Not connected";
+            }
+            var macEl = document.querySelector(
+              '#panel-wifi-ip .setting-sub[style*="monospace"]',
+            );
+            if (macEl && d.mac) macEl.textContent = d.mac;
+            if (typeof d.dhcp !== "undefined") {
+              var dhcpToggle = document.getElementById("dhcpToggle");
+              if (dhcpToggle) {
+                dhcpToggle.checked = d.dhcp !== false;
+                toggleDHCP();
+              }
+            }
+            if (d.staticIp)
+              document.getElementById("staticIp").value = d.staticIp;
+            if (d.staticMask)
+              document.getElementById("subnetMask").value = d.staticMask;
+            if (d.staticGw)
+              document.getElementById("defaultGateway").value = d.staticGw;
+            if (d.staticDns)
+              document.getElementById("dnsServer").value = d.staticDns;
+          })
+          .catch(function () {});
+
+        /* Load saved WiFi networks for Forget panel */
+        apiGet("/api/wifi/saved")
+          .then(function (d) {
+            var panel = document.getElementById("panel-wifi-forget");
+            if (!panel) return;
+            var existing = panel.querySelectorAll(".action-row");
+            existing.forEach(function (r) {
+              r.remove();
+            });
+            if (d.ssid) {
+              var row = document.createElement("div");
+              row.className = "action-row";
+              row.innerHTML =
+                '<span class="action-label">' +
+                d.ssid +
+                "</span>" +
+                '<button class="cfg-btn cfg-btn-danger" style="padding:6px 14px;font-size:0.78rem">Forget</button>';
+              row
+                .querySelector("button")
+                .addEventListener("click", function () {
+                  apiPost("/api/wifi/forget", "").then(function (r) {
+                    if (r.ok) row.remove();
+                  });
+                });
+              panel.appendChild(row);
+            }
+          })
+          .catch(function () {});
+
+        /* Load Firebase settings */
+        apiGet("/api/fb")
+          .then(function (d) {
+            var fbToggle = document.getElementById("firebaseToggle");
+            if (fbToggle) fbToggle.checked = !!d.enabled;
+            var urlInput = document.querySelector("#panel-fb-url .cfg-input");
+            if (urlInput && d.url) urlInput.value = d.url;
+            var tokenInput = document.querySelector(
+              "#panel-fb-token .cfg-input",
+            );
+            if (tokenInput && d.token) tokenInput.value = d.token;
+            if (d.rules)
+              document.getElementById("firebaseRules").value = d.rules;
+          })
+          .catch(function () {});
+
+        /* Load Users */
+        loadUsers();
+
+        /* Load Admin time settings */
+        apiGet("/api/admin/time")
+          .then(function (d) {
+            if (d.ntp) document.getElementById("ntpServer").value = d.ntp;
+            if (d.tz) {
+              var sel = document.getElementById("timezoneSelect");
+              for (var i = 0; i < sel.options.length; i++) {
+                if (sel.options[i].value === d.tz) {
+                  sel.selectedIndex = i;
+                  break;
+                }
+              }
+            }
+          })
+          .catch(function () {});
+
+        /* Load Admin location */
+        apiGet("/api/admin/location")
+          .then(function (d) {
+            if (d.lat) document.getElementById("locationLat").value = d.lat;
+            if (d.lon) document.getElementById("locationLon").value = d.lon;
+            if (d.lat && d.lon) updateLocationDisplay(d.lat, d.lon);
+          })
+          .catch(function () {});
+
+        /* Fetch device time from ESP32 */
+        fetchDeviceTime();
+        setInterval(fetchDeviceTime, 10000);
+
+        /* Load initial schedules */
+        loadSchedulesForSwitch();
+        loadFutureSchedulesForSwitch();
+      })();
     </script>
   </body>
 </html>
