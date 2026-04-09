@@ -161,7 +161,7 @@
         padding-left: 20px;
       }
 
-      .sidebar-item::before {
+      /* .sidebar-item::before {
         content: "";
         position: absolute;
         left: 8px;
@@ -172,7 +172,7 @@
         border-radius: 50%;
         background: #475569;
         transition: all 0.15s;
-      }
+      } */
 
       .sidebar-item:hover {
         background: rgba(255, 255, 255, 0.05);
@@ -1426,6 +1426,313 @@
           </div>
         </div>
 
+        <!-- Sensor Control Main -->
+        <div class="panel" id="panel-auto-sensor">
+          <div class="panel-title">Sensor Control</div>
+          <div class="info-box">
+            <strong>Sensor Control</strong> — Automate switches based on sensor
+            readings like temperature, humidity, or sunset/sunrise times.
+          </div>
+          <div
+            class="action-row"
+            onclick="activatePanel('panel-auto-sensor-temp', 'automation')"
+          >
+            <span class="action-label">Temperature Control</span>
+            <svg class="action-arrow" viewBox="0 0 24 24">
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          </div>
+          <div
+            class="action-row"
+            onclick="activatePanel('panel-auto-sensor-humid', 'automation')"
+          >
+            <span class="action-label">Humidity Control</span>
+            <svg class="action-arrow" viewBox="0 0 24 24">
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          </div>
+          <div
+            class="action-row"
+            onclick="activatePanel('panel-auto-sensor-sun', 'automation')"
+          >
+            <span class="action-label">Sunset & Sunrise Control</span>
+            <svg class="action-arrow" viewBox="0 0 24 24">
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          </div>
+        </div>
+
+        <!-- Temperature Control -->
+        <div class="panel" id="panel-auto-sensor-temp">
+          <div class="panel-title">Temperature Control</div>
+          <div class="info-box">
+            <strong>Temperature Control</strong> — Automatically control
+            switches based on temperature sensor readings.
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Select Switch</div>
+            </div>
+            <select class="cfg-input" id="tempSwitch" style="max-width: 200px">
+              <option value="0">Switch 1 — Living Room</option>
+              <option value="1">Switch 2 — Bedroom</option>
+              <option value="2">Switch 3 — Kitchen</option>
+              <option value="3">Switch 4 — Bathroom</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Condition</div>
+            </div>
+            <select
+              class="cfg-input"
+              id="tempCondition"
+              style="max-width: 200px"
+              onchange="toggleTempBetween()"
+            >
+              <option value="below">Below</option>
+              <option value="above">Above</option>
+              <option value="equal">Equal</option>
+              <option value="between">Between</option>
+            </select>
+          </div>
+          <div class="setting-row" id="tempValueRow">
+            <div class="setting-info">
+              <div class="setting-label">Temperature (°C)</div>
+            </div>
+            <input
+              class="cfg-input"
+              type="number"
+              id="tempValue"
+              placeholder="25"
+              style="max-width: 100px"
+            />
+          </div>
+          <div class="setting-row" id="tempBetweenRow" style="display: none">
+            <div class="setting-info">
+              <div class="setting-label">Temperature Range (°C)</div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center">
+              <input
+                class="cfg-input"
+                type="number"
+                id="tempMin"
+                placeholder="Min"
+                style="max-width: 80px"
+              />
+              <span style="color: #64748b">to</span>
+              <input
+                class="cfg-input"
+                type="number"
+                id="tempMax"
+                placeholder="Max"
+                style="max-width: 80px"
+              />
+            </div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Action</div>
+            </div>
+            <select class="cfg-input" id="tempAction" style="max-width: 200px">
+              <option value="on">Turn ON</option>
+              <option value="off">Turn OFF</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Enable</div>
+              <div class="setting-sub">Activate temperature automation</div>
+            </div>
+            <label class="sm-toggle">
+              <input type="checkbox" id="tempEnable" />
+              <span class="sm-toggle-track"></span>
+            </label>
+          </div>
+          <div style="margin-top: 16px; text-align: right">
+            <button class="cfg-btn cfg-btn-primary" onclick="saveTempControl()">
+              Save Temperature Control
+            </button>
+          </div>
+        </div>
+
+        <!-- Humidity Control -->
+        <div class="panel" id="panel-auto-sensor-humid">
+          <div class="panel-title">Humidity Control</div>
+          <div class="info-box">
+            <strong>Humidity Control</strong> — Automatically control switches
+            based on humidity sensor readings.
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Select Switch</div>
+            </div>
+            <select class="cfg-input" id="humidSwitch" style="max-width: 200px">
+              <option value="0">Switch 1 — Living Room</option>
+              <option value="1">Switch 2 — Bedroom</option>
+              <option value="2">Switch 3 — Kitchen</option>
+              <option value="3">Switch 4 — Bathroom</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Condition</div>
+            </div>
+            <select
+              class="cfg-input"
+              id="humidCondition"
+              style="max-width: 200px"
+              onchange="toggleHumidBetween()"
+            >
+              <option value="below">Below</option>
+              <option value="above">Above</option>
+              <option value="equal">Equal</option>
+              <option value="between">Between</option>
+            </select>
+          </div>
+          <div class="setting-row" id="humidValueRow">
+            <div class="setting-info">
+              <div class="setting-label">Humidity (%)</div>
+            </div>
+            <input
+              class="cfg-input"
+              type="number"
+              id="humidValue"
+              placeholder="50"
+              style="max-width: 100px"
+            />
+          </div>
+          <div class="setting-row" id="humidBetweenRow" style="display: none">
+            <div class="setting-info">
+              <div class="setting-label">Humidity Range (%)</div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center">
+              <input
+                class="cfg-input"
+                type="number"
+                id="humidMin"
+                placeholder="Min"
+                style="max-width: 80px"
+              />
+              <span style="color: #64748b">to</span>
+              <input
+                class="cfg-input"
+                type="number"
+                id="humidMax"
+                placeholder="Max"
+                style="max-width: 80px"
+              />
+            </div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Action</div>
+            </div>
+            <select class="cfg-input" id="humidAction" style="max-width: 200px">
+              <option value="on">Turn ON</option>
+              <option value="off">Turn OFF</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Enable</div>
+              <div class="setting-sub">Activate humidity automation</div>
+            </div>
+            <label class="sm-toggle">
+              <input type="checkbox" id="humidEnable" />
+              <span class="sm-toggle-track"></span>
+            </label>
+          </div>
+          <div style="margin-top: 16px; text-align: right">
+            <button
+              class="cfg-btn cfg-btn-primary"
+              onclick="saveHumidControl()"
+            >
+              Save Humidity Control
+            </button>
+          </div>
+        </div>
+
+        <!-- Sunset & Sunrise Control -->
+        <div class="panel" id="panel-auto-sensor-sun">
+          <div class="panel-title">Sunset & Sunrise Control</div>
+          <div class="info-box">
+            <strong>Sunset & Sunrise Control</strong> — Automatically control
+            switches based on sunset and sunrise times. Requires location to be
+            configured in Administrator → Location Setup.
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Select Switch</div>
+            </div>
+            <select class="cfg-input" id="sunSwitch" style="max-width: 200px">
+              <option value="0">Switch 1 — Living Room</option>
+              <option value="1">Switch 2 — Bedroom</option>
+              <option value="2">Switch 3 — Kitchen</option>
+              <option value="3">Switch 4 — Bathroom</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Condition</div>
+            </div>
+            <select
+              class="cfg-input"
+              id="sunCondition"
+              style="max-width: 200px"
+            >
+              <option value="after_sunset">After Sunset</option>
+              <option value="before_sunset">Before Sunset</option>
+              <option value="after_sunrise">After Sunrise</option>
+              <option value="before_sunrise">Before Sunrise</option>
+              <option value="between_sunset_sunrise">
+                Between Sunset & Sunrise
+              </option>
+              <option value="between_sunrise_sunset">
+                Between Sunrise & Sunset
+              </option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Offset (minutes)</div>
+              <div class="setting-sub">Positive = after, Negative = before</div>
+            </div>
+            <input
+              class="cfg-input"
+              type="number"
+              id="sunOffset"
+              placeholder="0"
+              value="0"
+              style="max-width: 100px"
+            />
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Action</div>
+            </div>
+            <select class="cfg-input" id="sunAction" style="max-width: 200px">
+              <option value="on">Turn ON</option>
+              <option value="off">Turn OFF</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Enable</div>
+              <div class="setting-sub">Activate sunset/sunrise automation</div>
+            </div>
+            <label class="sm-toggle">
+              <input type="checkbox" id="sunEnable" />
+              <span class="sm-toggle-track"></span>
+            </label>
+          </div>
+          <div style="margin-top: 16px; text-align: right">
+            <button class="cfg-btn cfg-btn-primary" onclick="saveSunControl()">
+              Save Sunset/Sunrise Control
+            </button>
+          </div>
+        </div>
+
         <!-- ═══════════ BLUETOOTH ═══════════ -->
         <!-- On/Off -->
         <div class="panel" id="panel-bt-toggle">
@@ -2275,6 +2582,107 @@
           </div>
         </div>
 
+        <!-- Location Setup -->
+        <div class="panel" id="panel-admin-location">
+          <div class="panel-title">Location Setup</div>
+          <div class="info-box">
+            <strong>Location Setup</strong> — Configure your geographic location
+            for accurate sunset and sunrise calculations. This is required for
+            sunset/sunrise automation features.
+          </div>
+          <div
+            class="setting-row"
+            style="flex-direction: column; align-items: flex-start; gap: 10px"
+          >
+            <div class="setting-label">Latitude</div>
+            <input
+              class="cfg-input"
+              type="number"
+              id="locationLat"
+              step="0.000001"
+              placeholder="e.g., 22.5726"
+              style="max-width: 100%; font-family: monospace"
+            />
+            <div class="setting-sub">Range: -90 to 90 (North is positive)</div>
+          </div>
+          <div
+            class="setting-row"
+            style="flex-direction: column; align-items: flex-start; gap: 10px"
+          >
+            <div class="setting-label">Longitude</div>
+            <input
+              class="cfg-input"
+              type="number"
+              id="locationLon"
+              step="0.000001"
+              placeholder="e.g., 88.3639"
+              style="max-width: 100%; font-family: monospace"
+            />
+            <div class="setting-sub">Range: -180 to 180 (East is positive)</div>
+          </div>
+          <div
+            class="setting-row"
+            style="flex-direction: column; align-items: flex-start; gap: 10px"
+          >
+            <div class="setting-label">Current Location</div>
+            <div
+              id="currentLocationDisplay"
+              style="
+                font-size: 0.9rem;
+                color: #60a5fa;
+                font-family: monospace;
+                padding: 12px 16px;
+                background: rgba(255, 255, 255, 0.04);
+                border-radius: 10px;
+                width: 100%;
+              "
+            >
+              Not configured
+            </div>
+          </div>
+          <div
+            style="
+              margin-top: 16px;
+              display: flex;
+              gap: 10px;
+              justify-content: flex-end;
+              flex-wrap: wrap;
+            "
+          >
+            <button
+              class="cfg-btn cfg-btn-secondary"
+              onclick="autoDetectLocation()"
+              style="display: inline-flex; align-items: center; gap: 6px"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                style="
+                  width: 16px;
+                  height: 16px;
+                  fill: none;
+                  stroke: currentColor;
+                  stroke-width: 2;
+                "
+              >
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="2" x2="12" y2="6" />
+                <line x1="12" y1="18" x2="12" y2="22" />
+                <line x1="2" y1="12" x2="6" y2="12" />
+                <line x1="18" y1="12" x2="22" y2="12" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              Auto-Detect Location
+            </button>
+            <button
+              class="cfg-btn cfg-btn-primary"
+              onclick="saveLocationSettings()"
+            >
+              Save Location
+            </button>
+          </div>
+          <div id="locationStatus" style="margin-top: 12px"></div>
+        </div>
+
         <!-- Restart -->
         <div class="panel" id="panel-admin-restart">
           <div class="panel-title">Restart Device</div>
@@ -2627,6 +3035,15 @@
           { label: "Add Timer", panel: "panel-auto-timer" },
           { label: "Set Schedule", panel: "panel-auto-schedule" },
           { label: "Future Schedule", panel: "panel-auto-future" },
+          {
+            label: "Sensor Control",
+            panel: "panel-auto-sensor",
+            submenu: [
+              { label: "Temperature", panel: "panel-auto-sensor-temp" },
+              { label: "Humidity", panel: "panel-auto-sensor-humid" },
+              { label: "Sunset & Sunrise", panel: "panel-auto-sensor-sun" },
+            ],
+          },
         ],
         bluetooth: [
           { label: "On / Off", panel: "panel-bt-toggle" },
@@ -2653,6 +3070,7 @@
         ],
         admin: [
           { label: "Time Setup", panel: "panel-admin-time" },
+          { label: "Location Setup", panel: "panel-admin-location" },
           { label: "Restart", panel: "panel-admin-restart" },
           { label: "Reset Storage", panel: "panel-admin-storage" },
           { label: "Reset Settings", panel: "panel-admin-settings" },
@@ -2674,10 +3092,57 @@
           el.className = "sidebar-item" + (i === 0 ? " active" : "");
           el.textContent = item.label;
           el.setAttribute("data-panel", item.panel);
-          el.addEventListener("click", function () {
-            activatePanel(item.panel, tabKey);
-          });
-          sidebar.appendChild(el);
+
+          if (item.submenu) {
+            // Add expand arrow for items with submenu
+            el.innerHTML =
+              item.label +
+              ' <svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2;margin-left:4px;vertical-align:middle;transition:transform 0.2s;"><path d="M6 9l6 6 6-6"/></svg>';
+            el.style.cursor = "pointer";
+            el.addEventListener("click", function (e) {
+              // Toggle submenu visibility
+              var submenuEl = this.nextElementSibling;
+              var arrow = this.querySelector("svg");
+              if (
+                submenuEl &&
+                submenuEl.classList.contains("sidebar-submenu")
+              ) {
+                var isHidden = submenuEl.style.display === "none";
+                submenuEl.style.display = isHidden ? "block" : "none";
+                if (arrow)
+                  arrow.style.transform = isHidden ? "rotate(180deg)" : "";
+              }
+              activatePanel(item.panel, tabKey);
+            });
+            sidebar.appendChild(el);
+
+            // Create submenu container
+            var submenuContainer = document.createElement("div");
+            submenuContainer.className = "sidebar-submenu";
+            submenuContainer.style.display = "none";
+            submenuContainer.style.paddingLeft = "12px";
+            submenuContainer.style.marginBottom = "4px";
+
+            item.submenu.forEach(function (subItem) {
+              var subEl = document.createElement("div");
+              subEl.className = "sidebar-item sidebar-subitem";
+              subEl.textContent = subItem.label;
+              subEl.setAttribute("data-panel", subItem.panel);
+              subEl.style.fontSize = "0.75rem";
+              subEl.style.padding = "8px 12px";
+              subEl.addEventListener("click", function (e) {
+                e.stopPropagation();
+                activatePanel(subItem.panel, tabKey);
+              });
+              submenuContainer.appendChild(subEl);
+            });
+            sidebar.appendChild(submenuContainer);
+          } else {
+            el.addEventListener("click", function () {
+              activatePanel(item.panel, tabKey);
+            });
+            sidebar.appendChild(el);
+          }
         });
       }
 
@@ -2696,6 +3161,22 @@
             s.getAttribute("data-panel") === panelId,
           );
         });
+
+        // Expand parent submenu if a subitem is activated
+        var activeSubitem = sidebar.querySelector(
+          '.sidebar-subitem[data-panel="' + panelId + '"]',
+        );
+        if (activeSubitem) {
+          var submenuContainer = activeSubitem.closest(".sidebar-submenu");
+          if (submenuContainer) {
+            submenuContainer.style.display = "block";
+            var parentItem = submenuContainer.previousElementSibling;
+            if (parentItem) {
+              var arrow = parentItem.querySelector("svg");
+              if (arrow) arrow.style.transform = "rotate(180deg)";
+            }
+          }
+        }
       }
 
       /* Tab click */
@@ -3351,6 +3832,216 @@
         });
 
         alert("Time settings saved successfully!");
+      }
+
+      /* ══════════════════════════════════════════════════════════════
+         LOCATION SETUP
+      ══════════════════════════════════════════════════════════════ */
+      function autoDetectLocation() {
+        var statusDiv = document.getElementById("locationStatus");
+        statusDiv.innerHTML =
+          '<div class="info-box" style="background: rgba(37, 99, 235, 0.15);">Detecting location... Please wait.</div>';
+
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            function (position) {
+              var lat = position.coords.latitude.toFixed(6);
+              var lon = position.coords.longitude.toFixed(6);
+
+              document.getElementById("locationLat").value = lat;
+              document.getElementById("locationLon").value = lon;
+
+              statusDiv.innerHTML =
+                '<div class="schedule-success">Location detected successfully!</div>';
+              updateLocationDisplay(lat, lon);
+            },
+            function (error) {
+              var errorMsg = "Unable to detect location: ";
+              switch (error.code) {
+                case error.PERMISSION_DENIED:
+                  errorMsg += "Location permission denied by user.";
+                  break;
+                case error.POSITION_UNAVAILABLE:
+                  errorMsg += "Location information unavailable.";
+                  break;
+                case error.TIMEOUT:
+                  errorMsg += "Location request timed out.";
+                  break;
+                default:
+                  errorMsg += "Unknown error occurred.";
+              }
+              statusDiv.innerHTML =
+                '<div class="schedule-error">' + errorMsg + "</div>";
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 10000,
+              maximumAge: 0,
+            },
+          );
+        } else {
+          statusDiv.innerHTML =
+            '<div class="schedule-error">Geolocation is not supported by this browser.</div>';
+        }
+      }
+
+      function updateLocationDisplay(lat, lon) {
+        var display = document.getElementById("currentLocationDisplay");
+        if (lat && lon) {
+          display.textContent = "Lat: " + lat + ", Lon: " + lon;
+        } else {
+          display.textContent = "Not configured";
+        }
+      }
+
+      function saveLocationSettings() {
+        var lat = document.getElementById("locationLat").value;
+        var lon = document.getElementById("locationLon").value;
+        var statusDiv = document.getElementById("locationStatus");
+
+        if (!lat || !lon) {
+          statusDiv.innerHTML =
+            '<div class="schedule-error">Please enter both latitude and longitude.</div>';
+          return;
+        }
+
+        lat = parseFloat(lat);
+        lon = parseFloat(lon);
+
+        if (lat < -90 || lat > 90) {
+          statusDiv.innerHTML =
+            '<div class="schedule-error">Latitude must be between -90 and 90.</div>';
+          return;
+        }
+
+        if (lon < -180 || lon > 180) {
+          statusDiv.innerHTML =
+            '<div class="schedule-error">Longitude must be between -180 and 180.</div>';
+          return;
+        }
+
+        console.log("Location saved:", { latitude: lat, longitude: lon });
+        updateLocationDisplay(lat.toFixed(6), lon.toFixed(6));
+        statusDiv.innerHTML =
+          '<div class="schedule-success">Location saved successfully!</div>';
+        // In real app, send to ESP32
+      }
+
+      /* ══════════════════════════════════════════════════════════════
+         SENSOR CONTROL FUNCTIONS
+      ══════════════════════════════════════════════════════════════ */
+      function toggleTempBetween() {
+        var condition = document.getElementById("tempCondition").value;
+        var valueRow = document.getElementById("tempValueRow");
+        var betweenRow = document.getElementById("tempBetweenRow");
+
+        if (condition === "between") {
+          valueRow.style.display = "none";
+          betweenRow.style.display = "";
+        } else {
+          valueRow.style.display = "";
+          betweenRow.style.display = "none";
+        }
+      }
+
+      function toggleHumidBetween() {
+        var condition = document.getElementById("humidCondition").value;
+        var valueRow = document.getElementById("humidValueRow");
+        var betweenRow = document.getElementById("humidBetweenRow");
+
+        if (condition === "between") {
+          valueRow.style.display = "none";
+          betweenRow.style.display = "";
+        } else {
+          valueRow.style.display = "";
+          betweenRow.style.display = "none";
+        }
+      }
+
+      function saveTempControl() {
+        var switchId = document.getElementById("tempSwitch").value;
+        var condition = document.getElementById("tempCondition").value;
+        var action = document.getElementById("tempAction").value;
+        var enabled = document.getElementById("tempEnable").checked;
+
+        var settings = {
+          switchId: switchId,
+          condition: condition,
+          action: action,
+          enabled: enabled,
+        };
+
+        if (condition === "between") {
+          settings.min = document.getElementById("tempMin").value;
+          settings.max = document.getElementById("tempMax").value;
+          if (!settings.min || !settings.max) {
+            alert("Please enter both minimum and maximum temperature values.");
+            return;
+          }
+        } else {
+          settings.value = document.getElementById("tempValue").value;
+          if (!settings.value) {
+            alert("Please enter a temperature value.");
+            return;
+          }
+        }
+
+        console.log("Temperature control saved:", settings);
+        alert("Temperature control settings saved successfully!");
+        // In real app, send to ESP32
+      }
+
+      function saveHumidControl() {
+        var switchId = document.getElementById("humidSwitch").value;
+        var condition = document.getElementById("humidCondition").value;
+        var action = document.getElementById("humidAction").value;
+        var enabled = document.getElementById("humidEnable").checked;
+
+        var settings = {
+          switchId: switchId,
+          condition: condition,
+          action: action,
+          enabled: enabled,
+        };
+
+        if (condition === "between") {
+          settings.min = document.getElementById("humidMin").value;
+          settings.max = document.getElementById("humidMax").value;
+          if (!settings.min || !settings.max) {
+            alert("Please enter both minimum and maximum humidity values.");
+            return;
+          }
+        } else {
+          settings.value = document.getElementById("humidValue").value;
+          if (!settings.value) {
+            alert("Please enter a humidity value.");
+            return;
+          }
+        }
+
+        console.log("Humidity control saved:", settings);
+        alert("Humidity control settings saved successfully!");
+        // In real app, send to ESP32
+      }
+
+      function saveSunControl() {
+        var switchId = document.getElementById("sunSwitch").value;
+        var condition = document.getElementById("sunCondition").value;
+        var offset = document.getElementById("sunOffset").value || 0;
+        var action = document.getElementById("sunAction").value;
+        var enabled = document.getElementById("sunEnable").checked;
+
+        var settings = {
+          switchId: switchId,
+          condition: condition,
+          offsetMinutes: parseInt(offset),
+          action: action,
+          enabled: enabled,
+        };
+
+        console.log("Sunset/Sunrise control saved:", settings);
+        alert("Sunset/Sunrise control settings saved successfully!");
+        // In real app, send to ESP32
       }
 
       /* ══════════════════════════════════════════════════════════════
