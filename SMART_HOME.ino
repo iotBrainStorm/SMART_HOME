@@ -330,6 +330,208 @@ void checkTimers() {
   }
 }
 
+int parseClockMinutes(const String &timeText) {
+  if (timeText.length() < 5 || timeText.charAt(2) != ':')
+    return -1;
+
+  int hours = timeText.substring(0, 2).toInt();
+  int mins = timeText.substring(3, 5).toInt();
+  if (hours < 0 || hours > 23 || mins < 0 || mins > 59)
+    return -1;
+
+  return hours * 60 + mins;
+}
+
+String getScheduleActionValue(JsonObject obj, const char *defaultValue = "on") {
+  String action = obj["action"].as<String>();
+  if (action != "on" && action != "off")
+    action = defaultValue;
+  return action;
+}
+
+String getRecurringStartTime(JsonObject obj) {
+  String timeText = obj["fromTime"].as<String>();
+  if (timeText.isEmpty())
+    timeText = obj["onTime"].as<String>();
+  return timeText;
+}
+
+String getRecurringEndTime(JsonObject obj) {
+  String timeText = obj["toTime"].as<String>();
+  if (timeText.isEmpty())
+    timeText = obj["offTime"].as<String>();
+  return timeText;
+}
+
+String getFutureStartTime(JsonObject obj) {
+  String timeText = obj["fromTime"].as<String>();
+  if (timeText.isEmpty())
+    timeText = obj["time"].as<String>();
+  return timeText;
+}
+
+String getFutureEndTime(JsonObject obj) {
+  return obj["toTime"].as<String>();
+}
+
+bool rangesOverlapMinutes(int startA, int endA, int startB, int endB) {
+  return startA < endB && endA > startB;
+}
+
+bool scheduleDaysOverlap(JsonArray daysA, JsonArray daysB) {
+  for (JsonVariant dayA : daysA) {
+    String dayText = dayA.as<String>();
+    for (JsonVariant dayB : daysB) {
+      if (dayText == dayB.as<String>())
+        return true;
+    }
+  }
+  return false;
+}
+
+bool validateRecurringSchedulesData(const String &data, String &error) {
+  DynamicJsonDocument doc(4096);
+  if (deserializeJson(doc, data)) {
+    error = "Invalid schedule data";
+    return false;
+  }
+
+  JsonArray arr = doc.as<JsonArray>();
+  if (arr.isNull()) {
+    error = "Schedule data must be an array";
+    return false;
+  }
+
+  for (int i = 0; i < arr.size(); i++) {
+    JsonObject entry = arr[i].as<JsonObject>();
+    if (!entry["enabled"].as<bool>())
+      continue;
+
+    String fromTime = getRecurringStartTime(entry);
+    String toTime = getRecurringEndTime(entry);
+    int fromMin = parseClockMinutes(fromTime);
+    int toMin = parseClockMinutes(toTime);
+    JsonArray days = entry["days"].as<JsonArray>();
+
+    if (fromMin < 0 || toMin < 0) {
+      error = "Each enabled schedule needs valid From and To times";
+      return false;
+    }
+    if (toMin <= fromMin) {
+      error = "Each enabled schedule needs a Time Range where To is after From";
+      return false;
+    }
+    if (days.isNull() || days.size() == 0) {
+      error = "Each enabled schedule needs at least one repeat day";
+      return false;
+    }
+  }
+
+  for (int i = 0; i < arr.size(); i++) {
+    JsonObject entryA = arr[i].as<JsonObject>();
+    if (!entryA["enabled"].as<bool>())
+      continue;
+
+    int startA = parseClockMinutes(getRecurringStartTime(entryA));
+    int endA = parseClockMinutes(getRecurringEndTime(entryA));
+    JsonArray daysA = entryA["days"].as<JsonArray>();
+
+    for (int j = i + 1; j < arr.size(); j++) {
+      JsonObject entryB = arr[j].as<JsonObject>();
+      if (!entryB["enabled"].as<bool>())
+        continue;
+
+      int startB = parseClockMinutes(getRecurringStartTime(entryB));
+      int endB = parseClockMinutes(getRecurringEndTime(entryB));
+      JsonArray daysB = entryB["days"].as<JsonArray>();
+
+      if (getScheduleActionValue(entryA, "on") == getScheduleActionValue(entryB, "on") && scheduleDaysOverlap(daysA, daysB) && rangesOverlapMinutes(startA, endA, startB, endB)) {
+        error = "Schedules with the same action cannot overlap on the same repeat days";
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+bool validateFutureSchedulesData(const String &data, String &error) {
+  DynamicJsonDocument doc(4096);
+  if (deserializeJson(doc, data)) {
+    error = "Invalid future schedule data";
+    return false;
+  }
+
+  JsonArray arr = doc.as<JsonArray>();
+  if (arr.isNull()) {
+    error = "Future schedule data must be an array";
+    return false;
+  }
+
+  for (int i = 0; i < arr.size(); i++) {
+    JsonObject entry = arr[i].as<JsonObject>();
+    if (!entry["enabled"].as<bool>())
+      continue;
+
+    String date = entry["date"].as<String>();
+    String fromTime = getFutureStartTime(entry);
+    String toTime = getFutureEndTime(entry);
+    bool legacyOneShot = !fromTime.isEmpty() && toTime.isEmpty() && entry["fromTime"].as<String>().isEmpty();
+    int fromMin = parseClockMinutes(fromTime);
+
+    if (date.length() < 10) {
+      error = "Each enabled future schedule needs a valid date";
+      return false;
+    }
+    if (fromMin < 0) {
+      error = "Each enabled future schedule needs a valid From time";
+      return false;
+    }
+    if (!legacyOneShot) {
+      int toMin = parseClockMinutes(toTime);
+      if (toMin < 0) {
+        error = "Each enabled future schedule needs a valid To time";
+        return false;
+      }
+      if (toMin <= fromMin) {
+        error = "Each enabled future schedule needs a Time Range where To is after From";
+        return false;
+      }
+    }
+  }
+
+  for (int i = 0; i < arr.size(); i++) {
+    JsonObject entryA = arr[i].as<JsonObject>();
+    if (!entryA["enabled"].as<bool>())
+      continue;
+
+    String dateA = entryA["date"].as<String>();
+    int startA = parseClockMinutes(getFutureStartTime(entryA));
+    String endTimeA = getFutureEndTime(entryA);
+    int endA = endTimeA.isEmpty() ? startA + 1 : parseClockMinutes(endTimeA);
+
+    for (int j = i + 1; j < arr.size(); j++) {
+      JsonObject entryB = arr[j].as<JsonObject>();
+      if (!entryB["enabled"].as<bool>())
+        continue;
+
+      if (dateA != entryB["date"].as<String>())
+        continue;
+
+      int startB = parseClockMinutes(getFutureStartTime(entryB));
+      String endTimeB = getFutureEndTime(entryB);
+      int endB = endTimeB.isEmpty() ? startB + 1 : parseClockMinutes(endTimeB);
+
+      if (getScheduleActionValue(entryA, "on") == getScheduleActionValue(entryB, "on") && rangesOverlapMinutes(startA, endA, startB, endB)) {
+        error = "Future schedules with the same action cannot overlap on the same date";
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
 //  SCHEDULE CHECK (loop)
 void checkSchedules() {
   if (!timeSynced)
@@ -368,17 +570,17 @@ void checkSchedules() {
       if (!dayOk)
         continue;
 
-      String onT = o["onTime"].as<String>();
-      if (onT.length() >= 5) {
-        int m = onT.substring(0, 2).toInt() * 60 + onT.substring(3, 5).toInt();
-        if (curMin == m)
-          setSwitch(sw, true);
+      String action = getScheduleActionValue(o, "on");
+      String fromT = getRecurringStartTime(o);
+      int fromMin = parseClockMinutes(fromT);
+      if (fromMin >= 0 && curMin == fromMin) {
+        setSwitch(sw, action == "on");
       }
-      String offT = o["offTime"].as<String>();
-      if (offT.length() >= 5) {
-        int m = offT.substring(0, 2).toInt() * 60 + offT.substring(3, 5).toInt();
-        if (curMin == m)
-          setSwitch(sw, false);
+
+      String toT = getRecurringEndTime(o);
+      int toMin = parseClockMinutes(toT);
+      if (toMin >= 0 && curMin == toMin) {
+        setSwitch(sw, action != "on");
       }
     }
 
@@ -401,8 +603,30 @@ void checkSchedules() {
       JsonObject fo = fa[x];
       if (!fo["enabled"].as<bool>())
         continue;
-      if (fo["date"].as<String>() == String(ds) && fo["time"].as<String>() == String(ts)) {
-        setSwitch(sw, fo["action"].as<String>() == "on");
+
+      if (fo["date"].as<String>() != String(ds))
+        continue;
+
+      String action = getScheduleActionValue(fo, "on");
+      String fromT = getFutureStartTime(fo);
+      String toT = getFutureEndTime(fo);
+      int fromMin = parseClockMinutes(fromT);
+      int toMin = parseClockMinutes(toT);
+      bool removeEntry = false;
+
+      if (fromMin >= 0 && curMin == fromMin) {
+        setSwitch(sw, action == "on");
+        if (toMin < 0) {
+          removeEntry = true;
+        }
+      }
+
+      if (toMin >= 0 && curMin == toMin) {
+        setSwitch(sw, action != "on");
+        removeEntry = true;
+      }
+
+      if (removeEntry) {
         fa.remove(x);
         mod = true;
       }
@@ -946,6 +1170,34 @@ void setupWebServer() {
       req->send(200, "application/json", "{\"ok\":true}");
     });
 
+    server.on("/api/timers", HTTP_GET, [](AsyncWebServerRequest *req) {
+      DynamicJsonDocument d(1024);
+      JsonArray timers = d.to<JsonArray>();
+      unsigned long nowMs = millis();
+
+      for (int i = 0; i < NUM_SWITCHES; i++) {
+        if (!swTimers[i].active) {
+          continue;
+        }
+
+        unsigned long remainingMs =
+          swTimers[i].endMs > nowMs ? swTimers[i].endMs - nowMs : 0;
+
+        if (remainingMs == 0) {
+          continue;
+        }
+
+        JsonObject timer = timers.createNestedObject();
+        timer["sw"] = i;
+        timer["action"] = swTimers[i].targetState ? "on" : "off";
+        timer["remainingMs"] = remainingMs;
+      }
+
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r);
+    });
+
     server.on("/api/timer/clear", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (req->hasParam("sw", true)) {
         int sw = req->getParam("sw", true)->value().toInt();
@@ -974,6 +1226,15 @@ void setupWebServer() {
       }
       int sw = req->getParam("sw", true)->value().toInt();
       String data = req->getParam("data", true)->value();
+      String error;
+      if (sw < 0 || sw >= NUM_SWITCHES) {
+        req->send(400, "application/json", "{\"error\":\"Invalid switch\"}");
+        return;
+      }
+      if (!validateRecurringSchedulesData(data, error)) {
+        req->send(400, "application/json", String("{\"error\":\"") + error + "\"}");
+        return;
+      }
       prefs.begin("sched", false);
       prefs.putString(("s" + String(sw)).c_str(), data);
       prefs.end();
@@ -1001,6 +1262,15 @@ void setupWebServer() {
       }
       int sw = req->getParam("sw", true)->value().toInt();
       String data = req->getParam("data", true)->value();
+      String error;
+      if (sw < 0 || sw >= NUM_SWITCHES) {
+        req->send(400, "application/json", "{\"error\":\"Invalid switch\"}");
+        return;
+      }
+      if (!validateFutureSchedulesData(data, error)) {
+        req->send(400, "application/json", String("{\"error\":\"") + error + "\"}");
+        return;
+      }
       prefs.begin("fsched", false);
       prefs.putString(("f" + String(sw)).c_str(), data);
       prefs.end();

@@ -567,6 +567,15 @@
           width: auto;
           min-width: 90px;
         }
+
+        .automation-list-item {
+          flex-direction: column;
+        }
+
+        .automation-list-actions {
+          width: 100%;
+          justify-content: flex-end;
+        }
       }
 
       /* ── Remove all tap highlight ── */
@@ -732,6 +741,11 @@
         margin-bottom: 12px;
       }
 
+      .schedule-slot.focused-slot {
+        border-color: rgba(37, 99, 235, 0.45);
+        box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.2);
+      }
+
       .schedule-slot-header {
         display: flex;
         justify-content: space-between;
@@ -786,6 +800,65 @@
         margin-top: 12px;
         font-size: 0.78rem;
         color: #4ade80;
+      }
+
+      .automation-list {
+        display: none;
+        margin-top: 16px;
+      }
+
+      .automation-list.active {
+        display: block;
+      }
+
+      .automation-list-item {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px;
+        margin-bottom: 10px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+      }
+
+      .automation-list-item:last-child {
+        margin-bottom: 0;
+      }
+
+      .automation-list-main {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .automation-list-title {
+        font-size: 0.84rem;
+        font-weight: 600;
+        color: #e2e8f0;
+      }
+
+      .automation-list-meta {
+        margin-top: 5px;
+        font-size: 0.76rem;
+        color: #94a3b8;
+        line-height: 1.55;
+        white-space: pre-line;
+      }
+
+      .automation-list-actions {
+        display: flex;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .automation-empty {
+        padding: 14px 16px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px dashed rgba(255, 255, 255, 0.08);
+        color: #64748b;
+        font-size: 0.78rem;
       }
 
       /* ── Day Pills ── */
@@ -963,7 +1036,9 @@
           <div class="panel-title">Switch Icons</div>
           <div class="setting-row" data-switch-index="0">
             <div class="setting-info">
-              <div class="setting-label switch-icon-label">Switch 1 — Living Room</div>
+              <div class="setting-label switch-icon-label">
+                Switch 1 — Living Room
+              </div>
               <div class="setting-sub switch-icon-sub">Current: Home icon</div>
             </div>
             <button
@@ -975,8 +1050,12 @@
           </div>
           <div class="setting-row" data-switch-index="1">
             <div class="setting-info">
-              <div class="setting-label switch-icon-label">Switch 2 — Bedroom</div>
-              <div class="setting-sub switch-icon-sub">Current: Bedroom icon</div>
+              <div class="setting-label switch-icon-label">
+                Switch 2 — Bedroom
+              </div>
+              <div class="setting-sub switch-icon-sub">
+                Current: Bedroom icon
+              </div>
             </div>
             <button
               class="cfg-btn cfg-btn-secondary"
@@ -987,8 +1066,12 @@
           </div>
           <div class="setting-row" data-switch-index="2">
             <div class="setting-info">
-              <div class="setting-label switch-icon-label">Switch 3 — Kitchen</div>
-              <div class="setting-sub switch-icon-sub">Current: Kitchen icon</div>
+              <div class="setting-label switch-icon-label">
+                Switch 3 — Kitchen
+              </div>
+              <div class="setting-sub switch-icon-sub">
+                Current: Kitchen icon
+              </div>
             </div>
             <button
               class="cfg-btn cfg-btn-secondary"
@@ -999,8 +1082,12 @@
           </div>
           <div class="setting-row" data-switch-index="3">
             <div class="setting-info">
-              <div class="setting-label switch-icon-label">Switch 4 — Bathroom</div>
-              <div class="setting-sub switch-icon-sub">Current: Bathroom icon</div>
+              <div class="setting-label switch-icon-label">
+                Switch 4 — Bathroom
+              </div>
+              <div class="setting-sub switch-icon-sub">
+                Current: Bathroom icon
+              </div>
             </div>
             <button
               class="cfg-btn cfg-btn-secondary"
@@ -1030,7 +1117,9 @@
             data-switch-index="0"
             style="flex-direction: column; align-items: flex-start; gap: 12px"
           >
-            <div class="setting-label relay-switch-label">Switch 1 — Living Room</div>
+            <div class="setting-label relay-switch-label">
+              Switch 1 — Living Room
+            </div>
             <div class="radio-group" data-switch="0">
               <label class="radio-option selected">
                 <input type="radio" name="relay-state-0" value="off" checked />
@@ -1075,7 +1164,9 @@
               margin-top: 20px;
             "
           >
-            <div class="setting-label relay-switch-label">Switch 2 — Bedroom</div>
+            <div class="setting-label relay-switch-label">
+              Switch 2 — Bedroom
+            </div>
             <div class="radio-group" data-switch="1">
               <label class="radio-option selected">
                 <input type="radio" name="relay-state-1" value="off" checked />
@@ -1120,7 +1211,9 @@
               margin-top: 20px;
             "
           >
-            <div class="setting-label relay-switch-label">Switch 3 — Kitchen</div>
+            <div class="setting-label relay-switch-label">
+              Switch 3 — Kitchen
+            </div>
             <div class="radio-group" data-switch="2">
               <label class="radio-option selected">
                 <input type="radio" name="relay-state-2" value="off" checked />
@@ -1165,7 +1258,9 @@
               margin-top: 20px;
             "
           >
-            <div class="setting-label relay-switch-label">Switch 4 — Bathroom</div>
+            <div class="setting-label relay-switch-label">
+              Switch 4 — Bathroom
+            </div>
             <div class="radio-group" data-switch="3">
               <label class="radio-option selected">
                 <input type="radio" name="relay-state-3" value="off" checked />
@@ -1216,20 +1311,20 @@
             <div class="setting-info">
               <div class="setting-label">Select Switch</div>
             </div>
-            <select class="cfg-input" style="max-width: 200px">
-              <option>Switch 1 — Living Room</option>
-              <option>Switch 2 — Bedroom</option>
-              <option>Switch 3 — Kitchen</option>
-              <option>Switch 4 — Bathroom</option>
+            <select class="cfg-input" style="max-width: 200px" id="timerSwitch">
+              <option value="0">Switch 1 — Living Room</option>
+              <option value="1">Switch 2 — Bedroom</option>
+              <option value="2">Switch 3 — Kitchen</option>
+              <option value="3">Switch 4 — Bathroom</option>
             </select>
           </div>
           <div class="setting-row">
             <div class="setting-info">
               <div class="setting-label">Action</div>
             </div>
-            <select class="cfg-input" style="max-width: 200px">
-              <option>Turn OFF after timer</option>
-              <option>Turn ON after timer</option>
+            <select class="cfg-input" style="max-width: 200px" id="timerAction">
+              <option value="off">Turn OFF after timer</option>
+              <option value="on">Turn ON after timer</option>
             </select>
           </div>
           <div class="setting-row">
@@ -1240,6 +1335,7 @@
             <div style="display: flex; gap: 6px">
               <input
                 class="cfg-input"
+                id="timerHours"
                 type="number"
                 min="0"
                 max="23"
@@ -1249,6 +1345,7 @@
               />
               <input
                 class="cfg-input"
+                id="timerMinutes"
                 type="number"
                 min="0"
                 max="59"
@@ -1258,6 +1355,7 @@
               />
               <input
                 class="cfg-input"
+                id="timerSeconds"
                 type="number"
                 min="0"
                 max="59"
@@ -1275,18 +1373,29 @@
               justify-content: flex-end;
             "
           >
-            <button class="cfg-btn cfg-btn-secondary">Clear</button>
-            <button class="cfg-btn cfg-btn-primary">Set Timer</button>
+            <button
+              id="showTimersBtn"
+              class="cfg-btn cfg-btn-secondary"
+              onclick="toggleTimerList()"
+            >
+              Show Timers
+            </button>
+            <button id="setTimerBtn" class="cfg-btn cfg-btn-primary">
+              Set Timer
+            </button>
           </div>
+
+          <div id="timerList" class="automation-list"></div>
         </div>
 
         <!-- Set Schedule -->
         <div class="panel" id="panel-auto-schedule">
           <div class="panel-title">Set Schedule</div>
           <div class="info-box">
-            <strong>Schedule</strong> — Set daily recurring schedules per switch
-            to turn switches on/off at specific times. Overlapping schedules
-            will be flagged.
+            <strong>Schedule</strong> — Set daily recurring ON or OFF ranges per
+            switch using an action, a From/To time window, and repeat days.
+            Multiple schedules per switch are allowed, but schedules with the
+            same action cannot overlap on the same repeat days.
           </div>
           <div
             class="setting-row"
@@ -1299,7 +1408,7 @@
               class="cfg-input"
               style="max-width: 200px"
               id="scheduleSwitch"
-              onchange="loadSchedulesForSwitch()"
+              onchange="onScheduleSwitchChange()"
             >
               <option value="0">Switch 1 — Living Room</option>
               <option value="1">Switch 2 — Bedroom</option>
@@ -1308,10 +1417,18 @@
             </select>
           </div>
 
-          <div style="margin-bottom: 16px; text-align: left">
+          <div
+            style="
+              margin-bottom: 16px;
+              display: flex;
+              gap: 10px;
+              flex-wrap: wrap;
+              justify-content: space-between;
+            "
+          >
             <button
               class="cfg-btn cfg-btn-secondary"
-              onclick="addScheduleSlot()"
+              onclick="handleAddScheduleClick()"
               style="display: inline-flex; align-items: center; gap: 6px"
             >
               <svg
@@ -1329,40 +1446,46 @@
               </svg>
               Add Schedule
             </button>
+            <button
+              id="showSchedulesBtn"
+              class="cfg-btn cfg-btn-secondary"
+              onclick="toggleScheduleList()"
+            >
+              Show Schedules
+            </button>
           </div>
 
-          <div id="scheduleContainer">
+          <div id="scheduleContainer" style="display: none">
             <!-- Dynamic schedules will be added here -->
           </div>
 
-          <div id="scheduleValidation"></div>
-
           <div
+            id="scheduleSaveActions"
             style="
               margin-top: 16px;
-              display: flex;
+              display: none;
               gap: 10px;
               justify-content: flex-end;
             "
           >
-            <button
-              class="cfg-btn cfg-btn-secondary"
-              onclick="clearAllSchedules()"
-            >
-              Clear All
-            </button>
             <button class="cfg-btn cfg-btn-primary" onclick="saveSchedules()">
-              Save Schedules
+              Save Schedule
             </button>
           </div>
+
+          <div id="scheduleValidation"></div>
+
+          <div id="scheduleList" class="automation-list"></div>
         </div>
 
         <!-- Set Future Schedule -->
         <div class="panel" id="panel-auto-future">
           <div class="panel-title">Set Future Schedule</div>
           <div class="info-box">
-            <strong>Future Schedule</strong> — Set one-time schedules for a
-            specific date and time in the future for each switch.
+            <strong>Future Schedule</strong> — Set one-time ON or OFF ranges on
+            a specific future date for each switch. Multiple future schedules
+            per switch are allowed, but schedules with the same action cannot
+            overlap on the same date.
           </div>
           <div
             class="setting-row"
@@ -1375,7 +1498,7 @@
               class="cfg-input"
               style="max-width: 200px"
               id="futureScheduleSwitch"
-              onchange="loadFutureSchedulesForSwitch()"
+              onchange="onFutureScheduleSwitchChange()"
             >
               <option value="0">Switch 1 — Living Room</option>
               <option value="1">Switch 2 — Bedroom</option>
@@ -1384,10 +1507,18 @@
             </select>
           </div>
 
-          <div style="margin-bottom: 16px; text-align: left">
+          <div
+            style="
+              margin-bottom: 16px;
+              display: flex;
+              gap: 10px;
+              flex-wrap: wrap;
+              justify-content: space-between;
+            "
+          >
             <button
               class="cfg-btn cfg-btn-secondary"
-              onclick="addFutureScheduleSlot()"
+              onclick="handleAddFutureScheduleClick()"
               style="display: inline-flex; align-items: center; gap: 6px"
             >
               <svg
@@ -1405,35 +1536,39 @@
               </svg>
               Add Future Schedule
             </button>
+            <button
+              id="showFutureSchedulesBtn"
+              class="cfg-btn cfg-btn-secondary"
+              onclick="toggleFutureScheduleList()"
+            >
+              Show Future Schedules
+            </button>
           </div>
 
-          <div id="futureScheduleContainer">
+          <div id="futureScheduleContainer" style="display: none">
             <!-- Dynamic future schedules will be added here -->
           </div>
 
-          <div id="futureScheduleValidation"></div>
-
           <div
+            id="futureScheduleSaveActions"
             style="
               margin-top: 16px;
-              display: flex;
+              display: none;
               gap: 10px;
               justify-content: flex-end;
             "
           >
             <button
-              class="cfg-btn cfg-btn-secondary"
-              onclick="clearAllFutureSchedules()"
-            >
-              Clear All
-            </button>
-            <button
               class="cfg-btn cfg-btn-primary"
               onclick="saveFutureSchedules()"
             >
-              Save Future Schedules
+              Save Future Schedule
             </button>
           </div>
+
+          <div id="futureScheduleValidation"></div>
+
+          <div id="futureScheduleList" class="automation-list"></div>
         </div>
 
         <!-- Sensor Control Main -->
@@ -1470,6 +1605,26 @@
               <path d="M9 18l6-6-6-6" />
             </svg>
           </div>
+
+          <div
+            style="
+              margin-top: 16px;
+              display: flex;
+              gap: 10px;
+              flex-wrap: wrap;
+              justify-content: flex-end;
+            "
+          >
+            <button
+              id="showSensorAutomationsBtn"
+              class="cfg-btn cfg-btn-secondary"
+              onclick="toggleSensorAutomationList()"
+            >
+              Show Automations
+            </button>
+          </div>
+
+          <div id="sensorAutomationList" class="automation-list"></div>
         </div>
 
         <!-- Temperature Control -->
@@ -3256,12 +3411,7 @@
       /* ══════════════════════════════════════════════════════════════
          ICON PICKER MODAL
       ══════════════════════════════════════════════════════════════ */
-      var switchNamesState = [
-        "Living Room",
-        "Bedroom",
-        "Kitchen",
-        "Bathroom",
-      ];
+      var switchNamesState = ["Living Room", "Bedroom", "Kitchen", "Bathroom"];
       var switchIconsState = ["home", "bedroom", "kitchen", "bathroom"];
       var relayModesState = ["off", "off", "off", "off"];
       var iconPickerModal = document.getElementById("iconPickerModal");
@@ -3303,10 +3453,10 @@
           }
         });
 
-        var timerSelects = document.querySelectorAll("#panel-auto-timer select");
-        if (timerSelects[0]) {
-          for (var i = 0; i < timerSelects[0].options.length && i < 4; i++) {
-            timerSelects[0].options[i].textContent =
+        var timerSwitchSelect = document.getElementById("timerSwitch");
+        if (timerSwitchSelect) {
+          for (var i = 0; i < timerSwitchSelect.options.length && i < 4; i++) {
+            timerSwitchSelect.options[i].textContent =
               "Switch " + (i + 1) + " — " + switchNamesState[i];
           }
         }
@@ -3435,6 +3585,517 @@
       ══════════════════════════════════════════════════════════════ */
       var scheduleCounter = 0;
       var futureScheduleCounter = 0;
+      var timerListCache = [];
+      var scheduleListCache = [];
+      var futureScheduleListCache = [];
+      var sensorAutomationListCache = [];
+      var scheduleSaveRequested = false;
+      var futureScheduleSaveRequested = false;
+
+      function escapeHtml(value) {
+        return String(value == null ? "" : value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function getSwitchDisplayName(index) {
+        var switchIndex = parseInt(index, 10);
+        if (isNaN(switchIndex) || switchIndex < 0 || switchIndex > 3) {
+          return "Unknown Switch";
+        }
+        return (
+          "Switch " + (switchIndex + 1) + " — " + switchNamesState[switchIndex]
+        );
+      }
+
+      function setAutomationListVisibility(
+        listId,
+        buttonId,
+        visible,
+        showLabel,
+        hideLabel,
+      ) {
+        var list = document.getElementById(listId);
+        var button = document.getElementById(buttonId);
+        if (!list) return false;
+        list.classList.toggle("active", !!visible);
+        if (button) {
+          button.textContent = visible ? hideLabel : showLabel;
+        }
+        return !!visible;
+      }
+
+      function rangesOverlapMinutes(startA, endA, startB, endB) {
+        return startA < endB && endA > startB;
+      }
+
+      function scheduleDaysOverlap(daysA, daysB) {
+        var normalizedA = normalizeScheduleDays(daysA);
+        var normalizedB = normalizeScheduleDays(daysB);
+        return normalizedA.some(function (day) {
+          return normalizedB.indexOf(day) >= 0;
+        });
+      }
+
+      function refreshScheduleSaveActions() {
+        var actions = document.getElementById("scheduleSaveActions");
+        if (!actions) return;
+        var hasSlots = document.querySelectorAll(
+          "#scheduleContainer .schedule-slot",
+        ).length;
+        actions.style.display =
+          scheduleSaveRequested && hasSlots ? "flex" : "none";
+      }
+
+      function setScheduleSaveActionsVisible(visible) {
+        scheduleSaveRequested = !!visible;
+        refreshScheduleSaveActions();
+      }
+
+      function refreshFutureScheduleSaveActions() {
+        var actions = document.getElementById("futureScheduleSaveActions");
+        if (!actions) return;
+        var hasSlots = document.querySelectorAll(
+          "#futureScheduleContainer .schedule-slot",
+        ).length;
+        actions.style.display =
+          futureScheduleSaveRequested && hasSlots ? "flex" : "none";
+      }
+
+      function setFutureScheduleSaveActionsVisible(visible) {
+        futureScheduleSaveRequested = !!visible;
+        refreshFutureScheduleSaveActions();
+      }
+
+      function onScheduleSwitchChange() {
+        document.getElementById("scheduleContainer").style.display = "none";
+        clearAllSchedules();
+        document.getElementById("scheduleValidation").innerHTML = "";
+      }
+
+      function handleAddScheduleClick() {
+        var container = document.getElementById("scheduleContainer");
+        if (container.style.display !== "none" && scheduleSaveRequested) {
+          return;
+        }
+        container.style.display = "";
+        loadSchedulesForSwitch(undefined, { showSaveButton: true }).then(
+          function () {
+            addScheduleSlot();
+          },
+        );
+      }
+
+      function onFutureScheduleSwitchChange() {
+        document.getElementById("futureScheduleContainer").style.display =
+          "none";
+        clearAllFutureSchedules();
+        document.getElementById("futureScheduleValidation").innerHTML = "";
+      }
+
+      function handleAddFutureScheduleClick() {
+        var container = document.getElementById("futureScheduleContainer");
+        if (container.style.display !== "none" && futureScheduleSaveRequested) {
+          return;
+        }
+        container.style.display = "";
+        loadFutureSchedulesForSwitch(undefined, {
+          showSaveButton: true,
+        }).then(function () {
+          addFutureScheduleSlot();
+        });
+      }
+
+      function formatDurationFromMs(ms) {
+        var totalSeconds = Math.max(
+          1,
+          Math.ceil((parseInt(ms, 10) || 0) / 1000),
+        );
+        var hours = Math.floor(totalSeconds / 3600);
+        var minutes = Math.floor((totalSeconds % 3600) / 60);
+        var seconds = totalSeconds % 60;
+        var parts = [];
+        if (hours) parts.push(hours + "h");
+        if (minutes || hours) parts.push(minutes + "m");
+        parts.push(seconds + "s");
+        return parts.join(" ");
+      }
+
+      function normalizeScheduleDays(days) {
+        if (!Array.isArray(days)) return [];
+        return days.map(function (day) {
+          return String(day || "")
+            .trim()
+            .toLowerCase();
+        });
+      }
+
+      function formatScheduleDays(days) {
+        var normalized = normalizeScheduleDays(days);
+        if (!normalized.length) return "No repeat days";
+        return normalized
+          .map(function (day) {
+            return day.charAt(0).toUpperCase() + day.slice(1, 3);
+          })
+          .join(", ");
+      }
+
+      function getScheduleAction(action) {
+        return action === "off" ? "off" : "on";
+      }
+
+      function getActionLabel(action) {
+        return getScheduleAction(action) === "off" ? "Turn OFF" : "Turn ON";
+      }
+
+      function normalizeScheduleRecord(record) {
+        record = record || {};
+        return {
+          enabled: !!record.enabled,
+          action: getScheduleAction(record.action),
+          fromTime: record.fromTime || record.onTime || "",
+          toTime: record.toTime || record.offTime || "",
+          days: normalizeScheduleDays(record.days),
+        };
+      }
+
+      function normalizeFutureScheduleRecord(record) {
+        record = record || {};
+        var legacyTime = record.time || "";
+        return {
+          enabled: !!record.enabled,
+          action: getScheduleAction(record.action),
+          date: record.date || "",
+          fromTime: record.fromTime || legacyTime || "",
+          toTime: record.toTime || "",
+          legacyOneShot: !record.fromTime && !record.toTime && !!legacyTime,
+        };
+      }
+
+      function getSensorAutomationTypeLabel(type) {
+        if (type === "temp") return "Temperature";
+        if (type === "humid") return "Humidity";
+        return "Sunset/Sunrise";
+      }
+
+      function getSensorAutomationTypeOrder(type) {
+        if (type === "temp") return 0;
+        if (type === "humid") return 1;
+        return 2;
+      }
+
+      function hasSensorAutomationData(record) {
+        if (!record || typeof record !== "object" || Array.isArray(record)) {
+          return false;
+        }
+        return [
+          "condition",
+          "action",
+          "value",
+          "min",
+          "max",
+          "offset",
+          "offsetMinutes",
+          "enabled",
+        ].some(function (key) {
+          return (
+            record[key] !== undefined &&
+            record[key] !== null &&
+            record[key] !== ""
+          );
+        });
+      }
+
+      function formatSensorAutomationCondition(type, record) {
+        record = record || {};
+        var condition = String(record.condition || "");
+        if (type === "sun") {
+          var labels = {
+            after_sunset: "After Sunset",
+            before_sunset: "Before Sunset",
+            after_sunrise: "After Sunrise",
+            before_sunrise: "Before Sunrise",
+            between_sunset_sunrise: "Between Sunset and Sunrise",
+            between_sunrise_sunset: "Between Sunrise and Sunset",
+          };
+          var offsetValue =
+            record.offsetMinutes !== undefined && record.offsetMinutes !== null
+              ? record.offsetMinutes
+              : record.offset;
+          var offset = parseInt(offsetValue, 10);
+          if (isNaN(offset)) offset = 0;
+          return (
+            (labels[condition] || "Not set") + " (Offset: " + offset + " min)"
+          );
+        }
+
+        var unit = type === "temp" ? "°C" : "%";
+        if (condition === "between") {
+          if (
+            record.min === undefined ||
+            record.min === null ||
+            record.min === "" ||
+            record.max === undefined ||
+            record.max === null ||
+            record.max === ""
+          ) {
+            return "Between range not set";
+          }
+          return "Between " + record.min + unit + " and " + record.max + unit;
+        }
+
+        var simpleLabels = {
+          below: "Below",
+          above: "Above",
+          equal: "Equal to",
+        };
+
+        if (!condition || record.value === undefined || record.value === "") {
+          return "Not set";
+        }
+
+        return (
+          (simpleLabels[condition] || condition) + " " + record.value + unit
+        );
+      }
+
+      function highlightSlot(containerId, slotIndex) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        var slots = container.querySelectorAll(".schedule-slot");
+        slots.forEach(function (slot) {
+          slot.classList.remove("focused-slot");
+        });
+        if (
+          typeof slotIndex !== "number" ||
+          slotIndex < 0 ||
+          slotIndex >= slots.length
+        ) {
+          return;
+        }
+        var target = slots[slotIndex];
+        target.classList.add("focused-slot");
+        if (typeof target.scrollIntoView === "function") {
+          target.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }
+
+      function populateTimerForm(timer) {
+        var switchSelect = document.getElementById("timerSwitch");
+        var actionSelect = document.getElementById("timerAction");
+        var hoursInput = document.getElementById("timerHours");
+        var minutesInput = document.getElementById("timerMinutes");
+        var secondsInput = document.getElementById("timerSeconds");
+        var totalSeconds = Math.max(
+          0,
+          Math.ceil((parseInt(timer.remainingMs, 10) || 0) / 1000),
+        );
+
+        if (switchSelect)
+          switchSelect.value = String(parseInt(timer.sw, 10) || 0);
+        if (actionSelect)
+          actionSelect.value = timer.action === "on" ? "on" : "off";
+        if (hoursInput) hoursInput.value = Math.floor(totalSeconds / 3600);
+        if (minutesInput)
+          minutesInput.value = Math.floor((totalSeconds % 3600) / 60);
+        if (secondsInput) secondsInput.value = totalSeconds % 60;
+      }
+
+      function renderTimerList(items) {
+        var list = document.getElementById("timerList");
+        if (!list) return;
+
+        if (!items.length) {
+          list.innerHTML =
+            '<div class="automation-empty">No active timers found.</div>';
+          return;
+        }
+
+        var html = items
+          .map(function (timer) {
+            var switchIndex = parseInt(timer.sw, 10) || 0;
+            var actionText = timer.action === "on" ? "Turn ON" : "Turn OFF";
+            return (
+              '<div class="automation-list-item">' +
+              '<div class="automation-list-main">' +
+              '<div class="automation-list-title">' +
+              escapeHtml(getSwitchDisplayName(switchIndex)) +
+              "</div>" +
+              '<div class="automation-list-meta">Action: ' +
+              escapeHtml(actionText) +
+              "\nRemaining: " +
+              escapeHtml(formatDurationFromMs(timer.remainingMs)) +
+              "</div>" +
+              "</div>" +
+              '<div class="automation-list-actions">' +
+              '<button class="cfg-btn cfg-btn-secondary" style="padding: 6px 12px; font-size: 0.76rem" onclick="editTimer(' +
+              switchIndex +
+              ')">Edit</button>' +
+              '<button class="cfg-btn cfg-btn-danger" style="padding: 6px 12px; font-size: 0.76rem" onclick="removeTimer(' +
+              switchIndex +
+              ')">Remove</button>' +
+              "</div>" +
+              "</div>"
+            );
+          })
+          .join("");
+
+        list.innerHTML = html;
+      }
+
+      function renderScheduleList(items) {
+        var list = document.getElementById("scheduleList");
+        if (!list) return;
+
+        if (!items.length) {
+          list.innerHTML =
+            '<div class="automation-empty">No schedules saved yet.</div>';
+          return;
+        }
+
+        var html = items
+          .map(function (entry) {
+            var schedule = normalizeScheduleRecord(entry.data);
+            var enabledText = schedule.enabled ? "Enabled" : "Disabled";
+            return (
+              '<div class="automation-list-item">' +
+              '<div class="automation-list-main">' +
+              '<div class="automation-list-title">' +
+              escapeHtml(getSwitchDisplayName(entry.sw)) +
+              "</div>" +
+              '<div class="automation-list-meta">' +
+              escapeHtml(enabledText) +
+              "\nAction: " +
+              escapeHtml(getActionLabel(schedule.action)) +
+              "\nFrom: " +
+              escapeHtml(schedule.fromTime || "--:--") +
+              "\nTo: " +
+              escapeHtml(schedule.toTime || "--:--") +
+              "\nDays: " +
+              escapeHtml(formatScheduleDays(schedule.days)) +
+              "</div>" +
+              "</div>" +
+              '<div class="automation-list-actions">' +
+              '<button class="cfg-btn cfg-btn-secondary" style="padding: 6px 12px; font-size: 0.76rem" onclick="editSchedule(' +
+              entry.sw +
+              "," +
+              entry.index +
+              ')">Edit</button>' +
+              '<button class="cfg-btn cfg-btn-danger" style="padding: 6px 12px; font-size: 0.76rem" onclick="removeSchedule(' +
+              entry.sw +
+              "," +
+              entry.index +
+              ')">Remove</button>' +
+              "</div>" +
+              "</div>"
+            );
+          })
+          .join("");
+
+        list.innerHTML = html;
+      }
+
+      function renderFutureScheduleList(items) {
+        var list = document.getElementById("futureScheduleList");
+        if (!list) return;
+
+        if (!items.length) {
+          list.innerHTML =
+            '<div class="automation-empty">No future schedules saved yet.</div>';
+          return;
+        }
+
+        var html = items
+          .map(function (entry) {
+            var schedule = normalizeFutureScheduleRecord(entry.data);
+            var enabledText = schedule.enabled ? "Enabled" : "Disabled";
+            var rangeText = schedule.legacyOneShot
+              ? schedule.fromTime || "--:--"
+              : (schedule.fromTime || "--:--") +
+                " to " +
+                (schedule.toTime || "--:--");
+            return (
+              '<div class="automation-list-item">' +
+              '<div class="automation-list-main">' +
+              '<div class="automation-list-title">' +
+              escapeHtml(getSwitchDisplayName(entry.sw)) +
+              "</div>" +
+              '<div class="automation-list-meta">' +
+              escapeHtml(enabledText) +
+              "\nAction: " +
+              escapeHtml(getActionLabel(schedule.action)) +
+              "\nDate: " +
+              escapeHtml(schedule.date || "Not set") +
+              "\nTime Range: " +
+              escapeHtml(rangeText) +
+              "</div>" +
+              "</div>" +
+              '<div class="automation-list-actions">' +
+              '<button class="cfg-btn cfg-btn-secondary" style="padding: 6px 12px; font-size: 0.76rem" onclick="editFutureSchedule(' +
+              entry.sw +
+              "," +
+              entry.index +
+              ')">Edit</button>' +
+              '<button class="cfg-btn cfg-btn-danger" style="padding: 6px 12px; font-size: 0.76rem" onclick="removeFutureSchedule(' +
+              entry.sw +
+              "," +
+              entry.index +
+              ')">Remove</button>' +
+              "</div>" +
+              "</div>"
+            );
+          })
+          .join("");
+
+        list.innerHTML = html;
+      }
+
+      function renderSensorAutomationList(items) {
+        var list = document.getElementById("sensorAutomationList");
+        if (!list) return;
+
+        if (!items.length) {
+          list.innerHTML =
+            '<div class="automation-empty">No sensor automations saved yet.</div>';
+          return;
+        }
+
+        var html = items
+          .map(function (entry) {
+            var automation = entry.data || {};
+            var enabledText = automation.enabled ? "Enabled" : "Disabled";
+            return (
+              '<div class="automation-list-item">' +
+              '<div class="automation-list-main">' +
+              '<div class="automation-list-title">' +
+              escapeHtml(getSwitchDisplayName(entry.sw)) +
+              "</div>" +
+              '<div class="automation-list-meta">Type: ' +
+              escapeHtml(getSensorAutomationTypeLabel(entry.type)) +
+              "\nStatus: " +
+              escapeHtml(enabledText) +
+              "\nCondition: " +
+              escapeHtml(
+                formatSensorAutomationCondition(entry.type, automation),
+              ) +
+              "\nAction: " +
+              escapeHtml(
+                automation.action
+                  ? getActionLabel(automation.action)
+                  : "Not set",
+              ) +
+              "</div>" +
+              "</div>" +
+              "</div>"
+            );
+          })
+          .join("");
+
+        list.innerHTML = html;
+      }
 
       function createScheduleSlotHTML(slotNumber) {
         return (
@@ -3456,12 +4117,19 @@
           "</div>" +
           "</div>" +
           '<div class="schedule-row">' +
-          '<span class="schedule-label">Turn ON:</span>' +
-          '<input class="cfg-input schedule-on" type="time" style="max-width: 140px" />' +
+          '<span class="schedule-label">Action:</span>' +
+          '<select class="cfg-input schedule-action" style="max-width: 160px">' +
+          '<option value="on">Turn ON</option>' +
+          '<option value="off">Turn OFF</option>' +
+          "</select>" +
           "</div>" +
           '<div class="schedule-row">' +
-          '<span class="schedule-label">Turn OFF:</span>' +
-          '<input class="cfg-input schedule-off" type="time" style="max-width: 140px" />' +
+          '<span class="schedule-label">Time Range:</span>' +
+          '<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">' +
+          '<input class="cfg-input schedule-from" type="time" style="max-width: 140px" />' +
+          '<span style="font-size: 0.76rem; color: #64748b">to</span>' +
+          '<input class="cfg-input schedule-to" type="time" style="max-width: 140px" />' +
+          "</div>" +
           "</div>" +
           '<div class="schedule-row">' +
           '<span class="schedule-label">Repeat:</span>' +
@@ -3479,13 +4147,16 @@
         );
       }
 
-      function addScheduleSlot() {
+      function addScheduleSlot(options) {
         scheduleCounter++;
         var container = document.getElementById("scheduleContainer");
         var tempDiv = document.createElement("div");
         tempDiv.innerHTML = createScheduleSlotHTML(scheduleCounter);
         container.appendChild(tempDiv.firstChild);
         renumberScheduleSlots();
+        if (!options || !options.suppressSaveButton) {
+          setScheduleSaveActionsVisible(true);
+        }
       }
 
       function removeScheduleSlot(button) {
@@ -3505,6 +4176,7 @@
           slot.querySelector(".schedule-slot-title").textContent =
             "Schedule " + (index + 1);
         });
+        refreshScheduleSaveActions();
       }
 
       function createFutureScheduleSlotHTML(slotNumber) {
@@ -3538,20 +4210,27 @@
           '<input class="cfg-input future-date" type="date" style="max-width: 160px" />' +
           "</div>" +
           '<div class="schedule-row">' +
-          '<span class="schedule-label">Time:</span>' +
-          '<input class="cfg-input future-time" type="time" style="max-width: 140px" />' +
+          '<span class="schedule-label">Time Range:</span>' +
+          '<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">' +
+          '<input class="cfg-input future-from" type="time" style="max-width: 140px" />' +
+          '<span style="font-size: 0.76rem; color: #64748b">to</span>' +
+          '<input class="cfg-input future-to" type="time" style="max-width: 140px" />' +
+          "</div>" +
           "</div>" +
           "</div>"
         );
       }
 
-      function addFutureScheduleSlot() {
+      function addFutureScheduleSlot(options) {
         futureScheduleCounter++;
         var container = document.getElementById("futureScheduleContainer");
         var tempDiv = document.createElement("div");
         tempDiv.innerHTML = createFutureScheduleSlotHTML(futureScheduleCounter);
         container.appendChild(tempDiv.firstChild);
         renumberFutureScheduleSlots();
+        if (!options || !options.suppressSaveButton) {
+          setFutureScheduleSaveActionsVisible(true);
+        }
       }
 
       function removeFutureScheduleSlot(button) {
@@ -3571,6 +4250,7 @@
           slot.querySelector(".schedule-slot-title").textContent =
             "Future Schedule " + (index + 1);
         });
+        refreshFutureScheduleSaveActions();
       }
 
       /* ══════════════════════════════════════════════════════════════
@@ -3586,38 +4266,26 @@
         var overlaps = [];
         for (var i = 0; i < schedules.length; i++) {
           if (!schedules[i].enabled) continue;
-          var onA = timeToMinutes(schedules[i].onTime);
-          var offA = timeToMinutes(schedules[i].offTime);
-          if (onA === null || offA === null) continue;
+          var startA = timeToMinutes(schedules[i].fromTime);
+          var endA = timeToMinutes(schedules[i].toTime);
+          if (startA === null || endA === null || endA <= startA) continue;
 
           for (var j = i + 1; j < schedules.length; j++) {
             if (!schedules[j].enabled) continue;
-            var onB = timeToMinutes(schedules[j].onTime);
-            var offB = timeToMinutes(schedules[j].offTime);
-            if (onB === null || offB === null) continue;
+            var startB = timeToMinutes(schedules[j].fromTime);
+            var endB = timeToMinutes(schedules[j].toTime);
+            if (startB === null || endB === null || endB <= startB) continue;
 
-            // Check if days overlap
-            var daysOverlap = schedules[i].days.some(function (day) {
-              return schedules[j].days.includes(day);
-            });
-
-            if (daysOverlap) {
-              // Check time overlap
-              var overlap = false;
-              if (offA > onA && offB > onB) {
-                // Normal case (no midnight crossing)
-                overlap = onA < offB && offA > onB;
-              } else {
-                // Handle midnight crossing case
-                overlap = true; // Simplified - flag as potential overlap
-              }
-
-              if (overlap) {
-                overlaps.push({
-                  slot1: i + 1,
-                  slot2: j + 1,
-                });
-              }
+            if (
+              getScheduleAction(schedules[i].action) ===
+                getScheduleAction(schedules[j].action) &&
+              scheduleDaysOverlap(schedules[i].days, schedules[j].days) &&
+              rangesOverlapMinutes(startA, endA, startB, endB)
+            ) {
+              overlaps.push({
+                slot1: i + 1,
+                slot2: j + 1,
+              });
             }
           }
         }
@@ -3627,9 +4295,10 @@
       function saveSchedules() {
         var container = document.getElementById("scheduleContainer");
         var slots = container.querySelectorAll(".schedule-slot");
+        var validationDiv = document.getElementById("scheduleValidation");
 
         if (slots.length === 0) {
-          document.getElementById("scheduleValidation").innerHTML =
+          validationDiv.innerHTML =
             '<div class="schedule-error">No schedules to save. Add at least one schedule.</div>';
           return;
         }
@@ -3637,32 +4306,61 @@
         var schedules = [];
 
         slots.forEach(function (slot) {
-          var enabled = slot.querySelector(".schedule-enable").checked;
-          var onTime = slot.querySelector(".schedule-on").value;
-          var offTime = slot.querySelector(".schedule-off").value;
           var days = [];
           slot.querySelectorAll(".day-pill.active").forEach(function (pill) {
             days.push(pill.getAttribute("data-day"));
           });
 
-          schedules.push({
-            enabled: enabled,
-            onTime: onTime,
-            offTime: offTime,
-            days: days,
-          });
+          schedules.push(
+            normalizeScheduleRecord({
+              enabled: slot.querySelector(".schedule-enable").checked,
+              action: slot.querySelector(".schedule-action").value,
+              fromTime: slot.querySelector(".schedule-from").value,
+              toTime: slot.querySelector(".schedule-to").value,
+              days: days,
+            }),
+          );
         });
 
+        for (var i = 0; i < schedules.length; i++) {
+          var schedule = schedules[i];
+          if (!schedule.enabled) continue;
+
+          var startMin = timeToMinutes(schedule.fromTime);
+          var endMin = timeToMinutes(schedule.toTime);
+          if (startMin === null || endMin === null) {
+            validationDiv.innerHTML =
+              '<div class="schedule-error">Schedule ' +
+              (i + 1) +
+              " needs valid From and To times.</div>";
+            return;
+          }
+          if (endMin <= startMin) {
+            validationDiv.innerHTML =
+              '<div class="schedule-error">Schedule ' +
+              (i + 1) +
+              " must have a Time Range where To is after From.</div>";
+            return;
+          }
+          if (!schedule.days.length) {
+            validationDiv.innerHTML =
+              '<div class="schedule-error">Schedule ' +
+              (i + 1) +
+              " needs at least one repeat day.</div>";
+            return;
+          }
+        }
+
         var overlaps = checkScheduleOverlap(schedules);
-        var validationDiv = document.getElementById("scheduleValidation");
 
         if (overlaps.length > 0) {
-          var msg = "Warning: Overlapping schedules detected! ";
+          var msg =
+            "Schedules with the same action cannot overlap on the same repeat days. ";
           overlaps.forEach(function (o) {
             msg +=
               "Schedule " +
               o.slot1 +
-              " overlaps with Schedule " +
+              " conflicts with Schedule " +
               o.slot2 +
               ". ";
           });
@@ -3679,10 +4377,20 @@
           )
             .then(function (d) {
               if (d.ok) {
+                document.getElementById("scheduleContainer").style.display =
+                  "none";
+                clearAllSchedules();
                 validationDiv.innerHTML =
                   '<div class="schedule-success">' +
                   slots.length +
                   " schedule(s) saved successfully!</div>";
+                if (
+                  document
+                    .getElementById("scheduleList")
+                    .classList.contains("active")
+                ) {
+                  loadScheduleList();
+                }
               } else {
                 validationDiv.innerHTML =
                   '<div class="schedule-error">' +
@@ -3702,30 +4410,39 @@
         container.innerHTML = "";
         scheduleCounter = 0;
         document.getElementById("scheduleValidation").innerHTML = "";
+        refreshScheduleSaveActions();
       }
 
-      function loadSchedulesForSwitch() {
+      function loadSchedulesForSwitch(focusIndex, options) {
+        setScheduleSaveActionsVisible(!!(options && options.showSaveButton));
         clearAllSchedules();
         document.getElementById("scheduleValidation").innerHTML = "";
         var sw = document.getElementById("scheduleSwitch").value;
-        apiGet("/api/schedules?sw=" + sw)
+        return apiGet("/api/schedules?sw=" + sw)
           .then(function (arr) {
             if (!Array.isArray(arr)) return;
             arr.forEach(function (s) {
-              addScheduleSlot();
+              var schedule = normalizeScheduleRecord(s);
+              addScheduleSlot({ suppressSaveButton: true });
               var slots = document.querySelectorAll(
                 "#scheduleContainer .schedule-slot",
               );
               var slot = slots[slots.length - 1];
-              slot.querySelector(".schedule-enable").checked = !!s.enabled;
-              slot.querySelector(".schedule-on").value = s.onTime || "";
-              slot.querySelector(".schedule-off").value = s.offTime || "";
-              var days = s.days || [];
+              slot.querySelector(".schedule-enable").checked = schedule.enabled;
+              slot.querySelector(".schedule-action").value = schedule.action;
+              slot.querySelector(".schedule-from").value =
+                schedule.fromTime || "";
+              slot.querySelector(".schedule-to").value = schedule.toTime || "";
+              var days = schedule.days;
               slot.querySelectorAll(".day-pill").forEach(function (pill) {
-                if (days.indexOf(pill.textContent.trim()) >= 0)
+                if (days.indexOf(pill.getAttribute("data-day")) >= 0)
                   pill.classList.add("active");
               });
             });
+
+            if (typeof focusIndex === "number") {
+              highlightSlot("scheduleContainer", focusIndex);
+            }
           })
           .catch(function () {});
       }
@@ -3737,12 +4454,21 @@
         var overlaps = [];
         for (var i = 0; i < schedules.length; i++) {
           if (!schedules[i].enabled) continue;
+          var startA = timeToMinutes(schedules[i].fromTime);
+          var endA = timeToMinutes(schedules[i].toTime);
+          if (startA === null || endA === null || endA <= startA) continue;
+
           for (var j = i + 1; j < schedules.length; j++) {
             if (!schedules[j].enabled) continue;
-            // Check if same date and time
+            var startB = timeToMinutes(schedules[j].fromTime);
+            var endB = timeToMinutes(schedules[j].toTime);
+            if (startB === null || endB === null || endB <= startB) continue;
+
             if (
+              getScheduleAction(schedules[i].action) ===
+                getScheduleAction(schedules[j].action) &&
               schedules[i].date === schedules[j].date &&
-              schedules[i].time === schedules[j].time
+              rangesOverlapMinutes(startA, endA, startB, endB)
             ) {
               overlaps.push({ slot1: i + 1, slot2: j + 1 });
             }
@@ -3754,9 +4480,10 @@
       function saveFutureSchedules() {
         var container = document.getElementById("futureScheduleContainer");
         var slots = container.querySelectorAll(".schedule-slot");
+        var validationDiv = document.getElementById("futureScheduleValidation");
 
         if (slots.length === 0) {
-          document.getElementById("futureScheduleValidation").innerHTML =
+          validationDiv.innerHTML =
             '<div class="schedule-error">No future schedules to save. Add at least one schedule.</div>';
           return;
         }
@@ -3764,29 +4491,56 @@
         var schedules = [];
 
         slots.forEach(function (slot) {
-          var enabled = slot.querySelector(".future-enable").checked;
-          var action = slot.querySelector(".future-action").value;
-          var date = slot.querySelector(".future-date").value;
-          var time = slot.querySelector(".future-time").value;
-
-          schedules.push({
-            enabled: enabled,
-            action: action,
-            date: date,
-            time: time,
-          });
+          schedules.push(
+            normalizeFutureScheduleRecord({
+              enabled: slot.querySelector(".future-enable").checked,
+              action: slot.querySelector(".future-action").value,
+              date: slot.querySelector(".future-date").value,
+              fromTime: slot.querySelector(".future-from").value,
+              toTime: slot.querySelector(".future-to").value,
+            }),
+          );
         });
 
+        for (var i = 0; i < schedules.length; i++) {
+          var schedule = schedules[i];
+          if (!schedule.enabled) continue;
+
+          var startMin = timeToMinutes(schedule.fromTime);
+          var endMin = timeToMinutes(schedule.toTime);
+          if (!schedule.date) {
+            validationDiv.innerHTML =
+              '<div class="schedule-error">Future Schedule ' +
+              (i + 1) +
+              " needs a valid date.</div>";
+            return;
+          }
+          if (startMin === null || endMin === null) {
+            validationDiv.innerHTML =
+              '<div class="schedule-error">Future Schedule ' +
+              (i + 1) +
+              " needs valid From and To times.</div>";
+            return;
+          }
+          if (endMin <= startMin) {
+            validationDiv.innerHTML =
+              '<div class="schedule-error">Future Schedule ' +
+              (i + 1) +
+              " must have a Time Range where To is after From.</div>";
+            return;
+          }
+        }
+
         var overlaps = checkFutureScheduleOverlap(schedules);
-        var validationDiv = document.getElementById("futureScheduleValidation");
 
         if (overlaps.length > 0) {
-          var msg = "Warning: Duplicate schedules detected! ";
+          var msg =
+            "Future schedules with the same action cannot overlap on the same date. ";
           overlaps.forEach(function (o) {
             msg +=
-              "Schedule " +
+              "Future Schedule " +
               o.slot1 +
-              " conflicts with Schedule " +
+              " conflicts with Future Schedule " +
               o.slot2 +
               ". ";
           });
@@ -3803,10 +4557,21 @@
           )
             .then(function (d) {
               if (d.ok) {
+                document.getElementById(
+                  "futureScheduleContainer",
+                ).style.display = "none";
+                clearAllFutureSchedules();
                 validationDiv.innerHTML =
                   '<div class="schedule-success">' +
                   slots.length +
                   " future schedule(s) saved successfully!</div>";
+                if (
+                  document
+                    .getElementById("futureScheduleList")
+                    .classList.contains("active")
+                ) {
+                  loadFutureScheduleList();
+                }
               } else {
                 validationDiv.innerHTML =
                   '<div class="schedule-error">' +
@@ -3826,28 +4591,409 @@
         container.innerHTML = "";
         futureScheduleCounter = 0;
         document.getElementById("futureScheduleValidation").innerHTML = "";
+        refreshFutureScheduleSaveActions();
       }
 
-      function loadFutureSchedulesForSwitch() {
+      function loadFutureSchedulesForSwitch(focusIndex, options) {
+        setFutureScheduleSaveActionsVisible(
+          !!(options && options.showSaveButton),
+        );
         clearAllFutureSchedules();
         document.getElementById("futureScheduleValidation").innerHTML = "";
         var sw = document.getElementById("futureScheduleSwitch").value;
-        apiGet("/api/fschedules?sw=" + sw)
+        return apiGet("/api/fschedules?sw=" + sw)
           .then(function (arr) {
             if (!Array.isArray(arr)) return;
             arr.forEach(function (s) {
-              addFutureScheduleSlot();
+              var schedule = normalizeFutureScheduleRecord(s);
+              addFutureScheduleSlot({ suppressSaveButton: true });
               var slots = document.querySelectorAll(
                 "#futureScheduleContainer .schedule-slot",
               );
               var slot = slots[slots.length - 1];
-              slot.querySelector(".future-enable").checked = !!s.enabled;
-              slot.querySelector(".future-action").value = s.action || "on";
-              slot.querySelector(".future-date").value = s.date || "";
-              slot.querySelector(".future-time").value = s.time || "";
+              slot.querySelector(".future-enable").checked = schedule.enabled;
+              slot.querySelector(".future-action").value = schedule.action;
+              slot.querySelector(".future-date").value = schedule.date || "";
+              slot.querySelector(".future-from").value =
+                schedule.fromTime || "";
+              slot.querySelector(".future-to").value = schedule.toTime || "";
             });
+
+            if (typeof focusIndex === "number") {
+              highlightSlot("futureScheduleContainer", focusIndex);
+            }
           })
           .catch(function () {});
+      }
+
+      function toggleTimerList(forceVisible) {
+        var list = document.getElementById("timerList");
+        if (!list) return;
+        var visible =
+          typeof forceVisible === "boolean"
+            ? forceVisible
+            : !list.classList.contains("active");
+        setAutomationListVisibility(
+          "timerList",
+          "showTimersBtn",
+          visible,
+          "Show Timers",
+          "Hide Timers",
+        );
+        if (visible) {
+          loadTimerList();
+        }
+      }
+
+      function loadTimerList() {
+        var list = document.getElementById("timerList");
+        if (!list) return Promise.resolve();
+        list.innerHTML =
+          '<div class="automation-empty">Loading timers...</div>';
+        return apiGet("/api/timers")
+          .then(function (arr) {
+            timerListCache = Array.isArray(arr) ? arr.slice() : [];
+            timerListCache.sort(function (a, b) {
+              return (parseInt(a.sw, 10) || 0) - (parseInt(b.sw, 10) || 0);
+            });
+            renderTimerList(timerListCache);
+          })
+          .catch(function () {
+            list.innerHTML =
+              '<div class="automation-empty">Unable to load timers right now.</div>';
+          });
+      }
+
+      function editTimer(sw) {
+        var switchIndex = parseInt(sw, 10);
+        var timer = timerListCache.find(function (entry) {
+          return (parseInt(entry.sw, 10) || 0) === switchIndex;
+        });
+        if (!timer) {
+          alert("Timer not found.");
+          return;
+        }
+        populateTimerForm(timer);
+        toggleTimerList(false);
+      }
+
+      function removeTimer(sw) {
+        var switchIndex = parseInt(sw, 10) || 0;
+        apiPost("/api/timer/clear", "sw=" + switchIndex)
+          .then(function (d) {
+            if (d.ok) {
+              alert("Timer removed!");
+              loadTimerList();
+            } else {
+              alert(d.error || "Failed to remove timer");
+            }
+          })
+          .catch(function () {
+            alert("Connection error");
+          });
+      }
+
+      function toggleScheduleList(forceVisible) {
+        var list = document.getElementById("scheduleList");
+        if (!list) return;
+        var visible =
+          typeof forceVisible === "boolean"
+            ? forceVisible
+            : !list.classList.contains("active");
+        setAutomationListVisibility(
+          "scheduleList",
+          "showSchedulesBtn",
+          visible,
+          "Show Schedules",
+          "Hide Schedules",
+        );
+        if (visible) {
+          loadScheduleList();
+        }
+      }
+
+      function loadScheduleList() {
+        var list = document.getElementById("scheduleList");
+        if (!list) return Promise.resolve();
+        list.innerHTML =
+          '<div class="automation-empty">Loading schedules...</div>';
+
+        var requests = [];
+        for (var sw = 0; sw < 4; sw++) {
+          (function (switchIndex) {
+            requests.push(
+              apiGet("/api/schedules?sw=" + switchIndex)
+                .then(function (arr) {
+                  return {
+                    sw: switchIndex,
+                    items: Array.isArray(arr) ? arr : [],
+                  };
+                })
+                .catch(function () {
+                  return { sw: switchIndex, items: [] };
+                }),
+            );
+          })(sw);
+        }
+
+        return Promise.all(requests).then(function (results) {
+          scheduleListCache = [];
+          results.forEach(function (result) {
+            result.items.forEach(function (item, index) {
+              scheduleListCache.push({
+                sw: result.sw,
+                index: index,
+                data: item,
+              });
+            });
+          });
+          scheduleListCache.sort(function (a, b) {
+            return (
+              (parseInt(a.sw, 10) || 0) - (parseInt(b.sw, 10) || 0) ||
+              (parseInt(a.index, 10) || 0) - (parseInt(b.index, 10) || 0)
+            );
+          });
+          renderScheduleList(scheduleListCache);
+        });
+      }
+
+      function editSchedule(sw, index) {
+        var switchIndex = parseInt(sw, 10) || 0;
+        var slotIndex = parseInt(index, 10) || 0;
+        var select = document.getElementById("scheduleSwitch");
+        if (select) select.value = String(switchIndex);
+        toggleScheduleList(false);
+        document.getElementById("scheduleContainer").style.display = "";
+        loadSchedulesForSwitch(slotIndex, { showSaveButton: true });
+      }
+
+      function removeSchedule(sw, index) {
+        var switchIndex = parseInt(sw, 10) || 0;
+        var slotIndex = parseInt(index, 10) || 0;
+        apiGet("/api/schedules?sw=" + switchIndex)
+          .then(function (arr) {
+            var schedules = Array.isArray(arr) ? arr.slice() : [];
+            if (slotIndex < 0 || slotIndex >= schedules.length) {
+              throw new Error("Schedule not found");
+            }
+            schedules.splice(slotIndex, 1);
+            return apiPost(
+              "/api/schedules",
+              "sw=" +
+                switchIndex +
+                "&data=" +
+                encodeURIComponent(JSON.stringify(schedules)),
+            );
+          })
+          .then(function (d) {
+            if (d.ok) {
+              alert("Schedule removed!");
+              if (
+                document.getElementById("scheduleSwitch").value ===
+                String(switchIndex)
+              ) {
+                document.getElementById("scheduleContainer").style.display =
+                  "none";
+                clearAllSchedules();
+              }
+              loadScheduleList();
+            } else {
+              alert(d.error || "Failed to remove schedule");
+            }
+          })
+          .catch(function (err) {
+            alert(err && err.message ? err.message : "Connection error");
+          });
+      }
+
+      function toggleFutureScheduleList(forceVisible) {
+        var list = document.getElementById("futureScheduleList");
+        if (!list) return;
+        var visible =
+          typeof forceVisible === "boolean"
+            ? forceVisible
+            : !list.classList.contains("active");
+        setAutomationListVisibility(
+          "futureScheduleList",
+          "showFutureSchedulesBtn",
+          visible,
+          "Show Future Schedules",
+          "Hide Future Schedules",
+        );
+        if (visible) {
+          loadFutureScheduleList();
+        }
+      }
+
+      function loadFutureScheduleList() {
+        var list = document.getElementById("futureScheduleList");
+        if (!list) return Promise.resolve();
+        list.innerHTML =
+          '<div class="automation-empty">Loading future schedules...</div>';
+
+        var requests = [];
+        for (var sw = 0; sw < 4; sw++) {
+          (function (switchIndex) {
+            requests.push(
+              apiGet("/api/fschedules?sw=" + switchIndex)
+                .then(function (arr) {
+                  return {
+                    sw: switchIndex,
+                    items: Array.isArray(arr) ? arr : [],
+                  };
+                })
+                .catch(function () {
+                  return { sw: switchIndex, items: [] };
+                }),
+            );
+          })(sw);
+        }
+
+        return Promise.all(requests).then(function (results) {
+          futureScheduleListCache = [];
+          results.forEach(function (result) {
+            result.items.forEach(function (item, index) {
+              futureScheduleListCache.push({
+                sw: result.sw,
+                index: index,
+                data: item,
+              });
+            });
+          });
+          futureScheduleListCache.sort(function (a, b) {
+            return (
+              (parseInt(a.sw, 10) || 0) - (parseInt(b.sw, 10) || 0) ||
+              (parseInt(a.index, 10) || 0) - (parseInt(b.index, 10) || 0)
+            );
+          });
+          renderFutureScheduleList(futureScheduleListCache);
+        });
+      }
+
+      function editFutureSchedule(sw, index) {
+        var switchIndex = parseInt(sw, 10) || 0;
+        var slotIndex = parseInt(index, 10) || 0;
+        var select = document.getElementById("futureScheduleSwitch");
+        if (select) select.value = String(switchIndex);
+        toggleFutureScheduleList(false);
+        document.getElementById("futureScheduleContainer").style.display = "";
+        loadFutureSchedulesForSwitch(slotIndex, { showSaveButton: true });
+      }
+
+      function toggleSensorAutomationList(forceVisible) {
+        var list = document.getElementById("sensorAutomationList");
+        if (!list) return;
+        var visible =
+          typeof forceVisible === "boolean"
+            ? forceVisible
+            : !list.classList.contains("active");
+        setAutomationListVisibility(
+          "sensorAutomationList",
+          "showSensorAutomationsBtn",
+          visible,
+          "Show Automations",
+          "Hide Automations",
+        );
+        if (visible) {
+          loadSensorAutomationList();
+        }
+      }
+
+      function loadSensorAutomationList() {
+        var list = document.getElementById("sensorAutomationList");
+        if (!list) return Promise.resolve();
+        list.innerHTML =
+          '<div class="automation-empty">Loading sensor automations...</div>';
+
+        var sensorEndpoints = [
+          { type: "temp", url: "/api/sensor/temp?sw=" },
+          { type: "humid", url: "/api/sensor/humid?sw=" },
+          { type: "sun", url: "/api/sensor/sun?sw=" },
+        ];
+        var requests = [];
+
+        for (var sw = 0; sw < 4; sw++) {
+          sensorEndpoints.forEach(function (endpoint) {
+            requests.push(
+              (function (switchIndex, sensorEndpoint) {
+                return apiGet(sensorEndpoint.url + switchIndex)
+                  .then(function (data) {
+                    return {
+                      sw: switchIndex,
+                      type: sensorEndpoint.type,
+                      data: data || {},
+                    };
+                  })
+                  .catch(function () {
+                    return {
+                      sw: switchIndex,
+                      type: sensorEndpoint.type,
+                      data: {},
+                    };
+                  });
+              })(sw, endpoint),
+            );
+          });
+        }
+
+        return Promise.all(requests)
+          .then(function (results) {
+            sensorAutomationListCache = results.filter(function (entry) {
+              return hasSensorAutomationData(entry.data);
+            });
+            sensorAutomationListCache.sort(function (a, b) {
+              return (
+                (parseInt(a.sw, 10) || 0) - (parseInt(b.sw, 10) || 0) ||
+                getSensorAutomationTypeOrder(a.type) -
+                  getSensorAutomationTypeOrder(b.type)
+              );
+            });
+            renderSensorAutomationList(sensorAutomationListCache);
+          })
+          .catch(function () {
+            list.innerHTML =
+              '<div class="automation-empty">Unable to load sensor automations right now.</div>';
+          });
+      }
+
+      function removeFutureSchedule(sw, index) {
+        var switchIndex = parseInt(sw, 10) || 0;
+        var slotIndex = parseInt(index, 10) || 0;
+        apiGet("/api/fschedules?sw=" + switchIndex)
+          .then(function (arr) {
+            var schedules = Array.isArray(arr) ? arr.slice() : [];
+            if (slotIndex < 0 || slotIndex >= schedules.length) {
+              throw new Error("Future schedule not found");
+            }
+            schedules.splice(slotIndex, 1);
+            return apiPost(
+              "/api/fschedules",
+              "sw=" +
+                switchIndex +
+                "&data=" +
+                encodeURIComponent(JSON.stringify(schedules)),
+            );
+          })
+          .then(function (d) {
+            if (d.ok) {
+              alert("Future schedule removed!");
+              if (
+                document.getElementById("futureScheduleSwitch").value ===
+                String(switchIndex)
+              ) {
+                document.getElementById(
+                  "futureScheduleContainer",
+                ).style.display = "none";
+                clearAllFutureSchedules();
+              }
+              loadFutureScheduleList();
+            } else {
+              alert(d.error || "Failed to remove future schedule");
+            }
+          })
+          .catch(function (err) {
+            alert(err && err.message ? err.message : "Connection error");
+          });
       }
 
       /* ══════════════════════════════════════════════════════════════
@@ -4319,6 +5465,13 @@
           .then(function (d) {
             if (d.ok) {
               alert("Temperature control settings saved successfully!");
+              if (
+                document
+                  .getElementById("sensorAutomationList")
+                  .classList.contains("active")
+              ) {
+                loadSensorAutomationList();
+              }
             } else {
               alert(d.error || "Save failed");
             }
@@ -4363,6 +5516,13 @@
           .then(function (d) {
             if (d.ok) {
               alert("Humidity control settings saved successfully!");
+              if (
+                document
+                  .getElementById("sensorAutomationList")
+                  .classList.contains("active")
+              ) {
+                loadSensorAutomationList();
+              }
             } else {
               alert(d.error || "Save failed");
             }
@@ -4394,6 +5554,13 @@
           .then(function (d) {
             if (d.ok) {
               alert("Sunset/Sunrise control settings saved successfully!");
+              if (
+                document
+                  .getElementById("sensorAutomationList")
+                  .classList.contains("active")
+              ) {
+                loadSensorAutomationList();
+              }
             } else {
               alert(d.error || "Save failed");
             }
@@ -4530,12 +5697,12 @@
               .then(function (d) {
                 if (d.ok) {
                   for (var i = 0; i < inputs.length; i++) {
-                    switchNamesState[i] = inputs[i].value || switchNamesState[i];
+                    switchNamesState[i] =
+                      inputs[i].value || switchNamesState[i];
                   }
                   refreshSwitchSettingsUi();
                   alert("Names saved!");
-                }
-                else alert(d.error || "Save failed");
+                } else alert(d.error || "Save failed");
               })
               .catch(function () {
                 alert("Connection error");
@@ -4552,7 +5719,10 @@
             for (var i = 0; i < 4; i++) {
               if (i > 0) body += "&";
               body +=
-                "icon" + i + "=" + encodeURIComponent(normalizeIconName(switchIconsState[i]));
+                "icon" +
+                i +
+                "=" +
+                encodeURIComponent(normalizeIconName(switchIconsState[i]));
             }
             apiPost("/api/switches/icons", body)
               .then(function (d) {
@@ -4596,26 +5766,22 @@
           });
         }
 
-        /* — Timer: Set / Clear buttons — */
+        /* — Timer: Set button — */
         var timerPanel = document.getElementById("panel-auto-timer");
         if (timerPanel) {
-          var timerBtns = timerPanel.querySelectorAll(".cfg-btn");
-          var timerClearBtn = null,
-            timerSetBtn = null;
-          timerBtns.forEach(function (btn) {
-            if (btn.textContent.trim() === "Clear") timerClearBtn = btn;
-            if (btn.textContent.trim() === "Set Timer") timerSetBtn = btn;
-          });
+          var timerSwitchSelect = document.getElementById("timerSwitch");
+          var timerActionSelect = document.getElementById("timerAction");
+          var timerHoursInput = document.getElementById("timerHours");
+          var timerMinutesInput = document.getElementById("timerMinutes");
+          var timerSecondsInput = document.getElementById("timerSeconds");
+          var timerSetBtn = document.getElementById("setTimerBtn");
           if (timerSetBtn) {
             timerSetBtn.addEventListener("click", function () {
-              var selects = timerPanel.querySelectorAll("select");
-              var nums = timerPanel.querySelectorAll('input[type="number"]');
-              var sw = selects[0] ? selects[0].selectedIndex : 0;
-              var action =
-                selects[1] && selects[1].selectedIndex === 1 ? "on" : "off";
-              var h = nums[0] ? nums[0].value : 0;
-              var m = nums[1] ? nums[1].value : 0;
-              var s = nums[2] ? nums[2].value : 0;
+              var sw = timerSwitchSelect ? timerSwitchSelect.value : 0;
+              var action = timerActionSelect ? timerActionSelect.value : "off";
+              var h = timerHoursInput ? timerHoursInput.value : 0;
+              var m = timerMinutesInput ? timerMinutesInput.value : 0;
+              var s = timerSecondsInput ? timerSecondsInput.value : 0;
               apiPost(
                 "/api/timer/set",
                 "sw=" +
@@ -4630,23 +5796,20 @@
                   action,
               )
                 .then(function (d) {
-                  if (d.ok) alert("Timer set!");
-                  else alert(d.error || "Failed");
+                  if (d.ok) {
+                    alert("Timer set!");
+                    if (
+                      document
+                        .getElementById("timerList")
+                        .classList.contains("active")
+                    ) {
+                      loadTimerList();
+                    }
+                  } else alert(d.error || "Failed");
                 })
                 .catch(function () {
                   alert("Connection error");
                 });
-            });
-          }
-          if (timerClearBtn) {
-            timerClearBtn.addEventListener("click", function () {
-              var selects = timerPanel.querySelectorAll("select");
-              var sw = selects[0] ? selects[0].selectedIndex : 0;
-              apiPost("/api/timer/clear", "sw=" + sw)
-                .then(function (d) {
-                  if (d.ok) alert("Timer cleared!");
-                })
-                .catch(function () {});
             });
           }
         }
