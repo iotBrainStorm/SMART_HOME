@@ -961,10 +961,10 @@
         <!-- Switch Icon -->
         <div class="panel" id="panel-sw-icon">
           <div class="panel-title">Switch Icons</div>
-          <div class="setting-row">
+          <div class="setting-row" data-switch-index="0">
             <div class="setting-info">
-              <div class="setting-label">Switch 1 — Living Room</div>
-              <div class="setting-sub">Current: Home icon</div>
+              <div class="setting-label switch-icon-label">Switch 1 — Living Room</div>
+              <div class="setting-sub switch-icon-sub">Current: Home icon</div>
             </div>
             <button
               class="cfg-btn cfg-btn-secondary"
@@ -973,10 +973,10 @@
               Change
             </button>
           </div>
-          <div class="setting-row">
+          <div class="setting-row" data-switch-index="1">
             <div class="setting-info">
-              <div class="setting-label">Switch 2 — Bedroom</div>
-              <div class="setting-sub">Current: Monitor icon</div>
+              <div class="setting-label switch-icon-label">Switch 2 — Bedroom</div>
+              <div class="setting-sub switch-icon-sub">Current: Bedroom icon</div>
             </div>
             <button
               class="cfg-btn cfg-btn-secondary"
@@ -985,10 +985,10 @@
               Change
             </button>
           </div>
-          <div class="setting-row">
+          <div class="setting-row" data-switch-index="2">
             <div class="setting-info">
-              <div class="setting-label">Switch 3 — Kitchen</div>
-              <div class="setting-sub">Current: Cup icon</div>
+              <div class="setting-label switch-icon-label">Switch 3 — Kitchen</div>
+              <div class="setting-sub switch-icon-sub">Current: Kitchen icon</div>
             </div>
             <button
               class="cfg-btn cfg-btn-secondary"
@@ -997,16 +997,21 @@
               Change
             </button>
           </div>
-          <div class="setting-row">
+          <div class="setting-row" data-switch-index="3">
             <div class="setting-info">
-              <div class="setting-label">Switch 4 — Bathroom</div>
-              <div class="setting-sub">Current: Droplet icon</div>
+              <div class="setting-label switch-icon-label">Switch 4 — Bathroom</div>
+              <div class="setting-sub switch-icon-sub">Current: Bathroom icon</div>
             </div>
             <button
               class="cfg-btn cfg-btn-secondary"
               onclick="openIconPicker(3)"
             >
               Change
+            </button>
+          </div>
+          <div style="margin-top: 16px; text-align: right">
+            <button class="cfg-btn cfg-btn-primary" id="saveSwitchIconsBtn">
+              Save Icon
             </button>
           </div>
         </div>
@@ -1022,9 +1027,10 @@
           <!-- Switch 1 -->
           <div
             class="setting-row"
+            data-switch-index="0"
             style="flex-direction: column; align-items: flex-start; gap: 12px"
           >
-            <div class="setting-label">Switch 1 — Living Room</div>
+            <div class="setting-label relay-switch-label">Switch 1 — Living Room</div>
             <div class="radio-group" data-switch="0">
               <label class="radio-option selected">
                 <input type="radio" name="relay-state-0" value="off" checked />
@@ -1061,6 +1067,7 @@
           <!-- Switch 2 -->
           <div
             class="setting-row"
+            data-switch-index="1"
             style="
               flex-direction: column;
               align-items: flex-start;
@@ -1068,7 +1075,7 @@
               margin-top: 20px;
             "
           >
-            <div class="setting-label">Switch 2 — Bedroom</div>
+            <div class="setting-label relay-switch-label">Switch 2 — Bedroom</div>
             <div class="radio-group" data-switch="1">
               <label class="radio-option selected">
                 <input type="radio" name="relay-state-1" value="off" checked />
@@ -1105,6 +1112,7 @@
           <!-- Switch 3 -->
           <div
             class="setting-row"
+            data-switch-index="2"
             style="
               flex-direction: column;
               align-items: flex-start;
@@ -1112,7 +1120,7 @@
               margin-top: 20px;
             "
           >
-            <div class="setting-label">Switch 3 — Kitchen</div>
+            <div class="setting-label relay-switch-label">Switch 3 — Kitchen</div>
             <div class="radio-group" data-switch="2">
               <label class="radio-option selected">
                 <input type="radio" name="relay-state-2" value="off" checked />
@@ -1149,6 +1157,7 @@
           <!-- Switch 4 -->
           <div
             class="setting-row"
+            data-switch-index="3"
             style="
               flex-direction: column;
               align-items: flex-start;
@@ -1156,7 +1165,7 @@
               margin-top: 20px;
             "
           >
-            <div class="setting-label">Switch 4 — Bathroom</div>
+            <div class="setting-label relay-switch-label">Switch 4 — Bathroom</div>
             <div class="radio-group" data-switch="3">
               <label class="radio-option selected">
                 <input type="radio" name="relay-state-3" value="off" checked />
@@ -1191,7 +1200,7 @@
           </div>
 
           <div style="margin-top: 20px; text-align: right">
-            <button class="cfg-btn cfg-btn-primary">Save Settings</button>
+            <button class="cfg-btn cfg-btn-primary">Save Relay State</button>
           </div>
         </div>
 
@@ -3247,17 +3256,130 @@
       /* ══════════════════════════════════════════════════════════════
          ICON PICKER MODAL
       ══════════════════════════════════════════════════════════════ */
+      var switchNamesState = [
+        "Living Room",
+        "Bedroom",
+        "Kitchen",
+        "Bathroom",
+      ];
+      var switchIconsState = ["home", "bedroom", "kitchen", "bathroom"];
+      var relayModesState = ["off", "off", "off", "off"];
       var iconPickerModal = document.getElementById("iconPickerModal");
       var currentIconSwitch = 0;
       var selectedIcon = null;
 
+      function normalizeIconName(iconName) {
+        var aliases = {
+          monitor: "tv",
+          cup: "kitchen",
+          droplet: "bathroom",
+        };
+        return aliases[iconName] || iconName || "home";
+      }
+
+      function getIconDisplayName(iconName) {
+        var normalized = normalizeIconName(iconName);
+        var option = document.querySelector(
+          '.icon-option[data-icon="' + normalized + '"]',
+        );
+        if (option && option.getAttribute("title")) {
+          return option.getAttribute("title");
+        }
+        return normalized
+          .replace(/[-_]+/g, " ")
+          .replace(/\b\w/g, function (ch) {
+            return ch.toUpperCase();
+          });
+      }
+
+      function updateSwitchSelectLabels() {
+        var allSwitchSelects = document.querySelectorAll(
+          "#scheduleSwitch, #futureScheduleSwitch, #tempSwitch, #humidSwitch, #sunSwitch",
+        );
+        allSwitchSelects.forEach(function (sel) {
+          for (var i = 0; i < sel.options.length && i < 4; i++) {
+            sel.options[i].textContent =
+              "Switch " + (i + 1) + " — " + switchNamesState[i];
+          }
+        });
+
+        var timerSelects = document.querySelectorAll("#panel-auto-timer select");
+        if (timerSelects[0]) {
+          for (var i = 0; i < timerSelects[0].options.length && i < 4; i++) {
+            timerSelects[0].options[i].textContent =
+              "Switch " + (i + 1) + " — " + switchNamesState[i];
+          }
+        }
+      }
+
+      function refreshSwitchSettingsUi() {
+        var nameRows = document.querySelectorAll("#panel-sw-name .setting-row");
+        var iconRows = document.querySelectorAll(
+          "#panel-sw-icon .setting-row[data-switch-index]",
+        );
+        var relayRows = document.querySelectorAll(
+          "#panel-sw-relay .setting-row[data-switch-index]",
+        );
+
+        for (var i = 0; i < 4; i++) {
+          if (nameRows[i]) {
+            var nameSub = nameRows[i].querySelector(".setting-sub");
+            if (nameSub) nameSub.textContent = switchNamesState[i];
+          }
+
+          if (iconRows[i]) {
+            var iconLabel = iconRows[i].querySelector(".switch-icon-label");
+            var iconSub = iconRows[i].querySelector(".switch-icon-sub");
+            if (iconLabel) {
+              iconLabel.textContent =
+                "Switch " + (i + 1) + " — " + switchNamesState[i];
+            }
+            if (iconSub) {
+              iconSub.textContent =
+                "Current: " + getIconDisplayName(switchIconsState[i]) + " icon";
+            }
+          }
+
+          if (relayRows[i]) {
+            var relayLabel = relayRows[i].querySelector(".relay-switch-label");
+            if (relayLabel) {
+              relayLabel.textContent =
+                "Switch " + (i + 1) + " — " + switchNamesState[i];
+            }
+          }
+
+          var relayValue = relayModesState[i] || "off";
+          var radio = document.querySelector(
+            'input[name="relay-state-' + i + '"][value="' + relayValue + '"]',
+          );
+          if (radio) {
+            radio.checked = true;
+            var group = radio.closest(".radio-group");
+            if (group) {
+              group.querySelectorAll(".radio-option").forEach(function (opt) {
+                opt.classList.remove("selected");
+              });
+            }
+            radio.closest(".radio-option").classList.add("selected");
+          }
+        }
+
+        updateSwitchSelectLabels();
+      }
+
       function openIconPicker(switchIndex) {
         currentIconSwitch = switchIndex;
-        selectedIcon = null;
+        selectedIcon = normalizeIconName(switchIconsState[switchIndex]);
         // Reset selection
         document.querySelectorAll(".icon-option").forEach(function (opt) {
           opt.classList.remove("selected");
         });
+        var currentOption = document.querySelector(
+          '.icon-option[data-icon="' + selectedIcon + '"]',
+        );
+        if (currentOption) {
+          currentOption.classList.add("selected");
+        }
         iconPickerModal.classList.remove("hidden");
       }
 
@@ -3267,18 +3389,8 @@
 
       function selectIcon() {
         if (selectedIcon) {
-          var body =
-            "icon" + currentIconSwitch + "=" + encodeURIComponent(selectedIcon);
-          apiPost("/api/switches/icons", body).then(function (d) {
-            if (d.ok) {
-              var panel = document.getElementById("panel-sw-icon");
-              var rows = panel.querySelectorAll(".setting-row");
-              if (rows[currentIconSwitch]) {
-                var sub = rows[currentIconSwitch].querySelector(".setting-sub");
-                if (sub) sub.textContent = "Current: " + selectedIcon + " icon";
-              }
-            }
-          });
+          switchIconsState[currentIconSwitch] = normalizeIconName(selectedIcon);
+          refreshSwitchSettingsUi();
           closeIconPicker();
         }
       }
@@ -3290,7 +3402,7 @@
             o.classList.remove("selected");
           });
           this.classList.add("selected");
-          selectedIcon = this.getAttribute("data-icon");
+          selectedIcon = normalizeIconName(this.getAttribute("data-icon"));
         });
       });
 
@@ -4416,8 +4528,40 @@
             }
             apiPost("/api/switches/names", body)
               .then(function (d) {
-                if (d.ok) alert("Names saved!");
+                if (d.ok) {
+                  for (var i = 0; i < inputs.length; i++) {
+                    switchNamesState[i] = inputs[i].value || switchNamesState[i];
+                  }
+                  refreshSwitchSettingsUi();
+                  alert("Names saved!");
+                }
                 else alert(d.error || "Save failed");
+              })
+              .catch(function () {
+                alert("Connection error");
+              });
+          });
+        }
+
+        /* — Switch Icons: Save button — */
+        var iconPanel = document.getElementById("panel-sw-icon");
+        var iconSaveBtn = document.getElementById("saveSwitchIconsBtn");
+        if (iconPanel && iconSaveBtn) {
+          iconSaveBtn.addEventListener("click", function () {
+            var body = "";
+            for (var i = 0; i < 4; i++) {
+              if (i > 0) body += "&";
+              body +=
+                "icon" + i + "=" + encodeURIComponent(normalizeIconName(switchIconsState[i]));
+            }
+            apiPost("/api/switches/icons", body)
+              .then(function (d) {
+                if (d.ok) {
+                  refreshSwitchSettingsUi();
+                  alert("Icon saved!");
+                } else {
+                  alert(d.error || "Save failed");
+                }
               })
               .catch(function () {
                 alert("Connection error");
@@ -4437,8 +4581,9 @@
               var checked = document.querySelector(
                 'input[name="relay-state-' + i + '"]:checked',
               );
+              relayModesState[i] = checked ? checked.value : "off";
               if (i > 0) body += "&";
-              body += "relay" + i + "=" + (checked ? checked.value : "off");
+              body += "relay" + i + "=" + relayModesState[i];
             }
             apiPost("/api/switches/relay", body)
               .then(function (d) {
@@ -4788,70 +4933,23 @@
             var nameInputs = document.querySelectorAll(
               "#panel-sw-name .cfg-input",
             );
-            var iconRows = document.querySelectorAll(
-              "#panel-sw-icon .setting-row",
-            );
             for (var i = 0; i < 4; i++) {
               if (d.names && d.names[i] && nameInputs[i]) {
+                switchNamesState[i] = d.names[i];
                 nameInputs[i].value = d.names[i];
                 var sub = nameInputs[i]
                   .closest(".setting-row")
                   .querySelector(".setting-sub");
                 if (sub) sub.textContent = d.names[i];
               }
-              if (d.icons && d.icons[i] && iconRows[i]) {
-                var iconSub = iconRows[i].querySelector(".setting-sub");
-                if (iconSub)
-                  iconSub.textContent = "Current: " + d.icons[i] + " icon";
+              if (d.icons && d.icons[i]) {
+                switchIconsState[i] = normalizeIconName(d.icons[i]);
               }
               if (d.relays && d.relays[i]) {
-                var radio = document.querySelector(
-                  'input[name="relay-state-' +
-                    i +
-                    '"][value="' +
-                    d.relays[i] +
-                    '"]',
-                );
-                if (radio) {
-                  radio.checked = true;
-                  var group = radio.closest(".radio-group");
-                  if (group) {
-                    group
-                      .querySelectorAll(".radio-option")
-                      .forEach(function (o) {
-                        o.classList.remove("selected");
-                      });
-                    radio.closest(".radio-option").classList.add("selected");
-                  }
-                }
+                relayModesState[i] = d.relays[i];
               }
             }
-            // Update switch labels in timer/schedule selects
-            var allSwitchSelects = document.querySelectorAll(
-              "#scheduleSwitch, #futureScheduleSwitch, #tempSwitch, #humidSwitch, #sunSwitch",
-            );
-            allSwitchSelects.forEach(function (sel) {
-              for (var i = 0; i < sel.options.length && i < 4; i++) {
-                if (d.names && d.names[i]) {
-                  sel.options[i].textContent =
-                    "Switch " + (i + 1) + " — " + d.names[i];
-                }
-              }
-            });
-            var timerSelects = document.querySelectorAll(
-              "#panel-auto-timer select",
-            );
-            if (timerSelects[0] && d.names) {
-              for (
-                var i = 0;
-                i < timerSelects[0].options.length && i < 4;
-                i++
-              ) {
-                if (d.names[i])
-                  timerSelects[0].options[i].textContent =
-                    "Switch " + (i + 1) + " — " + d.names[i];
-              }
-            }
+            refreshSwitchSettingsUi();
           })
           .catch(function () {});
 
