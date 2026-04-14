@@ -4,6 +4,8 @@
 #include <ESPAsyncWebServer.h>
 #include <HTTPClient.h>
 #include <Wire.h>
+#include <SPI.h>
+#include <EEPROM.h>
 #include <SPIFFS.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
@@ -14,9 +16,7 @@
 #include "esp_bt_device.h"
 #include "esp_gap_bt_api.h"
 
-// ═══════════════════════════════════════════════════════
 //  PIN DEFINITIONS
-// ═══════════════════════════════════════════════════════
 #define INPUT_SWITCH_1 34
 #define INPUT_SWITCH_2 35
 #define INPUT_SWITCH_3 36
@@ -29,31 +29,27 @@
 
 #define LED_PIN 16
 #define BUZZER_PIN 17
+#define BOOT_BUTTON 0
 
 #define NUM_SWITCHES 4
 
 const int outPin[NUM_SWITCHES] = {OUTPUT_SWITCH_1, OUTPUT_SWITCH_2, OUTPUT_SWITCH_3, OUTPUT_SWITCH_4};
 const int inPin[NUM_SWITCHES] = {INPUT_SWITCH_1, INPUT_SWITCH_2, INPUT_SWITCH_3, INPUT_SWITCH_4};
 
-// ═══════════════════════════════════════════════════════
 //  GLOBAL OBJECTS
-// ═══════════════════════════════════════════════════════
 AsyncWebServer server(80);
 Preferences prefs;
 Adafruit_AHT10 aht;
 BluetoothSerial SerialBT;
 
-// ═══════════════════════════════════════════════════════
 //  STATE VARIABLES
-// ═══════════════════════════════════════════════════════
-
 // Switch state
 bool swState[NUM_SWITCHES] = {false, false, false, false};
 String swName[NUM_SWITCHES] = {"Living Room", "Bedroom", "Kitchen", "Bathroom"};
 String swIcon[NUM_SWITCHES] = {"home", "bedroom", "kitchen", "bathroom"};
 String relayMode[NUM_SWITCHES] = {"off", "off", "off", "off"};
 
-// Timers — volatile (RAM only, lost on power cut)
+// Timers â€” volatile (RAM only, lost on power cut)
 struct SwTimer
 {
   bool active = false;
@@ -102,9 +98,7 @@ int lastCheckedMinute = -1;
 bool restartFlag = false;
 unsigned long restartAt = 0;
 
-// ═══════════════════════════════════════════════════════
 //  BEEP + LED ON NVS CHANGE
-// ═══════════════════════════════════════════════════════
 void notifyStorage()
 {
   digitalWrite(LED_PIN, HIGH);
@@ -114,9 +108,7 @@ void notifyStorage()
   digitalWrite(LED_PIN, LOW);
 }
 
-// ═══════════════════════════════════════════════════════
-//  TIMEZONE PARSING  "+05:30" → seconds
-// ═══════════════════════════════════════════════════════
+//  TIMEZONE PARSING  "+05:30" â†’ seconds
 void parseTZ()
 {
   int sign = 1;
@@ -132,9 +124,7 @@ void parseTZ()
   gmtOff = sign * (h * 3600L + m * 60L);
 }
 
-// ═══════════════════════════════════════════════════════
 //  LOAD ALL SETTINGS FROM NVS
-// ═══════════════════════════════════════════════════════
 void loadSwitchSettings()
 {
   prefs.begin("sw", true);
@@ -195,9 +185,7 @@ void loadAdminSettings()
   parseTZ();
 }
 
-// ═══════════════════════════════════════════════════════
 //  USER MANAGEMENT HELPERS
-// ═══════════════════════════════════════════════════════
 void initDefaultUser()
 {
   prefs.begin("users", false);
@@ -297,9 +285,7 @@ int countAdmins()
   return a;
 }
 
-// ═══════════════════════════════════════════════════════
 //  SWITCH CONTROL
-// ═══════════════════════════════════════════════════════
 void setSwitch(int i, bool st)
 {
   if (i < 0 || i >= NUM_SWITCHES)
@@ -314,9 +300,7 @@ void setSwitch(int i, bool st)
   }
 }
 
-// ═══════════════════════════════════════════════════════
 //  TIME SYNC
-// ═══════════════════════════════════════════════════════
 bool syncTime()
 {
   if (WiFi.status() != WL_CONNECTED)
@@ -337,10 +321,7 @@ bool syncTime()
   return false;
 }
 
-// ═══════════════════════════════════════════════════════
 //  SUNRISE & SUNSET
-// ═══════════════════════════════════════════════════════
-
 void calcSunriseSunset()
 {
   if (!locOk || !timeSynced)
@@ -361,9 +342,7 @@ void calcSunriseSunset()
   Serial.printf("[SUN] Rise=%02d:%02d  Set=%02d:%02d\n", srMin / 60, srMin % 60, ssMin / 60, ssMin % 60);
 }
 
-// ═══════════════════════════════════════════════════════
 //  TIMER CHECK (loop)
-// ═══════════════════════════════════════════════════════
 void checkTimers()
 {
   unsigned long now = millis();
@@ -378,9 +357,7 @@ void checkTimers()
   }
 }
 
-// ═══════════════════════════════════════════════════════
 //  SCHEDULE CHECK (loop)
-// ═══════════════════════════════════════════════════════
 void checkSchedules()
 {
   if (!timeSynced)
@@ -478,9 +455,7 @@ void checkSchedules()
   }
 }
 
-// ═══════════════════════════════════════════════════════
 //  SENSOR AUTOMATION CHECK (loop)
-// ═══════════════════════════════════════════════════════
 void checkSensors()
 {
   if (!ahtOk)
@@ -571,9 +546,7 @@ void checkSensors()
   }
 }
 
-// ═══════════════════════════════════════════════════════
 //  BLUETOOTH
-// ═══════════════════════════════════════════════════════
 void btCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
 {
   if (event == ESP_SPP_SRV_OPEN_EVT)
@@ -654,48 +627,176 @@ void handleBtCommands()
   }
 }
 
-// ═══════════════════════════════════════════════════════
 //  WiFi CONNECTION
-// ═══════════════════════════════════════════════════════
-void connectWiFi()
-{
-  WiFi.mode(WIFI_STA);
-  if (!dhcpOn && sIp.length() > 0)
-  {
-    IPAddress ip, gw, sn, dns;
-    ip.fromString(sIp);
-    gw.fromString(sGw);
-    sn.fromString(sMask);
-    dns.fromString(sDns);
-    WiFi.config(ip, gw, sn, dns);
-  }
-  WiFi.begin();
-  Serial.print("[WIFI] Connecting");
-  for (int i = 0; i < 20 && WiFi.status() != WL_CONNECTED; i++)
-  {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println();
+// void connectWiFi() {
+//   WiFi.mode(WIFI_STA);
+//   if (!dhcpOn && sIp.length() > 0) {
+//     IPAddress ip, gw, sn, dns;
+//     ip.fromString(sIp);
+//     gw.fromString(sGw);
+//     sn.fromString(sMask);
+//     dns.fromString(sDns);
+//     WiFi.config(ip, gw, sn, dns);
+//   }
 
-  if (WiFi.status() == WL_CONNECTED)
+//   // Try saved credentials first
+//   prefs.begin("wfcfg", true);
+//   String savedSsid = prefs.getString("ssid", "");
+//   String savedPass = prefs.getString("pass", "");
+//   prefs.end();
+
+//   if (savedSsid.length() > 0) {
+//     WiFi.begin(savedSsid.c_str(), savedPass.c_str());
+//     Serial.print("[WIFI] Connecting to " + savedSsid);
+//   } else {
+//     WiFi.begin();
+//     Serial.print("[WIFI] Connecting");
+//   }
+
+//   for (int i = 0; i < 20 && WiFi.status() != WL_CONNECTED; i++) {
+//     delay(500);
+//     Serial.print(".");
+//   }
+//   Serial.println();
+
+//   if (WiFi.status() == WL_CONNECTED) {
+//     Serial.printf("[WIFI] Connected: %s  IP: %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+//   } else {
+//     Serial.println("[WIFI] Failed -> starting config portal...");
+//     WiFiManager wm;
+//     wm.setConfigPortalTimeout(180);
+//     wm.setCaptivePortalEnable(true);
+//     wm.setAPCallback([](WiFiManager *myWiFiManager) {
+//       Serial.println("[WIFI] AP Started - connect to ESP HOME and go to 192.168.4.1");
+//     });
+//     if (!wm.autoConnect("ESP HOME")) {
+//       Serial.println("[WIFI] Portal timeout - restarting...");
+//       ESP.restart();
+//     }
+//     if (WiFi.status() == WL_CONNECTED) {
+//       Serial.printf("[WIFI] Portal OK: %s\n", WiFi.localIP().toString().c_str());
+//       // Save the credentials WiFiManager just connected with
+//       prefs.begin("wfcfg", false);
+//       prefs.putString("ssid", WiFi.SSID());
+//       prefs.putString("pass", WiFi.psk());
+//       prefs.end();
+//     }
+//   }
+// }
+
+bool connectToSavedWiFi()
+{
+
+  Serial.println("\n==============================");
+  Serial.println("WiFi Connection Started");
+  Serial.println("==============================");
+
+  // u8g2.clearBuffer();
+  // u8g2.setFont(u8g2_font_6x12_tf);
+  // u8g2.drawStr(0, 12, "Connecting WiFi...");
+  // u8g2.sendBuffer();
+
+  WiFiManager wm;
+  bool success = false;
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin();
+
+  int attempts = 0;
+  const int MAX_ATTEMPTS = 5;
+
+  while (attempts < MAX_ATTEMPTS)
   {
-    Serial.printf("[WIFI] Connected: %s  IP: %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+
+    char attemptStr[16];
+    snprintf(attemptStr, sizeof(attemptStr), "Attempt: %d/5", attempts + 1);
+
+    // u8g2.drawStr(0, 24, attemptStr);
+    // u8g2.sendBuffer();
+
+    Serial.printf("[INFO] %s\n", attemptStr);
+
+    if (WiFi.status() == WL_CONNECTED)
+    {
+
+      Serial.println("\n[SUCCESS] Connected to Saved WiFi");
+      Serial.printf("SSID       : %s\n", WiFi.SSID().c_str());
+      Serial.printf("IP Address : %s\n", WiFi.localIP().toString().c_str());
+      Serial.println("==============================\n");
+
+      // u8g2.clearBuffer();
+      // u8g2.drawStr(0, 12, "WiFi Connected!");
+      // u8g2.drawStr(0, 24, "SSID:");
+      // u8g2.drawStr(0, 36, WiFi.SSID().c_str());
+      // u8g2.drawStr(0, 48, "IP:");
+      // u8g2.drawStr(0, 60, WiFi.localIP().toString().c_str());
+      // u8g2.sendBuffer();
+
+      delay(2000);
+      return true;
+    }
+
+    delay(2000);
+    attempts++;
+  }
+
+  // Failed to connect
+  Serial.println("\n[WARNING] No saved WiFi found!");
+  Serial.println("[INFO] Starting Config Portal...");
+  Serial.println("AP SSID    : ESP HOME");
+  Serial.println("AP IP      : 192.168.4.1");
+  Serial.println("Timeout    : 60 seconds");
+  Serial.println("------------------------------");
+
+  // u8g2.clearBuffer();
+  // u8g2.drawStr(0, 12, "No Saved WiFi!");
+  // u8g2.drawStr(0, 24, "Starting AP...");
+  // u8g2.drawStr(0, 36, "AP IP:");
+  // u8g2.drawStr(0, 48, "192.168.4.1");
+  // u8g2.drawStr(0, 60, "Connect & Setup");
+  // u8g2.sendBuffer();
+
+  delay(1500);
+
+  wm.setConfigPortalTimeout(60);
+  success = wm.autoConnect("ESP HOME");
+
+  if (success)
+  {
+
+    Serial.println("\n[SUCCESS] WiFi Connected via Config Portal");
+    Serial.printf("SSID       : %s\n", WiFi.SSID().c_str());
+    Serial.printf("IP Address : %s\n", WiFi.localIP().toString().c_str());
+    Serial.println("==============================\n");
+
+    // u8g2.clearBuffer();
+    // u8g2.drawStr(0, 12, "WiFi Connected!");
+    // u8g2.drawStr(0, 24, "SSID:");
+    // u8g2.drawStr(0, 36, WiFi.SSID().c_str());
+    // u8g2.drawStr(0, 48, "IP:");
+    // u8g2.drawStr(0, 60, WiFi.localIP().toString().c_str());
+    // u8g2.sendBuffer();
+
+    delay(2000);
+    return true;
   }
   else
   {
-    Serial.println("[WIFI] Failed -> starting config portal...");
-    WiFiManager wm;
-    wm.setConfigPortalTimeout(60);
-    wm.autoConnect("ESP HOME");
-    if (WiFi.status() == WL_CONNECTED)
-      Serial.printf("[WIFI] Portal OK: %s\n", WiFi.localIP().toString().c_str());
+
+    Serial.println("\n[ERROR] Config Portal Timeout!");
+    Serial.println("Device not connected to WiFi.");
+    Serial.println("==============================\n");
+
+    // u8g2.clearBuffer();
+    // u8g2.drawStr(0, 12, "Time over!");
+    // u8g2.sendBuffer();
+
+    delay(1000);
+    return false; // Better logic than returning true
   }
 }
 
-// ═══════════════════════════════════════════════════════
 //  PHYSICAL INPUT SWITCH HANDLING
-// ═══════════════════════════════════════════════════════
 void checkPhysicalSwitches()
 {
   for (int i = 0; i < NUM_SWITCHES; i++)
@@ -716,19 +817,57 @@ void checkPhysicalSwitches()
   }
 }
 
-// ═══════════════════════════════════════════════════════
 //  WEB SERVER: ALL API ENDPOINTS
-// ═══════════════════════════════════════════════════════
 void setupWebServer()
 {
-
-  // Serve SPIFFS files
-  server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.html");
-
-  // CORS
+  // CORS - must be set before routes
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  // ──── STATUS ────
+  // Test endpoints
+  server.on("/ping", HTTP_GET, [](AsyncWebServerRequest *req)
+            { req->send(200, "text/plain", "pong"); });
+
+  // Test simple HTML inline
+  server.on("/test", HTTP_GET, [](AsyncWebServerRequest *req)
+            { req->send(200, "text/html", "<h1>Test OK</h1><p>Server is responding!</p>"); });
+
+  // Serve root path as index.html
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *req)
+            {
+    if (SPIFFS.exists("/index.html")) {
+      req->send(SPIFFS, "/index.html", "text/html");
+    } else {
+      req->send(404, "text/plain", "index.html not found");
+    } });
+
+  // Serve specific HTML files with file check
+  server.on("/index.html", HTTP_GET, [](AsyncWebServerRequest *req)
+            {
+    if (SPIFFS.exists("/index.html")) {
+      req->send(SPIFFS, "/index.html", "text/html");
+    } else {
+      req->send(404, "text/plain", "index.html not found");
+    } });
+
+  server.on("/config.html", HTTP_GET, [](AsyncWebServerRequest *req)
+            {
+    if (SPIFFS.exists("/config.html")) {
+      req->send(SPIFFS, "/config.html", "text/html");
+    } else {
+      req->send(404, "text/plain", "config.html not found");
+    } });
+
+  server.on("/firebase.html", HTTP_GET, [](AsyncWebServerRequest *req)
+            {
+    if (SPIFFS.exists("/firebase.html")) {
+      req->send(SPIFFS, "/firebase.html", "text/html");
+    } else {
+      req->send(404, "text/plain", "firebase.html not found");
+    } });
+
+  // STATUS
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *req)
             {
     DynamicJsonDocument d(1024);
@@ -743,7 +882,7 @@ void setupWebServer()
     serializeJson(d, r);
     req->send(200, "application/json", r); });
 
-  // ──── LOGIN ────
+  // LOGIN
   server.on("/api/login", HTTP_POST, [](AsyncWebServerRequest *req)
             {
     if (!req->hasParam("user", true) || !req->hasParam("pass", true)) {
@@ -758,7 +897,7 @@ void setupWebServer()
     else
       req->send(401, "application/json", "{\"error\":\"Invalid credentials\"}"); });
 
-  // ──── SWITCHES ────
+  // SWITCHES
   server.on("/api/switches", HTTP_GET, [](AsyncWebServerRequest *req)
             {
     DynamicJsonDocument d(1024);
@@ -829,7 +968,7 @@ void setupWebServer()
     notifyStorage();
     req->send(200, "application/json", "{\"ok\":true}"); });
 
-  // ──── TIMERS (volatile) ────
+  // TIMERS (volatile)
   server.on("/api/timer/set", HTTP_POST, [](AsyncWebServerRequest *req)
             {
     if (!req->hasParam("sw", true)) {
@@ -859,7 +998,7 @@ void setupWebServer()
     }
     req->send(200, "application/json", "{\"ok\":true}"); });
 
-  // ──── SCHEDULES (persistent) ────
+  // SCHEDULES (persistent)
   server.on("/api/schedules", HTTP_GET, [](AsyncWebServerRequest *req)
             {
     int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
@@ -886,7 +1025,7 @@ void setupWebServer()
     notifyStorage();
     req->send(200, "application/json", "{\"ok\":true}"); });
 
-  // ──── FUTURE SCHEDULES (persistent) ────
+  // FUTURE SCHEDULES (persistent)
   server.on("/api/fschedules", HTTP_GET, [](AsyncWebServerRequest *req)
             {
     int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
@@ -913,7 +1052,7 @@ void setupWebServer()
     notifyStorage();
     req->send(200, "application/json", "{\"ok\":true}"); });
 
-  // ──── SENSOR CONTROL (persistent) ────
+  // SENSOR CONTROL (persistent)
   server.on("/api/sensor/temp", HTTP_GET, [](AsyncWebServerRequest *req)
             {
     int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
@@ -1015,7 +1154,7 @@ void setupWebServer()
     notifyStorage();
     req->send(200, "application/json", "{\"ok\":true}"); });
 
-  // ──── BLUETOOTH ────
+  // BLUETOOTH
   server.on("/api/bt", HTTP_GET, [](AsyncWebServerRequest *req)
             {
     prefs.begin("bt", true);
@@ -1123,7 +1262,7 @@ void setupWebServer()
     esp_bt_gap_remove_bond_device(bda);
     req->send(200, "application/json", "{\"ok\":true}"); });
 
-  // ──── WIFI ────
+  // WIFI
   server.on("/api/wifi/status", HTTP_GET, [](AsyncWebServerRequest *req)
             {
     DynamicJsonDocument d(1024);
@@ -1156,18 +1295,9 @@ void setupWebServer()
     prefs.putString("pass", pass);
     prefs.end();
     notifyStorage();
-    WiFi.disconnect();
-    delay(200);
-    WiFi.begin(ssid.c_str(), pass.c_str());
-    int att = 0;
-    while (WiFi.status() != WL_CONNECTED && att < 20) {
-      delay(500);
-      att++;
-    }
-    if (WiFi.status() == WL_CONNECTED)
-      req->send(200, "application/json", "{\"ok\":true,\"ip\":\"" + WiFi.localIP().toString() + "\"}");
-    else
-      req->send(400, "application/json", "{\"error\":\"Connection failed\"}"); });
+    req->send(200, "application/json", "{\"ok\":true,\"msg\":\"WiFi credentials saved. Device will restart to connect.\"}");
+    restartFlag = true;
+    restartAt = millis() + 1000; });
 
   server.on("/api/wifi/disconnect", HTTP_POST, [](AsyncWebServerRequest *req)
             {
@@ -1233,7 +1363,7 @@ void setupWebServer()
     notifyStorage();
     req->send(200, "application/json", "{\"ok\":true}"); });
 
-  // ──── FIREBASE ────
+  // FIREBASE
   server.on("/api/fb", HTTP_GET, [](AsyncWebServerRequest *req)
             {
     DynamicJsonDocument d(1024);
@@ -1336,7 +1466,7 @@ void setupWebServer()
     else
       req->send(400, "application/json", "{\"error\":\"Saved locally but upload failed: HTTP " + String(code) + "\"}"); });
 
-  // ──── USERS ────
+  // USERS
   server.on("/api/users", HTTP_GET, [](AsyncWebServerRequest *req)
             {
     prefs.begin("users", true);
@@ -1434,7 +1564,7 @@ void setupWebServer()
     notifyStorage();
     req->send(200, "application/json", "{\"ok\":true}"); });
 
-  // ──── ADMINISTRATOR ────
+  // ADMINISTRATOR
   server.on("/api/admin/time", HTTP_GET, [](AsyncWebServerRequest *req)
             {
     DynamicJsonDocument d(1024);
@@ -1587,9 +1717,7 @@ void setupWebServer()
   Serial.println("[SERVER] Web server started");
 }
 
-// ═══════════════════════════════════════════════════════
 //  SETUP
-// ═══════════════════════════════════════════════════════
 void setup()
 {
   Serial.begin(115200);
@@ -1606,20 +1734,121 @@ void setup()
   }
   pinMode(LED_PIN, OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(BOOT_BUTTON, INPUT_PULLUP);
 
   // Startup beep
   digitalWrite(BUZZER_PIN, HIGH);
   delay(100);
   digitalWrite(BUZZER_PIN, LOW);
+  delay(2000);
 
-  // SPIFFS
+  // On demand WiFi setup
+  if (digitalRead(BOOT_BUTTON) == LOW)
+  {
+    Serial.println("[BOOT] Boot button pressed - entering WiFi setup mode...");
+    // Double beep to indicate WiFi setup mode
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(100);
+    digitalWrite(BUZZER_PIN, LOW);
+    delay(100);
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(100);
+    digitalWrite(BUZZER_PIN, LOW);
+
+    WiFiManager wm;
+    bool success = false;
+    wm.setConfigPortalTimeout(180); // 3 minutes
+    // wm.setCaptivePortalEnable(true);
+    Serial.println("[WIFI] SSID: 'ESP HOME' | IP: 192.168.4.1");
+    success = wm.autoConnect("ESP HOME");
+
+    if (success)
+    {
+
+      Serial.println("\n[SUCCESS] WiFi Connected via Config Portal");
+      Serial.printf("SSID       : %s\n", WiFi.SSID().c_str());
+      Serial.printf("IP Address : %s\n", WiFi.localIP().toString().c_str());
+      Serial.println("==============================\n");
+
+      // u8g2.clearBuffer();
+      // u8g2.drawStr(0, 12, "WiFi Connected!");
+      // u8g2.drawStr(0, 24, "SSID:");
+      // u8g2.drawStr(0, 36, WiFi.SSID().c_str());
+      // u8g2.drawStr(0, 48, "IP:");
+      // u8g2.drawStr(0, 60, WiFi.localIP().toString().c_str());
+      // u8g2.sendBuffer();
+
+      delay(2000);
+    }
+    else
+    {
+
+      Serial.println("\n[ERROR] Config Portal Timeout!");
+      Serial.println("Device not connected to WiFi.");
+      Serial.println("==============================\n");
+
+      // u8g2.clearBuffer();
+      // u8g2.drawStr(0, 12, "Time over!");
+      // u8g2.sendBuffer();
+
+      delay(1000);
+    }
+  }
+
+  // --- Storage Init ---
+  // u8g2.clearBuffer();
+  // u8g2.setFont(u8g2_font_t0_14_tr);
+  // u8g2.drawStr(0, 18, "Settings Init:");
+  // u8g2.sendBuffer();
+  Serial.println("\n==============================");
+  Serial.println("Settings Initialization");
+  Serial.println("==============================");
+  Serial.println("[INFO] Initializing EEPROM...");
+  delay(1000);
+  EEPROM.begin(512);
+  // loadSettings();
+  Serial.println("[SUCCESS] EEPROM Initialized.");
+  Serial.printf("[INFO] EEPROM Size: %d bytes\n", 512);
+  Serial.println("==============================\n");
+  // u8g2.clearBuffer();  // Recommended for clean update
+  // u8g2.drawStr(0, 18, "Settings Init: OK");
+  // u8g2.sendBuffer();
+  delay(1000);
+
+  // --- SPIFFS ---
+  // u8g2.clearBuffer();
+  Serial.println("\n==============================");
+  Serial.println("SPIFFS Initialization");
+  Serial.println("==============================");
   if (!SPIFFS.begin(true))
   {
+    // u8g2.drawStr(0, 18, "SPIFFS: ERROR");
     Serial.println("[ERROR] SPIFFS Mount Failed!");
+    Serial.println("[INFO] Filesystem not available.");
+    Serial.println("==============================\n");
   }
   else
   {
-    Serial.println("[OK] SPIFFS mounted");
+    // u8g2.drawStr(0, 18, "SPIFFS: OK");
+    Serial.println("[SUCCESS] SPIFFS Mounted Successfully.");
+    Serial.println("[INFO] Listing Files:");
+    Serial.println("------------------------------");
+    File root = SPIFFS.open("/");
+    File file = root.openNextFile();
+    int fileCount = 0;
+    while (file)
+    {
+      Serial.printf("File %02d : %s  |  Size: %d bytes\n",
+                    fileCount + 1,
+                    file.name(),
+                    file.size());
+      fileCount++;
+      file = root.openNextFile();
+    }
+    Serial.println("------------------------------");
+    Serial.printf("Total Files: %d\n", fileCount);
+    Serial.println("==============================\n");
+    root.close();
   }
 
   // Load all settings from NVS
@@ -1647,7 +1876,9 @@ void setup()
   setupBluetooth();
 
   // WiFi
-  connectWiFi();
+  connectToSavedWiFi();
+  delay(1000);
+  // connectWiFi();
 
   // Time sync
   if (WiFi.status() == WL_CONNECTED)
@@ -1671,9 +1902,7 @@ void setup()
   Serial.println("==============================\n");
 }
 
-// ═══════════════════════════════════════════════════════
 //  LOOP
-// ═══════════════════════════════════════════════════════
 void loop()
 {
   // Physical switch input
@@ -1705,11 +1934,22 @@ void loop()
   if (portalFlag)
   {
     portalFlag = false;
+    server.end();
+    delay(100);
     WiFiManager wm;
-    wm.setConfigPortalTimeout(60);
+    wm.setConfigPortalTimeout(180);
+    wm.setCaptivePortalEnable(true);
+    Serial.println("[WIFI] Starting config portal - connect to ESP HOME and go to 192.168.4.1");
     wm.startConfigPortal("ESP HOME");
     if (WiFi.status() == WL_CONNECTED)
+    {
       Serial.printf("[WIFI] Portal connected: %s\n", WiFi.localIP().toString().c_str());
+      prefs.begin("wfcfg", false);
+      prefs.putString("ssid", WiFi.SSID());
+      prefs.putString("pass", WiFi.psk());
+      prefs.end();
+    }
+    ESP.restart();
   }
 
   // Restart request

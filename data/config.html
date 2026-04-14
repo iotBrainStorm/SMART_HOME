@@ -4605,7 +4605,10 @@
                   encodeURIComponent(pass),
               )
                 .then(function (d) {
-                  if (d.ok) alert("Connected! IP: " + (d.ip || ""));
+                  if (d.ok)
+                    alert(
+                      "WiFi credentials saved. Device will restart to connect.",
+                    );
                   else alert(d.error || "Connection failed");
                 })
                 .catch(function () {
