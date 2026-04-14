@@ -49,7 +49,7 @@ String swName[NUM_SWITCHES] = {"Living Room", "Bedroom", "Kitchen", "Bathroom"};
 String swIcon[NUM_SWITCHES] = {"home", "bedroom", "kitchen", "bathroom"};
 String relayMode[NUM_SWITCHES] = {"off", "off", "off", "off"};
 
-// Timers â€” volatile (RAM only, lost on power cut)
+// Timers Ã¢â‚¬â€ volatile (RAM only, lost on power cut)
 struct SwTimer
 {
   bool active = false;
@@ -60,6 +60,8 @@ SwTimer swTimers[NUM_SWITCHES];
 
 // Bluetooth
 bool btOn = true;
+bool btRunning = false;
+bool btDeferredForWeb = false;
 String btName = "ESP32_SmartHome";
 String btPass = "1234";
 
@@ -97,6 +99,9 @@ int lastCheckedMinute = -1;
 // Restart flag
 bool restartFlag = false;
 unsigned long restartAt = 0;
+bool coreRoutesOnly = false;
+
+const uint32_t MIN_FREE_HEAP_FOR_EXTENDED_ROUTES = 38000;
 
 //  BEEP + LED ON NVS CHANGE
 void notifyStorage()
@@ -108,7 +113,7 @@ void notifyStorage()
   digitalWrite(LED_PIN, LOW);
 }
 
-//  TIMEZONE PARSING  "+05:30" â†’ seconds
+//  TIMEZONE PARSING  "+05:30" Ã¢â€ â€™ seconds
 void parseTZ()
 {
   int sign = 1;
@@ -592,13 +597,22 @@ void setupBluetooth()
     return;
   SerialBT.register_callback(btCallback);
   SerialBT.setPin(btPass.c_str(), btPass.length());
-  SerialBT.begin(btName);
-  Serial.println("[BT] Started: " + btName);
+  if (SerialBT.begin(btName))
+  {
+    btRunning = true;
+    btDeferredForWeb = false;
+    Serial.println("[BT] Started: " + btName);
+  }
+  else
+  {
+    btRunning = false;
+    Serial.println("[BT] Failed to start");
+  }
 }
 
 void handleBtCommands()
 {
-  if (!btOn || !SerialBT.available())
+  if (!btOn || !btRunning || !SerialBT.available())
     return;
   String cmd = SerialBT.readStringUntil('\n');
   cmd.trim();
@@ -817,57 +831,61 @@ void checkPhysicalSwitches()
   }
 }
 
+void sendWebFile(AsyncWebServerRequest *request, const char *path, const char *contentType)
+{
+  String gzPath = String(path) + ".gz";
+
+  if (SPIFFS.exists(gzPath))
+  {
+    Serial.printf("[HTTP] %s -> %s\n", request->url().c_str(), gzPath.c_str());
+    AsyncWebServerResponse *response = request->beginResponse(SPIFFS, gzPath, contentType);
+    response->addHeader("Content-Encoding", "gzip");
+    request->send(response);
+    return;
+  }
+
+  if (SPIFFS.exists(path))
+  {
+    Serial.printf("[HTTP] %s -> %s\n", request->url().c_str(), path);
+    request->send(SPIFFS, path, contentType);
+    return;
+  }
+
+  Serial.printf("[HTTP] Missing file for %s (expected %s or %s)\n",
+                request->url().c_str(), path, gzPath.c_str());
+  request->send(404, "text/plain", "File not found");
+}
+
 //  WEB SERVER: ALL API ENDPOINTS
 void setupWebServer()
 {
-  // CORS - must be set before routes
+
+  // CORS
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  // Test endpoints
+  Serial.printf("[SERVER] Free heap before route setup: %u bytes\n", ESP.getFreeHeap());
+
   server.on("/ping", HTTP_GET, [](AsyncWebServerRequest *req)
             { req->send(200, "text/plain", "pong"); });
 
-  // Test simple HTML inline
   server.on("/test", HTTP_GET, [](AsyncWebServerRequest *req)
-            { req->send(200, "text/html", "<h1>Test OK</h1><p>Server is responding!</p>"); });
+            { req->send(200, "text/html", "<h1>ESP32 Server Working</h1><p>Basic route is responding.</p>"); });
 
-  // Serve root path as index.html
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *req)
-            {
-    if (SPIFFS.exists("/index.html")) {
-      req->send(SPIFFS, "/index.html", "text/html");
-    } else {
-      req->send(404, "text/plain", "index.html not found");
-    } });
+            { sendWebFile(req, "/index.html", "text/html"); });
 
-  // Serve specific HTML files with file check
   server.on("/index.html", HTTP_GET, [](AsyncWebServerRequest *req)
-            {
-    if (SPIFFS.exists("/index.html")) {
-      req->send(SPIFFS, "/index.html", "text/html");
-    } else {
-      req->send(404, "text/plain", "index.html not found");
-    } });
+            { sendWebFile(req, "/index.html", "text/html"); });
 
   server.on("/config.html", HTTP_GET, [](AsyncWebServerRequest *req)
-            {
-    if (SPIFFS.exists("/config.html")) {
-      req->send(SPIFFS, "/config.html", "text/html");
-    } else {
-      req->send(404, "text/plain", "config.html not found");
-    } });
+            { sendWebFile(req, "/config.html", "text/html"); });
 
   server.on("/firebase.html", HTTP_GET, [](AsyncWebServerRequest *req)
-            {
-    if (SPIFFS.exists("/firebase.html")) {
-      req->send(SPIFFS, "/firebase.html", "text/html");
-    } else {
-      req->send(404, "text/plain", "firebase.html not found");
-    } });
+            { sendWebFile(req, "/firebase.html", "text/html"); });
 
-  // STATUS
+  // ──── STATUS ────
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *req)
             {
     DynamicJsonDocument d(1024);
@@ -882,7 +900,7 @@ void setupWebServer()
     serializeJson(d, r);
     req->send(200, "application/json", r); });
 
-  // LOGIN
+  // ──── LOGIN ────
   server.on("/api/login", HTTP_POST, [](AsyncWebServerRequest *req)
             {
     if (!req->hasParam("user", true) || !req->hasParam("pass", true)) {
@@ -897,7 +915,7 @@ void setupWebServer()
     else
       req->send(401, "application/json", "{\"error\":\"Invalid credentials\"}"); });
 
-  // SWITCHES
+  // ──── SWITCHES ────
   server.on("/api/switches", HTTP_GET, [](AsyncWebServerRequest *req)
             {
     DynamicJsonDocument d(1024);
@@ -968,753 +986,804 @@ void setupWebServer()
     notifyStorage();
     req->send(200, "application/json", "{\"ok\":true}"); });
 
-  // TIMERS (volatile)
-  server.on("/api/timer/set", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("sw", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing sw\"}");
-      return;
-    }
-    int sw = req->getParam("sw", true)->value().toInt();
-    int h = req->hasParam("h", true) ? req->getParam("h", true)->value().toInt() : 0;
-    int m = req->hasParam("m", true) ? req->getParam("m", true)->value().toInt() : 0;
-    int s = req->hasParam("s", true) ? req->getParam("s", true)->value().toInt() : 0;
-    String act = req->hasParam("action", true) ? req->getParam("action", true)->value() : "off";
-    unsigned long dur = (h * 3600UL + m * 60UL + s) * 1000UL;
-    if (dur == 0 || sw < 0 || sw >= NUM_SWITCHES) {
-      req->send(400, "application/json", "{\"error\":\"Invalid\"}");
-      return;
-    }
-    swTimers[sw].active = true;
-    swTimers[sw].endMs = millis() + dur;
-    swTimers[sw].targetState = (act == "on");
-    req->send(200, "application/json", "{\"ok\":true}"); });
+  uint32_t heapAfterCoreRoutes = ESP.getFreeHeap();
+  if (heapAfterCoreRoutes < MIN_FREE_HEAP_FOR_EXTENDED_ROUTES)
+  {
+    coreRoutesOnly = true;
+    Serial.printf("[SERVER] Low heap after core routes: %u bytes\n", heapAfterCoreRoutes);
+    Serial.println("[SERVER] Starting in core-routes-only mode. Extended config APIs are skipped.");
+  }
+  else
+  {
+    coreRoutesOnly = false;
 
-  server.on("/api/timer/clear", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (req->hasParam("sw", true)) {
+    // ──── TIMERS (volatile) ────
+    server.on("/api/timer/set", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("sw", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing sw\"}");
+        return;
+      }
       int sw = req->getParam("sw", true)->value().toInt();
-      if (sw >= 0 && sw < NUM_SWITCHES) swTimers[sw].active = false;
-    }
-    req->send(200, "application/json", "{\"ok\":true}"); });
-
-  // SCHEDULES (persistent)
-  server.on("/api/schedules", HTTP_GET, [](AsyncWebServerRequest *req)
-            {
-    int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
-    prefs.begin("sched", true);
-    String j = prefs.getString(("s" + String(sw)).c_str(), "[]");
-    prefs.end();
-    req->send(200, "application/json", j); });
-
-  server.on("/api/schedules", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("sw", true) || !req->hasParam("data", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing params\"}");
-      return;
-    }
-    if (!timeSynced) {
-      req->send(400, "application/json", "{\"error\":\"Update time first\"}");
-      return;
-    }
-    int sw = req->getParam("sw", true)->value().toInt();
-    String data = req->getParam("data", true)->value();
-    prefs.begin("sched", false);
-    prefs.putString(("s" + String(sw)).c_str(), data);
-    prefs.end();
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true}"); });
-
-  // FUTURE SCHEDULES (persistent)
-  server.on("/api/fschedules", HTTP_GET, [](AsyncWebServerRequest *req)
-            {
-    int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
-    prefs.begin("fsched", true);
-    String j = prefs.getString(("f" + String(sw)).c_str(), "[]");
-    prefs.end();
-    req->send(200, "application/json", j); });
-
-  server.on("/api/fschedules", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("sw", true) || !req->hasParam("data", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing params\"}");
-      return;
-    }
-    if (!timeSynced) {
-      req->send(400, "application/json", "{\"error\":\"Update time first\"}");
-      return;
-    }
-    int sw = req->getParam("sw", true)->value().toInt();
-    String data = req->getParam("data", true)->value();
-    prefs.begin("fsched", false);
-    prefs.putString(("f" + String(sw)).c_str(), data);
-    prefs.end();
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true}"); });
-
-  // SENSOR CONTROL (persistent)
-  server.on("/api/sensor/temp", HTTP_GET, [](AsyncWebServerRequest *req)
-            {
-    int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
-    prefs.begin("sensor", true);
-    String j = prefs.getString(("t" + String(sw)).c_str(), "{}");
-    prefs.end();
-    req->send(200, "application/json", j); });
-
-  server.on("/api/sensor/temp", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("data", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing data\"}");
-      return;
-    }
-    if (!ahtOk) {
-      req->send(400, "application/json", "{\"error\":\"AHT10 sensor not initialized\"}");
-      return;
-    }
-    String data = req->getParam("data", true)->value();
-    DynamicJsonDocument d(1024);
-    if (deserializeJson(d, data)) {
-      req->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
-      return;
-    }
-    int sw = d["switchId"].as<int>();
-    prefs.begin("sensor", false);
-    prefs.putString(("t" + String(sw)).c_str(), data);
-    prefs.end();
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true}"); });
-
-  server.on("/api/sensor/humid", HTTP_GET, [](AsyncWebServerRequest *req)
-            {
-    int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
-    prefs.begin("sensor", true);
-    String j = prefs.getString(("h" + String(sw)).c_str(), "{}");
-    prefs.end();
-    req->send(200, "application/json", j); });
-
-  server.on("/api/sensor/humid", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("data", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing data\"}");
-      return;
-    }
-    if (!ahtOk) {
-      req->send(400, "application/json", "{\"error\":\"AHT10 sensor not initialized\"}");
-      return;
-    }
-    String data = req->getParam("data", true)->value();
-    DynamicJsonDocument d(1024);
-    if (deserializeJson(d, data)) {
-      req->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
-      return;
-    }
-    int sw = d["switchId"].as<int>();
-    prefs.begin("sensor", false);
-    prefs.putString(("h" + String(sw)).c_str(), data);
-    prefs.end();
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true}"); });
-
-  server.on("/api/sensor/sun", HTTP_GET, [](AsyncWebServerRequest *req)
-            {
-    int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
-    prefs.begin("sensor", true);
-    String j = prefs.getString(("x" + String(sw)).c_str(), "{}");
-    prefs.end();
-    req->send(200, "application/json", j); });
-
-  server.on("/api/sensor/sun", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("data", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing data\"}");
-      return;
-    }
-    if (!ahtOk) {
-      req->send(400, "application/json", "{\"error\":\"AHT10 sensor not initialized\"}");
-      return;
-    }
-    if (!locOk) {
-      req->send(400, "application/json", "{\"error\":\"Latitude/Longitude not configured\"}");
-      return;
-    }
-    if (!timeSynced) {
-      req->send(400, "application/json", "{\"error\":\"Update time first\"}");
-      return;
-    }
-    String data = req->getParam("data", true)->value();
-    DynamicJsonDocument d(1024);
-    if (deserializeJson(d, data)) {
-      req->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
-      return;
-    }
-    int sw = d["switchId"].as<int>();
-    prefs.begin("sensor", false);
-    prefs.putString(("x" + String(sw)).c_str(), data);
-    prefs.end();
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true}"); });
-
-  // BLUETOOTH
-  server.on("/api/bt", HTTP_GET, [](AsyncWebServerRequest *req)
-            {
-    prefs.begin("bt", true);
-    String paired = prefs.getString("paired", "[]");
-    prefs.end();
-    DynamicJsonDocument d(1024);
-    d["enabled"] = btOn;
-    d["name"] = btName;
-    d["password"] = btPass;
-    DynamicJsonDocument pd(1024);
-    deserializeJson(pd, paired);
-    d["devices"] = pd;
-    String r;
-    serializeJson(d, r);
-    req->send(200, "application/json", r); });
-
-  server.on("/api/bt/toggle", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("enabled", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing\"}");
-      return;
-    }
-    btOn = req->getParam("enabled", true)->value() == "true";
-    prefs.begin("bt", false);
-    prefs.putBool("en", btOn);
-    prefs.end();
-    notifyStorage();
-    if (btOn) {
-      setupBluetooth();
-    } else {
-      SerialBT.end();
-    }
-    req->send(200, "application/json", "{\"ok\":true}"); });
-
-  server.on("/api/bt/name", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("name", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing\"}");
-      return;
-    }
-    btName = req->getParam("name", true)->value();
-    prefs.begin("bt", false);
-    prefs.putString("name", btName);
-    prefs.end();
-    notifyStorage();
-    if (btOn) {
-      SerialBT.end();
-      delay(100);
-      SerialBT.begin(btName);
-    }
-    req->send(200, "application/json", "{\"ok\":true}"); });
-
-  server.on("/api/bt/password", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("current", true) || !req->hasParam("newpass", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing params\"}");
-      return;
-    }
-    String cur = req->getParam("current", true)->value();
-    String np = req->getParam("newpass", true)->value();
-    if (cur != btPass) {
-      req->send(400, "application/json", "{\"error\":\"Current password incorrect\"}");
-      return;
-    }
-    btPass = np;
-    prefs.begin("bt", false);
-    prefs.putString("pass", btPass);
-    prefs.end();
-    notifyStorage();
-    if (btOn) { SerialBT.setPin(btPass.c_str(), btPass.length()); }
-    req->send(200, "application/json", "{\"ok\":true}"); });
-
-  server.on("/api/bt/devices", HTTP_GET, [](AsyncWebServerRequest *req)
-            {
-    prefs.begin("bt", true);
-    String j = prefs.getString("paired", "[]");
-    prefs.end();
-    req->send(200, "application/json", j); });
-
-  server.on("/api/bt/device/remove", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("addr", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing addr\"}");
-      return;
-    }
-    String addr = req->getParam("addr", true)->value();
-    prefs.begin("bt", false);
-    String pj = prefs.getString("paired", "[]");
-    DynamicJsonDocument d(1024);
-    deserializeJson(d, pj);
-    JsonArray a = d.as<JsonArray>();
-    for (int i = a.size() - 1; i >= 0; i--) {
-      if (a[i]["addr"].as<String>() == addr) {
-        a.remove(i);
-        break;
+      int h = req->hasParam("h", true) ? req->getParam("h", true)->value().toInt() : 0;
+      int m = req->hasParam("m", true) ? req->getParam("m", true)->value().toInt() : 0;
+      int s = req->hasParam("s", true) ? req->getParam("s", true)->value().toInt() : 0;
+      String act = req->hasParam("action", true) ? req->getParam("action", true)->value() : "off";
+      unsigned long dur = (h * 3600UL + m * 60UL + s) * 1000UL;
+      if (dur == 0 || sw < 0 || sw >= NUM_SWITCHES) {
+        req->send(400, "application/json", "{\"error\":\"Invalid\"}");
+        return;
       }
-    }
-    String nj;
-    serializeJson(d, nj);
-    prefs.putString("paired", nj);
-    prefs.end();
-    notifyStorage();
-    esp_bd_addr_t bda;
-    sscanf(addr.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]);
-    esp_bt_gap_remove_bond_device(bda);
-    req->send(200, "application/json", "{\"ok\":true}"); });
+      swTimers[sw].active = true;
+      swTimers[sw].endMs = millis() + dur;
+      swTimers[sw].targetState = (act == "on");
+      req->send(200, "application/json", "{\"ok\":true}"); });
 
-  // WIFI
-  server.on("/api/wifi/status", HTTP_GET, [](AsyncWebServerRequest *req)
-            {
-    DynamicJsonDocument d(1024);
-    d["connected"] = (WiFi.status() == WL_CONNECTED);
-    d["ssid"] = WiFi.SSID();
-    d["ip"] = WiFi.localIP().toString();
-    d["subnet"] = WiFi.subnetMask().toString();
-    d["gateway"] = WiFi.gatewayIP().toString();
-    d["dns"] = WiFi.dnsIP().toString();
-    d["mac"] = WiFi.macAddress();
-    d["dhcp"] = dhcpOn;
-    d["staticIp"] = sIp;
-    d["staticMask"] = sMask;
-    d["staticGw"] = sGw;
-    d["staticDns"] = sDns;
-    String r;
-    serializeJson(d, r);
-    req->send(200, "application/json", r); });
-
-  server.on("/api/wifi/connect", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("ssid", true) || !req->hasParam("pass", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing SSID/password\"}");
-      return;
-    }
-    String ssid = req->getParam("ssid", true)->value();
-    String pass = req->getParam("pass", true)->value();
-    prefs.begin("wfcfg", false);
-    prefs.putString("ssid", ssid);
-    prefs.putString("pass", pass);
-    prefs.end();
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true,\"msg\":\"WiFi credentials saved. Device will restart to connect.\"}");
-    restartFlag = true;
-    restartAt = millis() + 1000; });
-
-  server.on("/api/wifi/disconnect", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    WiFi.disconnect();
-    req->send(200, "application/json", "{\"ok\":true}"); });
-
-  server.on("/api/wifi/scan", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    req->send(200, "application/json", "{\"ok\":true,\"msg\":\"WiFi portal starting. Connect to ESP HOME at 192.168.4.1\"}");
-    portalFlag = true; });
-
-  server.on("/api/wifi/saved", HTTP_GET, [](AsyncWebServerRequest *req)
-            {
-    prefs.begin("wfcfg", true);
-    String ssid = prefs.getString("ssid", "");
-    prefs.end();
-    req->send(200, "application/json", "{\"ssid\":\"" + ssid + "\"}"); });
-
-  server.on("/api/wifi/forget", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    WiFi.disconnect(true, true);
-    prefs.begin("wfcfg", false);
-    prefs.remove("ssid");
-    prefs.remove("pass");
-    prefs.end();
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true}"); });
-
-  server.on("/api/wifi/ip", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("dhcp", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing\"}");
-      return;
-    }
-    dhcpOn = req->getParam("dhcp", true)->value() == "true";
-    prefs.begin("wfcfg", false);
-    prefs.putBool("dhcp", dhcpOn);
-    if (!dhcpOn) {
-      if (req->hasParam("ip", true)) {
-        sIp = req->getParam("ip", true)->value();
-        prefs.putString("sip", sIp);
+    server.on("/api/timer/clear", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (req->hasParam("sw", true)) {
+        int sw = req->getParam("sw", true)->value().toInt();
+        if (sw >= 0 && sw < NUM_SWITCHES) swTimers[sw].active = false;
       }
-      if (req->hasParam("mask", true)) {
-        sMask = req->getParam("mask", true)->value();
-        prefs.putString("mask", sMask);
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
+    // ──── SCHEDULES (persistent) ────
+    server.on("/api/schedules", HTTP_GET, [](AsyncWebServerRequest *req)
+              {
+      int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
+      prefs.begin("sched", true);
+      String j = prefs.getString(("s" + String(sw)).c_str(), "[]");
+      prefs.end();
+      req->send(200, "application/json", j); });
+
+    server.on("/api/schedules", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("sw", true) || !req->hasParam("data", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing params\"}");
+        return;
       }
-      if (req->hasParam("gw", true)) {
-        sGw = req->getParam("gw", true)->value();
-        prefs.putString("gw", sGw);
+      if (!timeSynced) {
+        req->send(400, "application/json", "{\"error\":\"Update time first\"}");
+        return;
       }
-      if (req->hasParam("dns", true)) {
-        sDns = req->getParam("dns", true)->value();
-        prefs.putString("dns", sDns);
+      int sw = req->getParam("sw", true)->value().toInt();
+      String data = req->getParam("data", true)->value();
+      prefs.begin("sched", false);
+      prefs.putString(("s" + String(sw)).c_str(), data);
+      prefs.end();
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
+    // ──── FUTURE SCHEDULES (persistent) ────
+    server.on("/api/fschedules", HTTP_GET, [](AsyncWebServerRequest *req)
+              {
+      int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
+      prefs.begin("fsched", true);
+      String j = prefs.getString(("f" + String(sw)).c_str(), "[]");
+      prefs.end();
+      req->send(200, "application/json", j); });
+
+    server.on("/api/fschedules", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("sw", true) || !req->hasParam("data", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing params\"}");
+        return;
       }
-      IPAddress ip, gw, sn, dns;
-      ip.fromString(sIp);
-      gw.fromString(sGw);
-      sn.fromString(sMask);
-      dns.fromString(sDns);
-      WiFi.config(ip, gw, sn, dns);
-    }
-    prefs.end();
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true}"); });
+      if (!timeSynced) {
+        req->send(400, "application/json", "{\"error\":\"Update time first\"}");
+        return;
+      }
+      int sw = req->getParam("sw", true)->value().toInt();
+      String data = req->getParam("data", true)->value();
+      prefs.begin("fsched", false);
+      prefs.putString(("f" + String(sw)).c_str(), data);
+      prefs.end();
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true}"); });
 
-  // FIREBASE
-  server.on("/api/fb", HTTP_GET, [](AsyncWebServerRequest *req)
-            {
-    DynamicJsonDocument d(1024);
-    d["enabled"] = fbOn;
-    d["url"] = fbUrl;
-    d["token"] = fbToken;
-    prefs.begin("fb", true);
-    d["rules"] = prefs.getString("rules", "");
-    prefs.end();
-    String r;
-    serializeJson(d, r);
-    req->send(200, "application/json", r); });
+    // ──── SENSOR CONTROL (persistent) ────
+    server.on("/api/sensor/temp", HTTP_GET, [](AsyncWebServerRequest *req)
+              {
+      int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
+      prefs.begin("sensor", true);
+      String j = prefs.getString(("t" + String(sw)).c_str(), "{}");
+      prefs.end();
+      req->send(200, "application/json", j); });
 
-  server.on("/api/fb/toggle", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("enabled", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing\"}");
-      return;
-    }
-    fbOn = req->getParam("enabled", true)->value() == "true";
-    prefs.begin("fb", false);
-    prefs.putBool("en", fbOn);
-    prefs.end();
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true}"); });
-
-  server.on("/api/fb/url", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("url", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing\"}");
-      return;
-    }
-    fbUrl = req->getParam("url", true)->value();
-    prefs.begin("fb", false);
-    prefs.putString("url", fbUrl);
-    prefs.end();
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true}"); });
-
-  server.on("/api/fb/token", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("token", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing\"}");
-      return;
-    }
-    fbToken = req->getParam("token", true)->value();
-    prefs.begin("fb", false);
-    prefs.putString("tok", fbToken);
-    prefs.end();
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true}"); });
-
-  server.on("/api/fb/test", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (fbUrl.isEmpty() || fbToken.isEmpty()) {
-      req->send(400, "application/json", "{\"error\":\"URL or Token not configured\"}");
-      return;
-    }
-    if (WiFi.status() != WL_CONNECTED) {
-      req->send(400, "application/json", "{\"error\":\"WiFi not connected\"}");
-      return;
-    }
-    HTTPClient http;
-    String testUrl = fbUrl + "/.json?auth=" + fbToken + "&shallow=true";
-    http.begin(testUrl);
-    int code = http.GET();
-    String body = http.getString();
-    http.end();
-    if (code == 200)
-      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Connection successful\"}");
-    else
-      req->send(400, "application/json", "{\"error\":\"Connection failed: HTTP " + String(code) + "\"}"); });
-
-  server.on("/api/fb/rules", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("rules", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing rules\"}");
-      return;
-    }
-    String rules = req->getParam("rules", true)->value();
-    prefs.begin("fb", false);
-    prefs.putString("rules", rules);
-    prefs.end();
-    notifyStorage();
-    if (fbUrl.isEmpty() || fbToken.isEmpty()) {
-      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Saved locally (no Firebase credentials)\"}");
-      return;
-    }
-    if (WiFi.status() != WL_CONNECTED) {
-      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Saved locally (WiFi not connected)\"}");
-      return;
-    }
-    HTTPClient http;
-    http.begin(fbUrl + "/.settings/rules.json?auth=" + fbToken);
-    http.addHeader("Content-Type", "application/json");
-    int code = http.PUT(rules);
-    http.end();
-    if (code == 200)
-      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Rules saved and uploaded to Firebase\"}");
-    else
-      req->send(400, "application/json", "{\"error\":\"Saved locally but upload failed: HTTP " + String(code) + "\"}"); });
-
-  // USERS
-  server.on("/api/users", HTTP_GET, [](AsyncWebServerRequest *req)
-            {
-    prefs.begin("users", true);
-    int n = prefs.getInt("cnt", 0);
-    DynamicJsonDocument d(1024);
-    JsonArray a = d.to<JsonArray>();
-    for (int i = 0; i < n; i++) {
-      String js = prefs.getString(("u" + String(i)).c_str(), "");
-      if (js.isEmpty()) continue;
-      DynamicJsonDocument ud(512);
-      deserializeJson(ud, js);
-      JsonObject o = a.createNestedObject();
-      o["id"] = ud["id"];
-      o["role"] = ud["role"];
-    }
-    prefs.end();
-    String r;
-    serializeJson(d, r);
-    req->send(200, "application/json", r); });
-
-  server.on("/api/users/add", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("id", true) || !req->hasParam("pass", true) || !req->hasParam("role", true) || !req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing params\"}");
-      return;
-    }
-    if (!hasAdmin()) {
-      req->send(403, "application/json", "{\"error\":\"No admin user exists\"}");
-      return;
-    }
-    if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
-      req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
-      return;
-    }
-    DynamicJsonDocument nd(512);
-    nd["id"] = req->getParam("id", true)->value();
-    nd["pass"] = req->getParam("pass", true)->value();
-    nd["role"] = req->getParam("role", true)->value();
-    String nj;
-    serializeJson(nd, nj);
-    prefs.begin("users", false);
-    int cnt = prefs.getInt("cnt", 0);
-    prefs.putString(("u" + String(cnt)).c_str(), nj);
-    prefs.putInt("cnt", cnt + 1);
-    prefs.end();
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true}"); });
-
-  server.on("/api/users/remove", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("id", true) || !req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing params\"}");
-      return;
-    }
-    if (!hasAdmin()) {
-      req->send(403, "application/json", "{\"error\":\"No admin user exists\"}");
-      return;
-    }
-    if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
-      req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
-      return;
-    }
-    String uid = req->getParam("id", true)->value();
-    prefs.begin("users", false);
-    int cnt = prefs.getInt("cnt", 0);
-    int targetIdx = -1;
-    bool targetIsAdmin = false;
-    for (int i = 0; i < cnt; i++) {
-      String js = prefs.getString(("u" + String(i)).c_str(), "");
+    server.on("/api/sensor/temp", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("data", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing data\"}");
+        return;
+      }
+      if (!ahtOk) {
+        req->send(400, "application/json", "{\"error\":\"AHT10 sensor not initialized\"}");
+        return;
+      }
+      String data = req->getParam("data", true)->value();
       DynamicJsonDocument d(1024);
-      deserializeJson(d, js);
-      if (d["id"].as<String>() == uid) {
-        targetIdx = i;
-        targetIsAdmin = (d["role"].as<String>() == "admin");
-        break;
+      if (deserializeJson(d, data)) {
+        req->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        return;
       }
-    }
-    if (targetIdx < 0) {
+      int sw = d["switchId"].as<int>();
+      prefs.begin("sensor", false);
+      prefs.putString(("t" + String(sw)).c_str(), data);
       prefs.end();
-      req->send(404, "application/json", "{\"error\":\"User not found\"}");
-      return;
-    }
-    if (targetIsAdmin && countAdmins() <= 1) {
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
+    server.on("/api/sensor/humid", HTTP_GET, [](AsyncWebServerRequest *req)
+              {
+      int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
+      prefs.begin("sensor", true);
+      String j = prefs.getString(("h" + String(sw)).c_str(), "{}");
       prefs.end();
-      req->send(403, "application/json", "{\"error\":\"Cannot remove the last admin user\"}");
-      return;
-    }
-    for (int i = targetIdx; i < cnt - 1; i++) {
-      String next = prefs.getString(("u" + String(i + 1)).c_str(), "");
-      prefs.putString(("u" + String(i)).c_str(), next);
-    }
-    prefs.remove(("u" + String(cnt - 1)).c_str());
-    prefs.putInt("cnt", cnt - 1);
-    prefs.end();
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true}"); });
+      req->send(200, "application/json", j); });
 
-  // ADMINISTRATOR
-  server.on("/api/admin/time", HTTP_GET, [](AsyncWebServerRequest *req)
-            {
-    DynamicJsonDocument d(1024);
-    d["ntp"] = ntpSrv;
-    d["tz"] = tzStr;
-    d["synced"] = timeSynced;
-    String r;
-    serializeJson(d, r);
-    req->send(200, "application/json", r); });
-
-  server.on("/api/admin/time", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (req->hasParam("ntp", true)) ntpSrv = req->getParam("ntp", true)->value();
-    if (req->hasParam("tz", true)) {
-      tzStr = req->getParam("tz", true)->value();
-      parseTZ();
-    }
-    prefs.begin("admin", false);
-    prefs.putString("ntp", ntpSrv);
-    prefs.putString("tz", tzStr);
-    prefs.end();
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true}"); });
-
-  server.on("/api/admin/time/sync", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (syncTime())
-      req->send(200, "application/json", "{\"ok\":true}");
-    else
-      req->send(400, "application/json", "{\"error\":\"Time sync failed. Check WiFi and NTP server.\"}"); });
-
-  server.on("/api/admin/time/current", HTTP_GET, [](AsyncWebServerRequest *req)
-            {
-    struct tm ti;
-    if (getLocalTime(&ti)) {
-      char buf[32];
-      sprintf(buf, "%02d:%02d:%02d %02d/%02d/%04d", ti.tm_hour, ti.tm_min, ti.tm_sec,
-              ti.tm_mday, ti.tm_mon + 1, ti.tm_year + 1900);
-      req->send(200, "application/json", "{\"time\":\"" + String(buf) + "\",\"synced\":" + (timeSynced ? "true" : "false") + "}");
-    } else {
-      req->send(200, "application/json", "{\"time\":\"--:--:-- --/--/----\",\"synced\":false}");
-    } });
-
-  server.on("/api/admin/location", HTTP_GET, [](AsyncWebServerRequest *req)
-            {
-    DynamicJsonDocument d(1024);
-    d["lat"] = geoLat;
-    d["lon"] = geoLon;
-    d["configured"] = locOk;
-    String r;
-    serializeJson(d, r);
-    req->send(200, "application/json", r); });
-
-  server.on("/api/admin/location", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("lat", true) || !req->hasParam("lon", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing params\"}");
-      return;
-    }
-    geoLat = req->getParam("lat", true)->value().toFloat();
-    geoLon = req->getParam("lon", true)->value().toFloat();
-    locOk = true;
-    lastCalcDay = -1;
-    prefs.begin("admin", false);
-    prefs.putFloat("lat", geoLat);
-    prefs.putFloat("lon", geoLon);
-    prefs.end();
-    notifyStorage();
-    calcSunriseSunset();
-    req->send(200, "application/json", "{\"ok\":true}"); });
-
-  server.on("/api/admin/restart", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
-      req->send(400, "application/json", "{\"error\":\"Admin credentials required\"}");
-      return;
-    }
-    if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
-      req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
-      return;
-    }
-    req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Restarting...\"}");
-    restartFlag = true;
-    restartAt = millis() + 500; });
-
-  server.on("/api/admin/reset/storage", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
-      req->send(400, "application/json", "{\"error\":\"Admin credentials required\"}");
-      return;
-    }
-    if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
-      req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
-      return;
-    }
-    // Clear all NVS namespaces
-    const char *ns[] = { "sw", "bt", "wfcfg", "fb", "admin", "users", "sched", "fsched", "sensor" };
-    for (int i = 0; i < 9; i++) {
-      prefs.begin(ns[i], false);
-      prefs.clear();
+    server.on("/api/sensor/humid", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("data", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing data\"}");
+        return;
+      }
+      if (!ahtOk) {
+        req->send(400, "application/json", "{\"error\":\"AHT10 sensor not initialized\"}");
+        return;
+      }
+      String data = req->getParam("data", true)->value();
+      DynamicJsonDocument d(1024);
+      if (deserializeJson(d, data)) {
+        req->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        return;
+      }
+      int sw = d["switchId"].as<int>();
+      prefs.begin("sensor", false);
+      prefs.putString(("h" + String(sw)).c_str(), data);
       prefs.end();
-    }
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true,\"msg\":\"All storage cleared. Restart recommended.\"}"); });
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true}"); });
 
-  server.on("/api/admin/reset/settings", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
-      req->send(400, "application/json", "{\"error\":\"Admin credentials required\"}");
-      return;
-    }
-    if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
-      req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
-      return;
-    }
-    // Clear settings but keep users
-    const char *ns[] = { "sw", "bt", "wfcfg", "fb", "admin", "sched", "fsched", "sensor" };
-    for (int i = 0; i < 8; i++) {
-      prefs.begin(ns[i], false);
-      prefs.clear();
+    server.on("/api/sensor/sun", HTTP_GET, [](AsyncWebServerRequest *req)
+              {
+      int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
+      prefs.begin("sensor", true);
+      String j = prefs.getString(("x" + String(sw)).c_str(), "{}");
       prefs.end();
-    }
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Settings cleared (users preserved). Restart recommended.\"}"); });
+      req->send(200, "application/json", j); });
 
-  server.on("/api/admin/reset/factory", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
-      req->send(400, "application/json", "{\"error\":\"Admin credentials required\"}");
-      return;
-    }
-    if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
-      req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
-      return;
-    }
-    // Full factory reset
-    const char *ns[] = { "sw", "bt", "wfcfg", "fb", "admin", "users", "sched", "fsched", "sensor" };
-    for (int i = 0; i < 9; i++) {
-      prefs.begin(ns[i], false);
-      prefs.clear();
+    server.on("/api/sensor/sun", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("data", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing data\"}");
+        return;
+      }
+      if (!ahtOk) {
+        req->send(400, "application/json", "{\"error\":\"AHT10 sensor not initialized\"}");
+        return;
+      }
+      if (!locOk) {
+        req->send(400, "application/json", "{\"error\":\"Latitude/Longitude not configured\"}");
+        return;
+      }
+      if (!timeSynced) {
+        req->send(400, "application/json", "{\"error\":\"Update time first\"}");
+        return;
+      }
+      String data = req->getParam("data", true)->value();
+      DynamicJsonDocument d(1024);
+      if (deserializeJson(d, data)) {
+        req->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        return;
+      }
+      int sw = d["switchId"].as<int>();
+      prefs.begin("sensor", false);
+      prefs.putString(("x" + String(sw)).c_str(), data);
       prefs.end();
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
+    // ──── BLUETOOTH ────
+    server.on("/api/bt", HTTP_GET, [](AsyncWebServerRequest *req)
+              {
+      prefs.begin("bt", true);
+      String paired = prefs.getString("paired", "[]");
+      prefs.end();
+      DynamicJsonDocument d(1024);
+      d["enabled"] = btOn;
+      d["running"] = btRunning;
+      d["deferred"] = btDeferredForWeb;
+      d["name"] = btName;
+      d["password"] = btPass;
+      DynamicJsonDocument pd(1024);
+      deserializeJson(pd, paired);
+      d["devices"] = pd;
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r); });
+
+    server.on("/api/bt/toggle", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("enabled", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing\"}");
+        return;
+      }
+      btOn = req->getParam("enabled", true)->value() == "true";
+      prefs.begin("bt", false);
+      prefs.putBool("en", btOn);
+      prefs.end();
+      notifyStorage();
+      if (btOn) {
+        setupBluetooth();
+      } else {
+        if (btRunning) {
+          SerialBT.end();
+        }
+        btRunning = false;
+        btDeferredForWeb = false;
+      }
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
+    server.on("/api/bt/name", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("name", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing\"}");
+        return;
+      }
+      btName = req->getParam("name", true)->value();
+      prefs.begin("bt", false);
+      prefs.putString("name", btName);
+      prefs.end();
+      notifyStorage();
+      if (btOn && btRunning) {
+        SerialBT.end();
+        btRunning = false;
+        delay(100);
+        if (SerialBT.begin(btName)) {
+          btRunning = true;
+        }
+      }
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
+    server.on("/api/bt/password", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("current", true) || !req->hasParam("newpass", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing params\"}");
+        return;
+      }
+      String cur = req->getParam("current", true)->value();
+      String np = req->getParam("newpass", true)->value();
+      if (cur != btPass) {
+        req->send(400, "application/json", "{\"error\":\"Current password incorrect\"}");
+        return;
+      }
+      btPass = np;
+      prefs.begin("bt", false);
+      prefs.putString("pass", btPass);
+      prefs.end();
+      notifyStorage();
+      if (btOn && btRunning) { SerialBT.setPin(btPass.c_str(), btPass.length()); }
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
+    server.on("/api/bt/devices", HTTP_GET, [](AsyncWebServerRequest *req)
+              {
+      prefs.begin("bt", true);
+      String j = prefs.getString("paired", "[]");
+      prefs.end();
+      req->send(200, "application/json", j); });
+
+    server.on("/api/bt/device/remove", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("addr", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing addr\"}");
+        return;
+      }
+      String addr = req->getParam("addr", true)->value();
+      prefs.begin("bt", false);
+      String pj = prefs.getString("paired", "[]");
+      DynamicJsonDocument d(1024);
+      deserializeJson(d, pj);
+      JsonArray a = d.as<JsonArray>();
+      for (int i = a.size() - 1; i >= 0; i--) {
+        if (a[i]["addr"].as<String>() == addr) {
+          a.remove(i);
+          break;
+        }
+      }
+      String nj;
+      serializeJson(d, nj);
+      prefs.putString("paired", nj);
+      prefs.end();
+      notifyStorage();
+      esp_bd_addr_t bda;
+      sscanf(addr.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", &bda[0], &bda[1], &bda[2], &bda[3], &bda[4], &bda[5]);
+      esp_bt_gap_remove_bond_device(bda);
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
+    // ──── WIFI ────
+    server.on("/api/wifi/status", HTTP_GET, [](AsyncWebServerRequest *req)
+              {
+      DynamicJsonDocument d(1024);
+      d["connected"] = (WiFi.status() == WL_CONNECTED);
+      d["ssid"] = WiFi.SSID();
+      d["ip"] = WiFi.localIP().toString();
+      d["subnet"] = WiFi.subnetMask().toString();
+      d["gateway"] = WiFi.gatewayIP().toString();
+      d["dns"] = WiFi.dnsIP().toString();
+      d["mac"] = WiFi.macAddress();
+      d["dhcp"] = dhcpOn;
+      d["staticIp"] = sIp;
+      d["staticMask"] = sMask;
+      d["staticGw"] = sGw;
+      d["staticDns"] = sDns;
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r); });
+
+    server.on("/api/wifi/connect", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("ssid", true) || !req->hasParam("pass", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing SSID/password\"}");
+        return;
+      }
+      String ssid = req->getParam("ssid", true)->value();
+      String pass = req->getParam("pass", true)->value();
+      prefs.begin("wfcfg", false);
+      prefs.putString("ssid", ssid);
+      prefs.putString("pass", pass);
+      prefs.end();
+      notifyStorage();
+      WiFi.disconnect();
+      delay(200);
+      WiFi.begin(ssid.c_str(), pass.c_str());
+      int att = 0;
+      while (WiFi.status() != WL_CONNECTED && att < 20) {
+        delay(500);
+        att++;
+      }
+      if (WiFi.status() == WL_CONNECTED)
+        req->send(200, "application/json", "{\"ok\":true,\"ip\":\"" + WiFi.localIP().toString() + "\"}");
+      else
+        req->send(400, "application/json", "{\"error\":\"Connection failed\"}"); });
+
+    server.on("/api/wifi/disconnect", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      WiFi.disconnect();
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
+    server.on("/api/wifi/scan", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"WiFi portal starting. Connect to ESP HOME at 192.168.4.1\"}");
+      portalFlag = true; });
+
+    server.on("/api/wifi/saved", HTTP_GET, [](AsyncWebServerRequest *req)
+              {
+      prefs.begin("wfcfg", true);
+      String ssid = prefs.getString("ssid", "");
+      prefs.end();
+      req->send(200, "application/json", "{\"ssid\":\"" + ssid + "\"}"); });
+
+    server.on("/api/wifi/forget", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      WiFi.disconnect(true, true);
+      prefs.begin("wfcfg", false);
+      prefs.remove("ssid");
+      prefs.remove("pass");
+      prefs.end();
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
+    server.on("/api/wifi/ip", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("dhcp", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing\"}");
+        return;
+      }
+      dhcpOn = req->getParam("dhcp", true)->value() == "true";
+      prefs.begin("wfcfg", false);
+      prefs.putBool("dhcp", dhcpOn);
+      if (!dhcpOn) {
+        if (req->hasParam("ip", true)) {
+          sIp = req->getParam("ip", true)->value();
+          prefs.putString("sip", sIp);
+        }
+        if (req->hasParam("mask", true)) {
+          sMask = req->getParam("mask", true)->value();
+          prefs.putString("mask", sMask);
+        }
+        if (req->hasParam("gw", true)) {
+          sGw = req->getParam("gw", true)->value();
+          prefs.putString("gw", sGw);
+        }
+        if (req->hasParam("dns", true)) {
+          sDns = req->getParam("dns", true)->value();
+          prefs.putString("dns", sDns);
+        }
+        IPAddress ip, gw, sn, dns;
+        ip.fromString(sIp);
+        gw.fromString(sGw);
+        sn.fromString(sMask);
+        dns.fromString(sDns);
+        WiFi.config(ip, gw, sn, dns);
+      }
+      prefs.end();
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
+    // ──── FIREBASE ────
+    server.on("/api/fb", HTTP_GET, [](AsyncWebServerRequest *req)
+              {
+      DynamicJsonDocument d(1024);
+      d["enabled"] = fbOn;
+      d["url"] = fbUrl;
+      d["token"] = fbToken;
+      prefs.begin("fb", true);
+      d["rules"] = prefs.getString("rules", "");
+      prefs.end();
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r); });
+
+    server.on("/api/fb/toggle", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("enabled", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing\"}");
+        return;
+      }
+      fbOn = req->getParam("enabled", true)->value() == "true";
+      prefs.begin("fb", false);
+      prefs.putBool("en", fbOn);
+      prefs.end();
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
+    server.on("/api/fb/url", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("url", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing\"}");
+        return;
+      }
+      fbUrl = req->getParam("url", true)->value();
+      prefs.begin("fb", false);
+      prefs.putString("url", fbUrl);
+      prefs.end();
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
+    server.on("/api/fb/token", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("token", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing\"}");
+        return;
+      }
+      fbToken = req->getParam("token", true)->value();
+      prefs.begin("fb", false);
+      prefs.putString("tok", fbToken);
+      prefs.end();
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
+    server.on("/api/fb/test", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (fbUrl.isEmpty() || fbToken.isEmpty()) {
+        req->send(400, "application/json", "{\"error\":\"URL or Token not configured\"}");
+        return;
+      }
+      if (WiFi.status() != WL_CONNECTED) {
+        req->send(400, "application/json", "{\"error\":\"WiFi not connected\"}");
+        return;
+      }
+      HTTPClient http;
+      String testUrl = fbUrl + "/.json?auth=" + fbToken + "&shallow=true";
+      http.begin(testUrl);
+      int code = http.GET();
+      String body = http.getString();
+      http.end();
+      if (code == 200)
+        req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Connection successful\"}");
+      else
+        req->send(400, "application/json", "{\"error\":\"Connection failed: HTTP " + String(code) + "\"}"); });
+
+    server.on("/api/fb/rules", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("rules", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing rules\"}");
+        return;
+      }
+      String rules = req->getParam("rules", true)->value();
+      prefs.begin("fb", false);
+      prefs.putString("rules", rules);
+      prefs.end();
+      notifyStorage();
+      if (fbUrl.isEmpty() || fbToken.isEmpty()) {
+        req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Saved locally (no Firebase credentials)\"}");
+        return;
+      }
+      if (WiFi.status() != WL_CONNECTED) {
+        req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Saved locally (WiFi not connected)\"}");
+        return;
+      }
+      HTTPClient http;
+      http.begin(fbUrl + "/.settings/rules.json?auth=" + fbToken);
+      http.addHeader("Content-Type", "application/json");
+      int code = http.PUT(rules);
+      http.end();
+      if (code == 200)
+        req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Rules saved and uploaded to Firebase\"}");
+      else
+        req->send(400, "application/json", "{\"error\":\"Saved locally but upload failed: HTTP " + String(code) + "\"}"); });
+
+    // ──── USERS ────
+    server.on("/api/users", HTTP_GET, [](AsyncWebServerRequest *req)
+              {
+      prefs.begin("users", true);
+      int n = prefs.getInt("cnt", 0);
+      DynamicJsonDocument d(1024);
+      JsonArray a = d.to<JsonArray>();
+      for (int i = 0; i < n; i++) {
+        String js = prefs.getString(("u" + String(i)).c_str(), "");
+        if (js.isEmpty()) continue;
+        DynamicJsonDocument ud(512);
+        deserializeJson(ud, js);
+        JsonObject o = a.createNestedObject();
+        o["id"] = ud["id"];
+        o["role"] = ud["role"];
+      }
+      prefs.end();
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r); });
+
+    server.on("/api/users/add", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("id", true) || !req->hasParam("pass", true) || !req->hasParam("role", true) || !req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing params\"}");
+        return;
+      }
+      if (!hasAdmin()) {
+        req->send(403, "application/json", "{\"error\":\"No admin user exists\"}");
+        return;
+      }
+      if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
+        req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+        return;
+      }
+      DynamicJsonDocument nd(512);
+      nd["id"] = req->getParam("id", true)->value();
+      nd["pass"] = req->getParam("pass", true)->value();
+      nd["role"] = req->getParam("role", true)->value();
+      String nj;
+      serializeJson(nd, nj);
+      prefs.begin("users", false);
+      int cnt = prefs.getInt("cnt", 0);
+      prefs.putString(("u" + String(cnt)).c_str(), nj);
+      prefs.putInt("cnt", cnt + 1);
+      prefs.end();
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
+    server.on("/api/users/remove", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("id", true) || !req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing params\"}");
+        return;
+      }
+      if (!hasAdmin()) {
+        req->send(403, "application/json", "{\"error\":\"No admin user exists\"}");
+        return;
+      }
+      if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
+        req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+        return;
+      }
+      String uid = req->getParam("id", true)->value();
+      prefs.begin("users", false);
+      int cnt = prefs.getInt("cnt", 0);
+      int targetIdx = -1;
+      bool targetIsAdmin = false;
+      for (int i = 0; i < cnt; i++) {
+        String js = prefs.getString(("u" + String(i)).c_str(), "");
+        DynamicJsonDocument d(1024);
+        deserializeJson(d, js);
+        if (d["id"].as<String>() == uid) {
+          targetIdx = i;
+          targetIsAdmin = (d["role"].as<String>() == "admin");
+          break;
+        }
+      }
+      if (targetIdx < 0) {
+        prefs.end();
+        req->send(404, "application/json", "{\"error\":\"User not found\"}");
+        return;
+      }
+      if (targetIsAdmin && countAdmins() <= 1) {
+        prefs.end();
+        req->send(403, "application/json", "{\"error\":\"Cannot remove the last admin user\"}");
+        return;
+      }
+      for (int i = targetIdx; i < cnt - 1; i++) {
+        String next = prefs.getString(("u" + String(i + 1)).c_str(), "");
+        prefs.putString(("u" + String(i)).c_str(), next);
+      }
+      prefs.remove(("u" + String(cnt - 1)).c_str());
+      prefs.putInt("cnt", cnt - 1);
+      prefs.end();
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
+    // ──── ADMINISTRATOR ────
+    server.on("/api/admin/time", HTTP_GET, [](AsyncWebServerRequest *req)
+              {
+      DynamicJsonDocument d(1024);
+      d["ntp"] = ntpSrv;
+      d["tz"] = tzStr;
+      d["synced"] = timeSynced;
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r); });
+
+    server.on("/api/admin/time", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (req->hasParam("ntp", true)) ntpSrv = req->getParam("ntp", true)->value();
+      if (req->hasParam("tz", true)) {
+        tzStr = req->getParam("tz", true)->value();
+        parseTZ();
+      }
+      prefs.begin("admin", false);
+      prefs.putString("ntp", ntpSrv);
+      prefs.putString("tz", tzStr);
+      prefs.end();
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
+    server.on("/api/admin/time/sync", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (syncTime())
+        req->send(200, "application/json", "{\"ok\":true}");
+      else
+        req->send(400, "application/json", "{\"error\":\"Time sync failed. Check WiFi and NTP server.\"}"); });
+
+    server.on("/api/admin/time/current", HTTP_GET, [](AsyncWebServerRequest *req)
+              {
+      struct tm ti;
+      if (getLocalTime(&ti)) {
+        char buf[32];
+        sprintf(buf, "%02d:%02d:%02d %02d/%02d/%04d", ti.tm_hour, ti.tm_min, ti.tm_sec,
+                ti.tm_mday, ti.tm_mon + 1, ti.tm_year + 1900);
+        req->send(200, "application/json", "{\"time\":\"" + String(buf) + "\",\"synced\":" + (timeSynced ? "true" : "false") + "}");
+      } else {
+        req->send(200, "application/json", "{\"time\":\"--:--:-- --/--/----\",\"synced\":false}");
+      } });
+
+    server.on("/api/admin/location", HTTP_GET, [](AsyncWebServerRequest *req)
+              {
+      DynamicJsonDocument d(1024);
+      d["lat"] = geoLat;
+      d["lon"] = geoLon;
+      d["configured"] = locOk;
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r); });
+
+    server.on("/api/admin/location", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("lat", true) || !req->hasParam("lon", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing params\"}");
+        return;
+      }
+      geoLat = req->getParam("lat", true)->value().toFloat();
+      geoLon = req->getParam("lon", true)->value().toFloat();
+      locOk = true;
+      lastCalcDay = -1;
+      prefs.begin("admin", false);
+      prefs.putFloat("lat", geoLat);
+      prefs.putFloat("lon", geoLon);
+      prefs.end();
+      notifyStorage();
+      calcSunriseSunset();
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
+    server.on("/api/admin/restart", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
+        req->send(400, "application/json", "{\"error\":\"Admin credentials required\"}");
+        return;
+      }
+      if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
+        req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+        return;
+      }
+      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Restarting...\"}");
+      restartFlag = true;
+      restartAt = millis() + 500; });
+
+    server.on("/api/admin/reset/storage", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
+        req->send(400, "application/json", "{\"error\":\"Admin credentials required\"}");
+        return;
+      }
+      if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
+        req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+        return;
+      }
+      // Clear all NVS namespaces
+      const char *ns[] = { "sw", "bt", "wfcfg", "fb", "admin", "users", "sched", "fsched", "sensor" };
+      for (int i = 0; i < 9; i++) {
+        prefs.begin(ns[i], false);
+        prefs.clear();
+        prefs.end();
+      }
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"All storage cleared. Restart recommended.\"}"); });
+
+    server.on("/api/admin/reset/settings", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
+        req->send(400, "application/json", "{\"error\":\"Admin credentials required\"}");
+        return;
+      }
+      if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
+        req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+        return;
+      }
+      // Clear settings but keep users
+      const char *ns[] = { "sw", "bt", "wfcfg", "fb", "admin", "sched", "fsched", "sensor" };
+      for (int i = 0; i < 8; i++) {
+        prefs.begin(ns[i], false);
+        prefs.clear();
+        prefs.end();
+      }
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Settings cleared (users preserved). Restart recommended.\"}"); });
+
+    server.on("/api/admin/reset/factory", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
+        req->send(400, "application/json", "{\"error\":\"Admin credentials required\"}");
+        return;
+      }
+      if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
+        req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+        return;
+      }
+      // Full factory reset
+      const char *ns[] = { "sw", "bt", "wfcfg", "fb", "admin", "users", "sched", "fsched", "sensor" };
+      for (int i = 0; i < 9; i++) {
+        prefs.begin(ns[i], false);
+        prefs.clear();
+        prefs.end();
+      }
+      WiFi.disconnect(true, true);
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Factory reset complete. Restarting...\"}");
+      restartFlag = true;
+      restartAt = millis() + 500; });
+  }
+
+  server.onNotFound([](AsyncWebServerRequest *req)
+                    {
+    if (req->method() == HTTP_OPTIONS) {
+      req->send(204);
+      return;
     }
-    WiFi.disconnect(true, true);
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Factory reset complete. Restarting...\"}");
-    restartFlag = true;
-    restartAt = millis() + 500; });
+
+    if (req->url().startsWith("/api/")) {
+      if (coreRoutesOnly) {
+        req->send(503, "application/json", "{\"error\":\"Extended API disabled in low-memory mode\"}");
+      } else {
+        req->send(404, "application/json", "{\"error\":\"API route not found\"}");
+      }
+      Serial.printf("[HTTP] API miss %s\n", req->url().c_str());
+      return;
+    }
+
+    Serial.printf("[HTTP] 404 %s\n", req->url().c_str());
+    req->send(404, "text/plain", "Not found"); });
 
   server.begin();
   Serial.println("[SERVER] Web server started");
+  Serial.printf("[SERVER] Free heap after route setup: %u bytes\n", ESP.getFreeHeap());
 }
 
 //  SETUP
@@ -1872,13 +1941,26 @@ void setup()
     Serial.println("[WARN] AHT10 not detected");
   }
 
-  // Bluetooth
-  setupBluetooth();
-
   // WiFi
   connectToSavedWiFi();
   delay(1000);
   // connectWiFi();
+
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    WiFi.setSleep(false);
+    Serial.println("[WIFI] Power save disabled for stable web server");
+    if (btOn)
+    {
+      btDeferredForWeb = true;
+      btRunning = false;
+      Serial.println("[BT] Deferred to preserve memory for web server");
+    }
+  }
+  else
+  {
+    setupBluetooth();
+  }
 
   // Time sync
   if (WiFi.status() == WL_CONNECTED)
