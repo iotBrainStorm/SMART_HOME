@@ -886,7 +886,6 @@
     <div class="tabs" id="tabsBar">
       <div class="tab active" data-tab="switches">Switches</div>
       <div class="tab" data-tab="automation">Automation</div>
-      <div class="tab" data-tab="bluetooth">Bluetooth</div>
       <div class="tab" data-tab="wifi">WiFi</div>
       <div class="tab" data-tab="firebase">Firebase</div>
       <div class="tab" data-tab="user">User</div>
@@ -1733,112 +1732,6 @@
           </div>
         </div>
 
-        <!-- ═══════════ BLUETOOTH ═══════════ -->
-        <!-- On/Off -->
-        <div class="panel" id="panel-bt-toggle">
-          <div class="panel-title">Bluetooth On/Off</div>
-          <div class="setting-row">
-            <div class="setting-info">
-              <div class="setting-label">Bluetooth</div>
-              <div class="setting-sub">
-                Enable or disable Bluetooth connectivity
-              </div>
-            </div>
-            <label class="sm-toggle">
-              <input type="checkbox" checked />
-              <span class="sm-toggle-track"></span>
-            </label>
-          </div>
-        </div>
-
-        <!-- BT Name -->
-        <div class="panel" id="panel-bt-name">
-          <div class="panel-title">Bluetooth Name</div>
-          <div class="setting-row">
-            <div class="setting-info">
-              <div class="setting-label">Device Name</div>
-              <div class="setting-sub">Visible to other Bluetooth devices</div>
-            </div>
-            <input
-              class="cfg-input"
-              type="text"
-              value="ESP32_SmartHome"
-              placeholder="Bluetooth name"
-            />
-          </div>
-          <div style="margin-top: 16px; text-align: right">
-            <button class="cfg-btn cfg-btn-primary">Save Name</button>
-          </div>
-        </div>
-
-        <!-- BT Password -->
-        <div class="panel" id="panel-bt-pass">
-          <div class="panel-title">Bluetooth Password</div>
-          <div class="setting-row">
-            <div class="setting-info">
-              <div class="setting-label">Current Password</div>
-              <div class="setting-sub" id="btPassDisplay">••••••</div>
-            </div>
-            <button class="cfg-btn cfg-btn-secondary" id="btShowPass">
-              Show
-            </button>
-          </div>
-          <div
-            class="setting-row"
-            style="flex-direction: column; align-items: flex-start; gap: 10px"
-          >
-            <div class="setting-label">Change Password</div>
-            <input
-              class="cfg-input"
-              type="password"
-              placeholder="Current password"
-              style="max-width: 100%"
-            />
-            <input
-              class="cfg-input"
-              type="password"
-              placeholder="New password"
-              style="max-width: 100%"
-            />
-            <input
-              class="cfg-input"
-              type="password"
-              placeholder="Confirm new password"
-              style="max-width: 100%"
-            />
-          </div>
-          <div style="margin-top: 16px; text-align: right">
-            <button class="cfg-btn cfg-btn-primary">Update Password</button>
-          </div>
-        </div>
-
-        <!-- BT Paired Devices -->
-        <div class="panel" id="panel-bt-devices">
-          <div class="panel-title">Paired Devices</div>
-          <div class="info-box">
-            Devices that have previously connected via Bluetooth will appear
-            here.
-          </div>
-          <div class="action-row">
-            <span class="action-label">Phone-Mrinal</span>
-            <button
-              class="cfg-btn cfg-btn-danger"
-              style="padding: 6px 14px; font-size: 0.78rem"
-            >
-              Remove
-            </button>
-          </div>
-          <div class="action-row">
-            <span class="action-label">Laptop-Home</span>
-            <button
-              class="cfg-btn cfg-btn-danger"
-              style="padding: 6px 14px; font-size: 0.78rem"
-            >
-              Remove
-            </button>
-          </div>
-        </div>
-
         <!-- ═══════════ WIFI ═══════════ -->
         <!-- Connect WiFi -->
         <div class="panel" id="panel-wifi-connect">
@@ -2393,8 +2286,7 @@
             <div class="setting-info">
               <div class="setting-label">Reset All Settings</div>
               <div class="setting-sub">
-                Restores switch names, icons, Bluetooth name, and other settings
-                to defaults
+                Restores switch names, icons, and other settings to defaults
               </div>
             </div>
             <button
@@ -3074,12 +2966,6 @@
             ],
           },
         ],
-        bluetooth: [
-          { label: "On / Off", panel: "panel-bt-toggle" },
-          { label: "BT Name", panel: "panel-bt-name" },
-          { label: "Password", panel: "panel-bt-pass" },
-          { label: "Paired Devices", panel: "panel-bt-devices" },
-        ],
         wifi: [
           { label: "Connect WiFi", panel: "panel-wifi-connect" },
           { label: "Disconnect", panel: "panel-wifi-disconnect" },
@@ -3229,19 +3115,6 @@
       document.getElementById("backBtn").addEventListener("click", function () {
         window.location.href = "index.html";
       });
-
-      /* BT show/hide password */
-      var btShowBtn = document.getElementById("btShowPass");
-      var btPassEl = document.getElementById("btPassDisplay");
-      var btPassVisible = false;
-      var btStoredPass = "";
-      if (btShowBtn) {
-        btShowBtn.addEventListener("click", function () {
-          btPassVisible = !btPassVisible;
-          btPassEl.textContent = btPassVisible ? btStoredPass : "••••••";
-          btShowBtn.textContent = btPassVisible ? "Hide" : "Show";
-        });
-      }
 
       /* ══════════════════════════════════════════════════════════════
          ICON PICKER MODAL
@@ -4505,85 +4378,6 @@
           }
         }
 
-        /* — Bluetooth Toggle — */
-        var btTogglePanel = document.getElementById("panel-bt-toggle");
-        if (btTogglePanel) {
-          var btToggle = btTogglePanel.querySelector('input[type="checkbox"]');
-          if (btToggle) {
-            btToggle.addEventListener("change", function () {
-              apiPost("/api/bt/toggle", "enabled=" + this.checked)
-                .then(function (d) {
-                  if (!d.ok) alert(d.error || "Toggle failed");
-                })
-                .catch(function () {
-                  alert("Connection error");
-                });
-            });
-          }
-        }
-
-        /* — Bluetooth Name Save — */
-        var btNamePanel = document.getElementById("panel-bt-name");
-        var btNameBtn = btNamePanel
-          ? btNamePanel.querySelector(".cfg-btn-primary")
-          : null;
-        if (btNameBtn) {
-          btNameBtn.addEventListener("click", function () {
-            var input = btNamePanel.querySelector(".cfg-input");
-            apiPost("/api/bt/name", "name=" + encodeURIComponent(input.value))
-              .then(function (d) {
-                if (d.ok) alert("Bluetooth name saved!");
-                else alert(d.error || "Save failed");
-              })
-              .catch(function () {
-                alert("Connection error");
-              });
-          });
-        }
-
-        /* — Bluetooth Password Update — */
-        var btPassPanel = document.getElementById("panel-bt-pass");
-        var btPassBtn = btPassPanel
-          ? btPassPanel.querySelector(".cfg-btn-primary")
-          : null;
-        if (btPassBtn) {
-          btPassBtn.addEventListener("click", function () {
-            var inputs = btPassPanel.querySelectorAll('input[type="password"]');
-            var current = inputs[0] ? inputs[0].value : "";
-            var newPass = inputs[1] ? inputs[1].value : "";
-            var confirm = inputs[2] ? inputs[2].value : "";
-            if (!current || !newPass) {
-              alert("Please fill all password fields");
-              return;
-            }
-            if (newPass !== confirm) {
-              alert("New passwords do not match");
-              return;
-            }
-            apiPost(
-              "/api/bt/password",
-              "current=" +
-                encodeURIComponent(current) +
-                "&newpass=" +
-                encodeURIComponent(newPass),
-            )
-              .then(function (d) {
-                if (d.ok) {
-                  alert("Password updated!");
-                  btStoredPass = newPass;
-                  inputs.forEach(function (inp) {
-                    inp.value = "";
-                  });
-                } else {
-                  alert(d.error || "Update failed");
-                }
-              })
-              .catch(function () {
-                alert("Connection error");
-              });
-          });
-        }
-
         /* — WiFi Connect — */
         var wifiPanel = document.getElementById("panel-wifi-connect");
         if (wifiPanel) {
@@ -4851,53 +4645,6 @@
                     "Switch " + (i + 1) + " — " + d.names[i];
               }
             }
-          })
-          .catch(function () {});
-
-        /* Load Bluetooth settings */
-        apiGet("/api/bt")
-          .then(function (d) {
-            var btToggle = document.querySelector(
-              '#panel-bt-toggle input[type="checkbox"]',
-            );
-            if (btToggle) btToggle.checked = !!d.enabled;
-            var btNameInput = document.querySelector(
-              "#panel-bt-name .cfg-input",
-            );
-            if (btNameInput && d.name) btNameInput.value = d.name;
-            if (d.password) btStoredPass = d.password;
-          })
-          .catch(function () {});
-
-        /* Load Bluetooth paired devices */
-        apiGet("/api/bt/devices")
-          .then(function (devices) {
-            var panel = document.getElementById("panel-bt-devices");
-            if (!panel || !Array.isArray(devices)) return;
-            var existing = panel.querySelectorAll(".action-row");
-            existing.forEach(function (r) {
-              r.remove();
-            });
-            devices.forEach(function (dev) {
-              var row = document.createElement("div");
-              row.className = "action-row";
-              row.innerHTML =
-                '<span class="action-label">' +
-                (dev.name || dev.addr) +
-                "</span>" +
-                '<button class="cfg-btn cfg-btn-danger" style="padding:6px 14px;font-size:0.78rem">Remove</button>';
-              row
-                .querySelector("button")
-                .addEventListener("click", function () {
-                  apiPost(
-                    "/api/bt/device/remove",
-                    "addr=" + encodeURIComponent(dev.addr),
-                  ).then(function (d) {
-                    if (d.ok) row.remove();
-                  });
-                });
-              panel.appendChild(row);
-            });
           })
           .catch(function () {});
 
