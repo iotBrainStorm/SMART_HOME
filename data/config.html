@@ -1924,6 +1924,7 @@
             <input
               class="cfg-input"
               type="text"
+              id="wifiSsidInput"
               placeholder="Enter WiFi network name"
               style="max-width: 100%"
             />
@@ -1933,12 +1934,41 @@
             style="flex-direction: column; align-items: flex-start; gap: 10px"
           >
             <div class="setting-label">Password</div>
-            <input
-              class="cfg-input"
-              type="password"
-              placeholder="Enter WiFi password"
-              style="max-width: 100%"
-            />
+            <div style="position: relative; width: 100%">
+              <input
+                class="cfg-input"
+                type="password"
+                id="wifiPassInput"
+                placeholder="Enter WiFi password"
+                style="max-width: 100%; padding-right: 44px"
+              />
+              <button
+                type="button"
+                id="wifiPassToggleBtn"
+                onclick="toggleWifiPasswordVisibility()"
+                style="
+                  position: absolute;
+                  right: 8px;
+                  top: 50%;
+                  transform: translateY(-50%);
+                  background: none;
+                  border: none;
+                  cursor: pointer;
+                  padding: 4px;
+                  display: flex;
+                  align-items: center;
+                "
+              >
+                <svg id="wifiPassEyeOpen" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+                <svg id="wifiPassEyeClosed" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                  <line x1="1" y1="1" x2="23" y2="23"/>
+                </svg>
+              </button>
+            </div>
           </div>
           <div
             style="
@@ -1958,42 +1988,64 @@
           </div>
         </div>
 
-        <!-- Disconnect WiFi -->
+        <!-- Network Status -->
         <div class="panel" id="panel-wifi-disconnect">
-          <div class="panel-title">Disconnect WiFi</div>
-          <div class="setting-row">
-            <div class="setting-info">
-              <div class="setting-label">Current Network</div>
-              <div class="setting-sub">Connected to: MyHomeWiFi</div>
+          <div class="panel-title">Network Status</div>
+          <div style="display: grid; gap: 10px; width: 100%">
+            <div class="setting-row">
+              <div class="setting-info">
+                <div class="setting-label">SSID</div>
+                <div class="setting-sub" id="networkStatusSsid" style="font-family: monospace">—</div>
+              </div>
             </div>
-            <button class="cfg-btn cfg-btn-danger">Disconnect</button>
+            <div class="setting-row">
+              <div class="setting-info">
+                <div class="setting-label">Signal Strength</div>
+                <div class="setting-sub" id="networkStatusSignal">—</div>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info">
+                <div class="setting-label">IP Address</div>
+                <div class="setting-sub" id="networkStatusIp" style="font-family: monospace">—</div>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info">
+                <div class="setting-label">Gateway</div>
+                <div class="setting-sub" id="networkStatusGateway" style="font-family: monospace">—</div>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info">
+                <div class="setting-label">MAC Address</div>
+                <div class="setting-sub" id="networkStatusMac" style="font-family: monospace">—</div>
+              </div>
+            </div>
           </div>
         </div>
 
         <!-- Forget WiFi -->
         <div class="panel" id="panel-wifi-forget">
           <div class="panel-title">Forget WiFi</div>
-          <div class="info-box">
-            Forget saved WiFi credentials. The device will not auto-connect to
-            these networks.
+          <div class="info-box" style="color: #f59e0b; border-color: rgba(245, 158, 11, 0.2); background: rgba(245, 158, 11, 0.06)">
+            Once you forget this WiFi network, you will no longer be able to use this web page.
+            You will need to reconnect to a WiFi network via the ESP HOME hotspot (192.168.4.1).
           </div>
-          <div class="action-row">
-            <span class="action-label">MyHomeWiFi</span>
-            <button
-              class="cfg-btn cfg-btn-danger"
-              style="padding: 6px 14px; font-size: 0.78rem"
-            >
-              Forget
-            </button>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Connected SSID</div>
+              <div class="setting-sub" id="forgetWifiSsid" style="font-family: monospace">—</div>
+            </div>
           </div>
-          <div class="action-row">
-            <span class="action-label">Office_5G</span>
-            <button
-              class="cfg-btn cfg-btn-danger"
-              style="padding: 6px 14px; font-size: 0.78rem"
-            >
-              Forget
-            </button>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">IP Address</div>
+              <div class="setting-sub" id="forgetWifiIp" style="font-family: monospace">—</div>
+            </div>
+          </div>
+          <div style="margin-top: 16px; text-align: right">
+            <button class="cfg-btn cfg-btn-danger" id="forgetWifiBtn" onclick="requestForgetWifi()">Forget WiFi</button>
           </div>
         </div>
 
@@ -2020,8 +2072,8 @@
           <div class="setting-row">
             <div class="setting-info">
               <div class="setting-label">MAC Address</div>
-              <div class="setting-sub" style="font-family: monospace">
-                AA:BB:CC:DD:EE:FF
+              <div class="setting-sub" id="wifiMacAddress" style="font-family: monospace">
+                —
               </div>
             </div>
             <span style="font-size: 0.75rem; color: #64748b">(Read Only)</span>
@@ -2088,10 +2140,10 @@
                 style="max-width: 100%; font-family: monospace"
               />
             </div>
+          </div>
 
-            <div style="margin-top: 16px; text-align: right">
-              <button class="cfg-btn cfg-btn-primary">Save IP Settings</button>
-            </div>
+          <div style="margin-top: 16px; text-align: right">
+            <button class="cfg-btn cfg-btn-primary" id="wifiIpSaveBtn">Save IP Settings</button>
           </div>
 
           <div
@@ -2104,7 +2156,7 @@
               margin-top: 16px;
             "
           >
-            <div class="setting-sub" style="color: #64748b">
+            <div class="setting-sub" id="dhcpInfoTitle" style="color: #64748b">
               Current IP (via DHCP):
             </div>
             <div style="display: grid; gap: 6px; width: 100%">
@@ -2121,12 +2173,13 @@
                   >IP Address</span
                 >
                 <span
+                  id="dhcpIpValue"
                   style="
                     color: #e2e8f0;
                     font-size: 0.82rem;
                     font-family: monospace;
                   "
-                  >192.168.1.100</span
+                  >—</span
                 >
               </div>
               <div
@@ -2142,12 +2195,13 @@
                   >Subnet Mask</span
                 >
                 <span
+                  id="dhcpMaskValue"
                   style="
                     color: #e2e8f0;
                     font-size: 0.82rem;
                     font-family: monospace;
                   "
-                  >255.255.255.0</span
+                  >—</span
                 >
               </div>
               <div
@@ -2161,12 +2215,13 @@
               >
                 <span style="color: #94a3b8; font-size: 0.82rem">Gateway</span>
                 <span
+                  id="dhcpGatewayValue"
                   style="
                     color: #e2e8f0;
                     font-size: 0.82rem;
                     font-family: monospace;
                   "
-                  >192.168.1.1</span
+                  >—</span
                 >
               </div>
               <div
@@ -2180,12 +2235,13 @@
               >
                 <span style="color: #94a3b8; font-size: 0.82rem">DNS</span>
                 <span
+                  id="dhcpDnsValue"
                   style="
                     color: #e2e8f0;
                     font-size: 0.82rem;
                     font-family: monospace;
                   "
-                  >8.8.8.8</span
+                  >—</span
                 >
               </div>
             </div>
@@ -3148,7 +3204,7 @@
         ],
         wifi: [
           { label: "Connect WiFi", panel: "panel-wifi-connect" },
-          { label: "Disconnect", panel: "panel-wifi-disconnect" },
+          { label: "Network Status", panel: "panel-wifi-disconnect" },
           { label: "Forget WiFi", panel: "panel-wifi-forget" },
           { label: "IP Settings", panel: "panel-wifi-ip" },
         ],
@@ -5002,6 +5058,51 @@
       }
 
       /* ══════════════════════════════════════════════════════════════
+         WIFI PASSWORD VISIBILITY TOGGLE
+      ══════════════════════════════════════════════════════════════ */
+      function toggleWifiPasswordVisibility() {
+        var passInput = document.getElementById("wifiPassInput");
+        var eyeOpen = document.getElementById("wifiPassEyeOpen");
+        var eyeClosed = document.getElementById("wifiPassEyeClosed");
+        if (passInput.type === "password") {
+          passInput.type = "text";
+          eyeOpen.style.display = "none";
+          eyeClosed.style.display = "";
+        } else {
+          passInput.type = "password";
+          eyeOpen.style.display = "";
+          eyeClosed.style.display = "none";
+        }
+      }
+
+      /* ══════════════════════════════════════════════════════════════
+         FORGET WIFI WITH ADMIN VERIFICATION
+      ══════════════════════════════════════════════════════════════ */
+      function requestForgetWifi() {
+        showPasswordModal(
+          "Verify admin credentials to forget WiFi network",
+          function (actionData, adminUser, adminPass) {
+            apiPost(
+              "/api/wifi/forget",
+              "adminUser=" + encodeURIComponent(adminUser) +
+              "&adminPass=" + encodeURIComponent(adminPass)
+            )
+              .then(function (d) {
+                if (d.ok) {
+                  alert("WiFi network forgotten. Device will disconnect and restart.");
+                } else {
+                  alert(d.error || "Failed to forget WiFi");
+                }
+              })
+              .catch(function () {
+                alert("Connection error");
+              });
+          },
+          null
+        );
+      }
+
+      /* ══════════════════════════════════════════════════════════════
          FIREBASE RULES VALIDATION
       ══════════════════════════════════════════════════════════════ */
       function validateFirebaseRules() {
@@ -5810,9 +5911,8 @@
           var wifiBtn = wifiPanel.querySelector(".cfg-btn-primary");
           if (wifiBtn) {
             wifiBtn.addEventListener("click", function () {
-              var inputs = wifiPanel.querySelectorAll(".cfg-input");
-              var ssid = inputs[0] ? inputs[0].value : "";
-              var pass = inputs[1] ? inputs[1].value : "";
+              var ssid = document.getElementById("wifiSsidInput").value;
+              var pass = document.getElementById("wifiPassInput").value;
               if (!ssid) {
                 alert("Enter SSID");
                 return;
@@ -5838,62 +5938,43 @@
           }
         }
 
-        /* — WiFi Disconnect — */
-        var wifiDiscPanel = document.getElementById("panel-wifi-disconnect");
-        if (wifiDiscPanel) {
-          var discBtn = wifiDiscPanel.querySelector(".cfg-btn-danger");
-          if (discBtn) {
-            discBtn.addEventListener("click", function () {
-              apiPost("/api/wifi/disconnect", "")
-                .then(function (d) {
-                  if (d.ok) alert("Disconnected from WiFi");
-                  else alert(d.error || "Failed");
-                })
-                .catch(function () {
-                  alert("Connection error");
-                });
-            });
-          }
-        }
-
         /* — WiFi IP Settings Save — */
-        var wifiIpPanel = document.getElementById("panel-wifi-ip");
-        if (wifiIpPanel) {
-          var ipBtn = wifiIpPanel.querySelector(".cfg-btn-primary");
-          if (ipBtn) {
-            ipBtn.addEventListener("click", function () {
-              var dhcp = document.getElementById("dhcpToggle").checked;
-              var body = "dhcp=" + dhcp;
-              if (!dhcp) {
-                body +=
-                  "&ip=" +
-                  encodeURIComponent(document.getElementById("staticIp").value);
-                body +=
-                  "&mask=" +
-                  encodeURIComponent(
-                    document.getElementById("subnetMask").value,
-                  );
-                body +=
-                  "&gw=" +
-                  encodeURIComponent(
-                    document.getElementById("defaultGateway").value,
-                  );
-                body +=
-                  "&dns=" +
-                  encodeURIComponent(
-                    document.getElementById("dnsServer").value,
-                  );
+        var ipBtn = document.getElementById("wifiIpSaveBtn");
+        if (ipBtn) {
+          ipBtn.addEventListener("click", function () {
+            var dhcp = document.getElementById("dhcpToggle").checked;
+            var mode = dhcp ? "DHCP" : "Static IP";
+            if (!dhcp) {
+              var ip = document.getElementById("staticIp").value;
+              var mask = document.getElementById("subnetMask").value;
+              var gw = document.getElementById("defaultGateway").value;
+              var dns = document.getElementById("dnsServer").value;
+              if (!ip || !mask || !gw || !dns) {
+                alert("Please fill in all static IP fields");
+                return;
               }
-              apiPost("/api/wifi/ip", body)
-                .then(function (d) {
-                  if (d.ok) alert("IP settings saved!");
-                  else alert(d.error || "Save failed");
-                })
-                .catch(function () {
-                  alert("Connection error");
-                });
-            });
-          }
+            }
+            if (!confirm("Save " + mode + " settings? Device will restart to apply changes.")) return;
+            var body = "dhcp=" + dhcp;
+            if (!dhcp) {
+              body +=
+                "&ip=" + encodeURIComponent(document.getElementById("staticIp").value);
+              body +=
+                "&mask=" + encodeURIComponent(document.getElementById("subnetMask").value);
+              body +=
+                "&gw=" + encodeURIComponent(document.getElementById("defaultGateway").value);
+              body +=
+                "&dns=" + encodeURIComponent(document.getElementById("dnsServer").value);
+            }
+            apiPost("/api/wifi/ip", body)
+              .then(function (d) {
+                if (d.ok) alert("IP settings saved! Device will restart.");
+                else alert(d.error || "Save failed");
+              })
+              .catch(function () {
+                alert("Connection error");
+              });
+          });
         }
 
         /* — Firebase Toggle — */
@@ -6030,18 +6111,40 @@
         /* Load WiFi status */
         apiGet("/api/wifi/status")
           .then(function (d) {
-            var discPanel = document.getElementById("panel-wifi-disconnect");
-            if (discPanel) {
-              var sub = discPanel.querySelector(".setting-sub");
-              if (sub)
-                sub.textContent = d.connected
-                  ? "Connected to: " + d.ssid
-                  : "Not connected";
+            /* Network Status panel */
+            var ssidEl = document.getElementById("networkStatusSsid");
+            var signalEl = document.getElementById("networkStatusSignal");
+            var ipEl = document.getElementById("networkStatusIp");
+            var gwEl = document.getElementById("networkStatusGateway");
+            var macStatusEl = document.getElementById("networkStatusMac");
+            if (d.connected) {
+              if (ssidEl) ssidEl.textContent = d.ssid || "—";
+              if (signalEl) {
+                var rssi = d.signal || 0;
+                var quality = rssi >= -50 ? "Excellent" : rssi >= -60 ? "Good" : rssi >= -70 ? "Fair" : "Weak";
+                signalEl.textContent = rssi + " dBm (" + quality + ")";
+              }
+              if (ipEl) ipEl.textContent = d.ip || "—";
+              if (gwEl) gwEl.textContent = d.gateway || "—";
+            } else {
+              if (ssidEl) ssidEl.textContent = "Not connected";
+              if (signalEl) signalEl.textContent = "—";
+              if (ipEl) ipEl.textContent = "—";
+              if (gwEl) gwEl.textContent = "—";
             }
-            var macEl = document.querySelector(
-              '#panel-wifi-ip .setting-sub[style*="monospace"]',
-            );
+            if (macStatusEl && d.mac) macStatusEl.textContent = d.mac;
+
+            /* Forget WiFi panel */
+            var forgetSsid = document.getElementById("forgetWifiSsid");
+            var forgetIp = document.getElementById("forgetWifiIp");
+            if (forgetSsid) forgetSsid.textContent = d.connected ? (d.ssid || "—") : "Not connected";
+            if (forgetIp) forgetIp.textContent = d.connected ? (d.ip || "—") : "—";
+
+            /* IP Settings - MAC */
+            var macEl = document.getElementById("wifiMacAddress");
             if (macEl && d.mac) macEl.textContent = d.mac;
+
+            /* IP Settings - DHCP toggle */
             if (typeof d.dhcp !== "undefined") {
               var dhcpToggle = document.getElementById("dhcpToggle");
               if (dhcpToggle) {
@@ -6049,6 +6152,8 @@
                 toggleDHCP();
               }
             }
+
+            /* IP Settings - static fields */
             if (d.staticIp)
               document.getElementById("staticIp").value = d.staticIp;
             if (d.staticMask)
@@ -6057,35 +6162,16 @@
               document.getElementById("defaultGateway").value = d.staticGw;
             if (d.staticDns)
               document.getElementById("dnsServer").value = d.staticDns;
-          })
-          .catch(function () {});
 
-        /* Load saved WiFi networks for Forget panel */
-        apiGet("/api/wifi/saved")
-          .then(function (d) {
-            var panel = document.getElementById("panel-wifi-forget");
-            if (!panel) return;
-            var existing = panel.querySelectorAll(".action-row");
-            existing.forEach(function (r) {
-              r.remove();
-            });
-            if (d.ssid) {
-              var row = document.createElement("div");
-              row.className = "action-row";
-              row.innerHTML =
-                '<span class="action-label">' +
-                d.ssid +
-                "</span>" +
-                '<button class="cfg-btn cfg-btn-danger" style="padding:6px 14px;font-size:0.78rem">Forget</button>';
-              row
-                .querySelector("button")
-                .addEventListener("click", function () {
-                  apiPost("/api/wifi/forget", "").then(function (r) {
-                    if (r.ok) row.remove();
-                  });
-                });
-              panel.appendChild(row);
-            }
+            /* IP Settings - DHCP info values */
+            var dhcpIp = document.getElementById("dhcpIpValue");
+            var dhcpMask = document.getElementById("dhcpMaskValue");
+            var dhcpGw = document.getElementById("dhcpGatewayValue");
+            var dhcpDns = document.getElementById("dhcpDnsValue");
+            if (dhcpIp) dhcpIp.textContent = d.ip || "—";
+            if (dhcpMask) dhcpMask.textContent = d.subnet || "—";
+            if (dhcpGw) dhcpGw.textContent = d.gateway || "—";
+            if (dhcpDns) dhcpDns.textContent = d.dns || "—";
           })
           .catch(function () {});
 

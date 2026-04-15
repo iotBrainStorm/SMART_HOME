@@ -57,6 +57,8 @@ SwTimer swTimers[NUM_SWITCHES];
 bool dhcpOn = true;
 String sIp, sMask = "255.255.255.0", sGw, sDns = "8.8.8.8";
 bool portalFlag = false;
+bool forgetWifiFlag = false;
+unsigned long forgetWifiAt = 0;
 
 // Firebase
 bool fbOn = false;
@@ -776,7 +778,30 @@ bool connectToSavedWiFi() {
   bool success = false;
 
   WiFi.mode(WIFI_STA);
-  WiFi.begin();
+
+  // Apply static IP if configured
+  if (!dhcpOn && sIp.length() > 0) {
+    IPAddress ip, gw, sn, dns;
+    ip.fromString(sIp);
+    gw.fromString(sGw);
+    sn.fromString(sMask);
+    dns.fromString(sDns);
+    WiFi.config(ip, gw, sn, dns);
+    Serial.printf("[WIFI] Static IP configured: %s\n", sIp.c_str());
+  }
+
+  // Try saved credentials from NVS first
+  prefs.begin("wfcfg", true);
+  String savedSsid = prefs.getString("ssid", "");
+  String savedPass = prefs.getString("pass", "");
+  prefs.end();
+
+  if (savedSsid.length() > 0) {
+    Serial.printf("[WIFI] Connecting to saved SSID: %s\n", savedSsid.c_str());
+    WiFi.begin(savedSsid.c_str(), savedPass.c_str());
+  } else {
+    WiFi.begin();
+  }
 
   int attempts = 0;
   const int MAX_ATTEMPTS = 5;
@@ -819,7 +844,7 @@ bool connectToSavedWiFi() {
   Serial.println("[INFO] Starting Config Portal...");
   Serial.println("AP SSID    : ESP HOME");
   Serial.println("AP IP      : 192.168.4.1");
-  Serial.println("Timeout    : 60 seconds");
+  Serial.println("Timeout    : 180 seconds");
   Serial.println("------------------------------");
 
   // u8g2.clearBuffer();
@@ -832,7 +857,7 @@ bool connectToSavedWiFi() {
 
   delay(1500);
 
-  wm.setConfigPortalTimeout(60);
+  wm.setConfigPortalTimeout(180);
   success = wm.autoConnect("ESP HOME");
 
   if (success) {
@@ -851,7 +876,8 @@ bool connectToSavedWiFi() {
     // u8g2.sendBuffer();
 
     delay(2000);
-    return true;
+    // return true;
+    ESP.restart();
   } else {
 
     Serial.println("\n[ERROR] Config Portal Timeout!");
@@ -1296,11 +1322,15 @@ void setupWebServer() {
       d["gateway"] = WiFi.gatewayIP().toString();
       d["dns"] = WiFi.dnsIP().toString();
       d["mac"] = WiFi.macAddress();
+      d["signal"] = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : 0;
       d["dhcp"] = dhcpOn;
       d["staticIp"] = sIp;
       d["staticMask"] = sMask;
       d["staticGw"] = sGw;
       d["staticDns"] = sDns;
+      prefs.begin("wfcfg", true);
+      d["savedSsid"] = prefs.getString("ssid", "");
+      prefs.end();
       String r;
       serializeJson(d, r);
       req->send(200, "application/json", r);
@@ -1318,18 +1348,10 @@ void setupWebServer() {
       prefs.putString("pass", pass);
       prefs.end();
       notifyStorage();
-      WiFi.disconnect();
-      delay(200);
-      WiFi.begin(ssid.c_str(), pass.c_str());
-      int att = 0;
-      while (WiFi.status() != WL_CONNECTED && att < 20) {
-        delay(500);
-        att++;
-      }
-      if (WiFi.status() == WL_CONNECTED)
-        req->send(200, "application/json", "{\"ok\":true,\"ip\":\"" + WiFi.localIP().toString() + "\"}");
-      else
-        req->send(400, "application/json", "{\"error\":\"Connection failed\"}");
+      Serial.printf("[WIFI] Credentials saved for SSID: %s\n", ssid.c_str());
+      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Credentials saved. Device will restart to connect.\"}");
+      restartFlag = true;
+      restartAt = millis() + 500;
     });
 
     server.on("/api/wifi/disconnect", HTTP_POST, [](AsyncWebServerRequest *req) {
@@ -1350,13 +1372,23 @@ void setupWebServer() {
     });
 
     server.on("/api/wifi/forget", HTTP_POST, [](AsyncWebServerRequest *req) {
-      WiFi.disconnect(true, true);
+      if (!req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
+        req->send(400, "application/json", "{\"error\":\"Admin credentials required\"}");
+        return;
+      }
+      if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
+        req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+        return;
+      }
       prefs.begin("wfcfg", false);
       prefs.remove("ssid");
       prefs.remove("pass");
       prefs.end();
       notifyStorage();
+      Serial.println("[WIFI] Credentials forgotten by admin");
       req->send(200, "application/json", "{\"ok\":true}");
+      forgetWifiFlag = true;
+      forgetWifiAt = millis() + 500;
     });
 
     server.on("/api/wifi/ip", HTTP_POST, [](AsyncWebServerRequest *req) {
@@ -1384,16 +1416,22 @@ void setupWebServer() {
           sDns = req->getParam("dns", true)->value();
           prefs.putString("dns", sDns);
         }
-        IPAddress ip, gw, sn, dns;
-        ip.fromString(sIp);
-        gw.fromString(sGw);
-        sn.fromString(sMask);
-        dns.fromString(sDns);
-        WiFi.config(ip, gw, sn, dns);
+      } else {
+        prefs.remove("sip");
+        prefs.remove("mask");
+        prefs.remove("gw");
+        prefs.remove("dns");
+        sIp = "";
+        sMask = "255.255.255.0";
+        sGw = "";
+        sDns = "8.8.8.8";
       }
       prefs.end();
       notifyStorage();
-      req->send(200, "application/json", "{\"ok\":true}");
+      Serial.printf("[WIFI] IP settings saved - DHCP: %s\n", dhcpOn ? "ON" : "OFF");
+      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"IP settings saved. Device will restart.\"}");
+      restartFlag = true;
+      restartAt = millis() + 500;
     });
 
     // ──── FIREBASE ────
@@ -1981,6 +2019,14 @@ void loop() {
       prefs.putString("pass", WiFi.psk());
       prefs.end();
     }
+    ESP.restart();
+  }
+
+  // Forget WiFi deferred disconnect
+  if (forgetWifiFlag && millis() >= forgetWifiAt) {
+    forgetWifiFlag = false;
+    WiFi.disconnect(true, true);
+    Serial.println("[WIFI] WiFi disconnected after forget");
     ESP.restart();
   }
 
