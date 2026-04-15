@@ -1929,6 +1929,27 @@
               <span class="sm-toggle-track"></span>
             </label>
           </div>
+          <div
+            id="btDiscoverableControls"
+            style="
+              margin-top: 16px;
+              display: flex;
+              flex-direction: column;
+              align-items: flex-end;
+              gap: 10px;
+            "
+          >
+            <button class="cfg-btn cfg-btn-secondary" id="btDiscoverableBtn">
+              Discoverable Now
+            </button>
+            <div
+              class="setting-sub"
+              id="btDiscoverableStatus"
+              style="text-align: right"
+            >
+              Make the saved Bluetooth name visible for nearby phones now.
+            </div>
+          </div>
         </div>
 
         <!-- BT Name -->
@@ -1968,12 +1989,10 @@
             style="flex-direction: column; align-items: flex-start; gap: 10px"
           >
             <div class="setting-label">Change Password</div>
-            <input
-              class="cfg-input"
-              type="password"
-              placeholder="Current password"
-              style="max-width: 100%"
-            />
+            <div class="setting-sub">
+              Admin verification is required before saving a new Bluetooth
+              password.
+            </div>
             <input
               class="cfg-input"
               type="password"
@@ -1996,27 +2015,9 @@
         <div class="panel" id="panel-bt-devices">
           <div class="panel-title">Paired Devices</div>
           <div class="info-box">
-            Devices that have previously connected via Bluetooth will appear
-            here.
+            Actual bonded Bluetooth devices saved by the ESP32 will appear here.
           </div>
-          <div class="action-row">
-            <span class="action-label">Phone-Mrinal</span>
-            <button
-              class="cfg-btn cfg-btn-danger"
-              style="padding: 6px 14px; font-size: 0.78rem"
-            >
-              Remove
-            </button>
-          </div>
-          <div class="action-row">
-            <span class="action-label">Laptop-Home</span>
-            <button
-              class="cfg-btn cfg-btn-danger"
-              style="padding: 6px 14px; font-size: 0.78rem"
-            >
-              Remove
-            </button>
-          </div>
+          <div id="btDevicesList"></div>
         </div>
 
         <!-- ═══════════ WIFI ═══════════ -->
@@ -3414,15 +3415,222 @@
       /* BT show/hide password */
       var btShowBtn = document.getElementById("btShowPass");
       var btPassEl = document.getElementById("btPassDisplay");
+      var btDiscoverableControls = document.getElementById(
+        "btDiscoverableControls",
+      );
+      var btDiscoverableBtn = document.getElementById("btDiscoverableBtn");
+      var btDiscoverableStatus = document.getElementById(
+        "btDiscoverableStatus",
+      );
       var btPassVisible = false;
       var btStoredPass = "";
-      if (btShowBtn) {
-        btShowBtn.addEventListener("click", function () {
-          btPassVisible = !btPassVisible;
-          btPassEl.textContent = btPassVisible ? btStoredPass : "••••••";
+      var btPasswordConfigured = true;
+      var btDiscoverableTimerId = null;
+
+      function renderBtPasswordDisplay() {
+        if (!btPassEl) return;
+        btPassEl.textContent = btPassVisible
+          ? btStoredPass || "Not set"
+          : btPasswordConfigured
+            ? "••••••"
+            : "Not set";
+        if (btShowBtn) {
           btShowBtn.textContent = btPassVisible ? "Hide" : "Show";
+        }
+      }
+
+      function getBtNameValue() {
+        var btNameInput = document.querySelector("#panel-bt-name .cfg-input");
+        return btNameInput ? btNameInput.value.trim() : "ESP32_SmartHome";
+      }
+
+      function setBtDiscoverableStatus(message, isError) {
+        if (!btDiscoverableStatus) return;
+        btDiscoverableStatus.textContent = message;
+        btDiscoverableStatus.style.color = isError ? "#fca5a5" : "#7a8697";
+      }
+
+      function setBtDiscoverableButtonVisible(visible) {
+        if (!btDiscoverableBtn) return;
+        btDiscoverableBtn.style.display = visible ? "" : "none";
+        if (btDiscoverableControls) {
+          btDiscoverableControls.style.alignItems = visible
+            ? "flex-end"
+            : "stretch";
+        }
+      }
+
+      function isBluetoothEnabledInUi() {
+        var btToggle = document.querySelector(
+          '#panel-bt-toggle input[type="checkbox"]',
+        );
+        return !!(btToggle && btToggle.checked);
+      }
+
+      function formatBtCountdown(ms) {
+        var totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+        var minutes = Math.floor(totalSeconds / 60);
+        var seconds = totalSeconds % 60;
+        return minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+      }
+
+      function setBtDefaultDiscoverableStatus() {
+        if (!isBluetoothEnabledInUi()) {
+          setBtDiscoverableStatus("Bluetooth is disabled.", false);
+          return;
+        }
+        setBtDiscoverableStatus(
+          "Saved Bluetooth name: '" +
+            getBtNameValue() +
+            "'. Tap Discoverable Now to show it on your phone.",
+          false,
+        );
+      }
+
+      function clearBtDiscoverableTimer(preserveStatus) {
+        if (btDiscoverableTimerId) {
+          clearInterval(btDiscoverableTimerId);
+          btDiscoverableTimerId = null;
+        }
+        if (btDiscoverableBtn) {
+          btDiscoverableBtn.textContent = "Discoverable Now";
+        }
+        if (!preserveStatus) {
+          setBtDefaultDiscoverableStatus();
+        }
+      }
+
+      function startBtDiscoverableCountdown(remainingMs, deviceName) {
+        var endAt = Date.now() + Math.max(0, parseInt(remainingMs, 10) || 0);
+        var shownName = deviceName || getBtNameValue();
+
+        clearBtDiscoverableTimer(true);
+
+        function tick() {
+          var remaining = endAt - Date.now();
+          if (remaining <= 0) {
+            clearBtDiscoverableTimer(true);
+            setBtDiscoverableStatus(
+              "Discoverable window ended for '" + shownName + "'.",
+              false,
+            );
+            return;
+          }
+
+          if (btDiscoverableBtn) {
+            btDiscoverableBtn.textContent =
+              "Discoverable: " + formatBtCountdown(remaining);
+          }
+          setBtDiscoverableStatus(
+            "Visible now as '" +
+              shownName +
+              "' for " +
+              formatBtCountdown(remaining) +
+              ".",
+            false,
+          );
+        }
+
+        tick();
+        btDiscoverableTimerId = setInterval(tick, 1000);
+      }
+
+      function renderBtDevices(devices) {
+        var list = document.getElementById("btDevicesList");
+        var btToggle = document.querySelector(
+          '#panel-bt-toggle input[type="checkbox"]',
+        );
+        var canRemove = !!(btToggle && btToggle.checked);
+        if (!list) return;
+
+        list.innerHTML = "";
+
+        if (!Array.isArray(devices) || !devices.length) {
+          list.innerHTML =
+            '<div class="info-box">No paired Bluetooth devices saved yet.</div>';
+          return;
+        }
+
+        devices.forEach(function (dev) {
+          var row = document.createElement("div");
+          var label =
+            dev && (dev.name || dev.addr)
+              ? dev.name || dev.addr
+              : "Unknown Device";
+          row.className = "action-row";
+          row.innerHTML =
+            '<span class="action-label"></span>' +
+            '<button class="cfg-btn cfg-btn-danger" style="padding: 6px 14px; font-size: 0.78rem">Remove</button>';
+          row.querySelector(".action-label").textContent = label;
+          var removeBtn = row.querySelector("button");
+          removeBtn.disabled = !canRemove || !dev || !dev.addr;
+          removeBtn.addEventListener("click", function () {
+            apiPost(
+              "/api/bt/device/remove",
+              "addr=" + encodeURIComponent(dev.addr),
+            )
+              .then(function (d) {
+                if (d.ok) {
+                  loadBtDevices();
+                } else {
+                  alert(d.error || "Failed to remove paired device");
+                }
+              })
+              .catch(function () {
+                alert("Connection error");
+              });
+          });
+          list.appendChild(row);
         });
       }
+
+      function loadBtDevices() {
+        return apiGet("/api/bt/devices")
+          .then(function (devices) {
+            renderBtDevices(devices);
+          })
+          .catch(function () {
+            renderBtDevices([]);
+          });
+      }
+
+      if (btShowBtn) {
+        btShowBtn.addEventListener("click", function () {
+          if (btPassVisible) {
+            btPassVisible = false;
+            btStoredPass = "";
+            renderBtPasswordDisplay();
+            return;
+          }
+
+          showPasswordModal(
+            "Enter admin credentials to view the Bluetooth password",
+            function (data, adminUser, adminPass) {
+              apiPost(
+                "/api/bt/revealpass",
+                "adminUser=" +
+                  encodeURIComponent(adminUser) +
+                  "&adminPass=" +
+                  encodeURIComponent(adminPass),
+              )
+                .then(function (d) {
+                  if (d.ok && typeof d.password === "string") {
+                    btStoredPass = d.password;
+                    btPasswordConfigured = !!d.password;
+                    btPassVisible = true;
+                    renderBtPasswordDisplay();
+                  } else {
+                    alert(d.error || "Unable to reveal password");
+                  }
+                })
+                .catch(function () {
+                  alert("Connection error");
+                });
+            },
+          );
+        });
+      }
+      renderBtPasswordDisplay();
 
       /* ══════════════════════════════════════════════════════════════
          ICON PICKER MODAL
@@ -5183,13 +5391,15 @@
           .getElementById("confirmAdminUser")
           .value.trim();
         var adminPass = confirmPasswordInput.value;
+        var action = pendingPasswordAction;
+        var actionData = pendingActionData;
         if (!adminUser || !adminPass) {
           alert("Please enter admin username and password");
           return;
         }
         closePasswordModal();
-        if (pendingPasswordAction) {
-          pendingPasswordAction(pendingActionData, adminUser, adminPass);
+        if (action) {
+          action(actionData, adminUser, adminPass);
         }
       }
 
@@ -5935,15 +6145,56 @@
           var btToggle = btTogglePanel.querySelector('input[type="checkbox"]');
           if (btToggle) {
             btToggle.addEventListener("change", function () {
-              apiPost("/api/bt/toggle", "enabled=" + this.checked)
+              var enabled = this.checked;
+              apiPost("/api/bt/toggle", "enabled=" + enabled)
                 .then(function (d) {
-                  if (!d.ok) alert(d.error || "Toggle failed");
+                  if (!d.ok) {
+                    btToggle.checked = !enabled;
+                    alert(d.error || "Toggle failed");
+                    return;
+                  }
+                  setBtDiscoverableButtonVisible(enabled);
+                  clearBtDiscoverableTimer(true);
+                  setBtDiscoverableStatus(
+                    enabled
+                      ? "Bluetooth is enabled. Tap Discoverable Now to show '" +
+                          getBtNameValue() +
+                          "' on your phone."
+                      : "Bluetooth is disabled.",
+                    false,
+                  );
+                  loadBtDevices();
                 })
                 .catch(function () {
+                  btToggle.checked = !enabled;
                   alert("Connection error");
                 });
             });
           }
+        }
+
+        if (btDiscoverableBtn) {
+          btDiscoverableBtn.addEventListener("click", function () {
+            apiPost("/api/bt/discoverable", "")
+              .then(function (d) {
+                if (d.ok) {
+                  startBtDiscoverableCountdown(
+                    d.remainingMs || 180000,
+                    d.name || getBtNameValue(),
+                  );
+                } else {
+                  setBtDiscoverableStatus(
+                    d.error || "Bluetooth could not become discoverable.",
+                    true,
+                  );
+                  alert(d.error || "Discoverable request failed");
+                }
+              })
+              .catch(function () {
+                setBtDiscoverableStatus("Connection error", true);
+                alert("Connection error");
+              });
+          });
         }
 
         /* — Bluetooth Name Save — */
@@ -5954,10 +6205,23 @@
         if (btNameBtn) {
           btNameBtn.addEventListener("click", function () {
             var input = btNamePanel.querySelector(".cfg-input");
+            if (!input.value.trim()) {
+              alert("Bluetooth name is required");
+              return;
+            }
             apiPost("/api/bt/name", "name=" + encodeURIComponent(input.value))
               .then(function (d) {
-                if (d.ok) alert("Bluetooth name saved!");
-                else alert(d.error || "Save failed");
+                if (d.ok) {
+                  setBtDiscoverableStatus(
+                    "Saved Bluetooth name '" +
+                      input.value.trim() +
+                      "'. Tap Discoverable Now to show it on your phone.",
+                    false,
+                  );
+                  alert("Bluetooth name saved!");
+                } else {
+                  alert(d.error || "Save failed");
+                }
               })
               .catch(function () {
                 alert("Connection error");
@@ -5973,10 +6237,9 @@
         if (btPassBtn) {
           btPassBtn.addEventListener("click", function () {
             var inputs = btPassPanel.querySelectorAll('input[type="password"]');
-            var current = inputs[0] ? inputs[0].value : "";
-            var newPass = inputs[1] ? inputs[1].value : "";
-            var confirm = inputs[2] ? inputs[2].value : "";
-            if (!current || !newPass) {
+            var newPass = inputs[0] ? inputs[0].value : "";
+            var confirm = inputs[1] ? inputs[1].value : "";
+            if (!newPass || !confirm) {
               alert("Please fill all password fields");
               return;
             }
@@ -5984,27 +6247,37 @@
               alert("New passwords do not match");
               return;
             }
-            apiPost(
-              "/api/bt/password",
-              "current=" +
-                encodeURIComponent(current) +
-                "&newpass=" +
-                encodeURIComponent(newPass),
-            )
-              .then(function (d) {
-                if (d.ok) {
-                  alert("Password updated!");
-                  btStoredPass = newPass;
-                  inputs.forEach(function (inp) {
-                    inp.value = "";
+            showPasswordModal(
+              "Enter admin credentials to update the Bluetooth password",
+              function (data, adminUser, adminPass) {
+                apiPost(
+                  "/api/bt/password",
+                  "newpass=" +
+                    encodeURIComponent(newPass) +
+                    "&adminUser=" +
+                    encodeURIComponent(adminUser) +
+                    "&adminPass=" +
+                    encodeURIComponent(adminPass),
+                )
+                  .then(function (d) {
+                    if (d.ok) {
+                      alert("Password updated!");
+                      btStoredPass = "";
+                      btPasswordConfigured = !!newPass;
+                      btPassVisible = false;
+                      renderBtPasswordDisplay();
+                      inputs.forEach(function (inp) {
+                        inp.value = "";
+                      });
+                    } else {
+                      alert(d.error || "Update failed");
+                    }
+                  })
+                  .catch(function () {
+                    alert("Connection error");
                   });
-                } else {
-                  alert(d.error || "Update failed");
-                }
-              })
-              .catch(function () {
-                alert("Connection error");
-              });
+              },
+            );
           });
         }
 
@@ -6242,41 +6515,27 @@
               "#panel-bt-name .cfg-input",
             );
             if (btNameInput && d.name) btNameInput.value = d.name;
-            if (d.password) btStoredPass = d.password;
+            btStoredPass = "";
+            btPassVisible = false;
+            btPasswordConfigured = d.passwordConfigured !== false;
+            renderBtPasswordDisplay();
+            setBtDiscoverableButtonVisible(!!d.enabled);
+            if (d.enabled && d.discoverable && d.discoverableRemainingMs) {
+              startBtDiscoverableCountdown(
+                d.discoverableRemainingMs,
+                d.name || getBtNameValue(),
+              );
+            } else {
+              clearBtDiscoverableTimer(false);
+            }
+            loadBtDevices();
           })
-          .catch(function () {});
+          .catch(function () {
+            clearBtDiscoverableTimer(false);
+            loadBtDevices();
+          });
 
         /* Load Bluetooth paired devices */
-        apiGet("/api/bt/devices")
-          .then(function (devices) {
-            var panel = document.getElementById("panel-bt-devices");
-            if (!panel || !Array.isArray(devices)) return;
-            var existing = panel.querySelectorAll(".action-row");
-            existing.forEach(function (r) {
-              r.remove();
-            });
-            devices.forEach(function (dev) {
-              var row = document.createElement("div");
-              row.className = "action-row";
-              row.innerHTML =
-                '<span class="action-label">' +
-                (dev.name || dev.addr) +
-                "</span>" +
-                '<button class="cfg-btn cfg-btn-danger" style="padding:6px 14px;font-size:0.78rem">Remove</button>';
-              row
-                .querySelector("button")
-                .addEventListener("click", function () {
-                  apiPost(
-                    "/api/bt/device/remove",
-                    "addr=" + encodeURIComponent(dev.addr),
-                  ).then(function (d) {
-                    if (d.ok) row.remove();
-                  });
-                });
-              panel.appendChild(row);
-            });
-          })
-          .catch(function () {});
 
         /* Load WiFi status */
         apiGet("/api/wifi/status")
