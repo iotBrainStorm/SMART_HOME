@@ -197,6 +197,10 @@
         box-shadow: 0 0 8px rgba(96, 165, 250, 0.5);
       }
 
+      .sidebar-subitem {
+        margin-bottom: 4px;
+      }
+
       /* ── Content Panel ── */
       .content {
         flex: 1;
@@ -741,9 +745,20 @@
         margin-bottom: 12px;
       }
 
+      .schedule-slot-hidden {
+        display: none;
+      }
+
       .schedule-slot.focused-slot {
         border-color: rgba(37, 99, 235, 0.45);
         box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.2);
+      }
+
+      .schedule-slot input[type="time"]::-webkit-calendar-picker-indicator,
+      .schedule-slot input[type="date"]::-webkit-calendar-picker-indicator {
+        opacity: 0.92;
+        filter: invert(88%) sepia(8%) saturate(318%) hue-rotate(177deg)
+          brightness(108%) contrast(92%);
       }
 
       .schedule-slot-header {
@@ -3324,7 +3339,7 @@
               subEl.setAttribute("data-panel", subItem.panel);
               subEl.style.fontSize = "0.75rem";
               subEl.style.padding = "8px 12px";
-              subE1.style.marginBottom = "4px";
+              subEl.style.marginBottom = "4px";
               subEl.addEventListener("click", function (e) {
                 e.stopPropagation();
                 activatePanel(subItem.panel, tabKey);
@@ -3671,38 +3686,95 @@
         refreshFutureScheduleSaveActions();
       }
 
+      function setScheduleEditorVisible(visible) {
+        var container = document.getElementById("scheduleContainer");
+        var actions = document.getElementById("scheduleSaveActions");
+        if (container) {
+          container.style.display = visible ? "" : "none";
+        }
+        if (!actions) return;
+        if (visible) {
+          refreshScheduleSaveActions();
+        } else {
+          actions.style.display = "none";
+        }
+      }
+
+      function setFutureScheduleEditorVisible(visible) {
+        var container = document.getElementById("futureScheduleContainer");
+        var actions = document.getElementById("futureScheduleSaveActions");
+        if (container) {
+          container.style.display = visible ? "" : "none";
+        }
+        if (!actions) return;
+        if (visible) {
+          refreshFutureScheduleSaveActions();
+        } else {
+          actions.style.display = "none";
+        }
+      }
+
+      function setVisibleScheduleSlot(containerId, slotIndex) {
+        var container = document.getElementById(containerId);
+        var slots;
+        var hasFocusedSlot;
+        if (!container) return;
+        slots = container.querySelectorAll(".schedule-slot");
+        hasFocusedSlot =
+          typeof slotIndex === "number" &&
+          slotIndex >= 0 &&
+          slotIndex < slots.length;
+        slots.forEach(function (slot, index) {
+          slot.classList.toggle(
+            "schedule-slot-hidden",
+            hasFocusedSlot && index !== slotIndex,
+          );
+        });
+      }
+
+      function restoreVisibleScheduleSlots(containerId) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        if (
+          !container.querySelector(".schedule-slot:not(.schedule-slot-hidden)")
+        ) {
+          setVisibleScheduleSlot(containerId);
+        }
+      }
+
       function onScheduleSwitchChange() {
-        document.getElementById("scheduleContainer").style.display = "none";
+        setScheduleEditorVisible(false);
         clearAllSchedules();
         document.getElementById("scheduleValidation").innerHTML = "";
       }
 
       function handleAddScheduleClick() {
         var container = document.getElementById("scheduleContainer");
+        toggleScheduleList(false);
         if (container.style.display !== "none" && scheduleSaveRequested) {
           return;
         }
-        container.style.display = "";
+        setScheduleEditorVisible(true);
         loadSchedulesForSwitch(undefined, { showSaveButton: true }).then(
           function () {
-            addScheduleSlot();
+            addScheduleSlot({ prepend: true, focus: true });
           },
         );
       }
 
       function onFutureScheduleSwitchChange() {
-        document.getElementById("futureScheduleContainer").style.display =
-          "none";
+        setFutureScheduleEditorVisible(false);
         clearAllFutureSchedules();
         document.getElementById("futureScheduleValidation").innerHTML = "";
       }
 
       function handleAddFutureScheduleClick() {
         var container = document.getElementById("futureScheduleContainer");
+        toggleFutureScheduleList(false);
         if (container.style.display !== "none" && futureScheduleSaveRequested) {
           return;
         }
-        container.style.display = "";
+        setFutureScheduleEditorVisible(true);
         loadFutureSchedulesForSwitch(undefined, {
           showSaveButton: true,
         }).then(function () {
@@ -4152,9 +4224,21 @@
         scheduleCounter++;
         var container = document.getElementById("scheduleContainer");
         var tempDiv = document.createElement("div");
+        var slot;
         tempDiv.innerHTML = createScheduleSlotHTML(scheduleCounter);
-        container.appendChild(tempDiv.firstChild);
+        slot = tempDiv.firstChild;
+        if (options && options.prepend) {
+          container.insertBefore(slot, container.firstChild);
+        } else {
+          container.appendChild(slot);
+        }
         renumberScheduleSlots();
+        if (options && options.focus) {
+          highlightSlot(
+            "scheduleContainer",
+            options.prepend ? 0 : scheduleCounter - 1,
+          );
+        }
         if (!options || !options.suppressSaveButton) {
           setScheduleSaveActionsVisible(true);
         }
@@ -4165,6 +4249,7 @@
         if (slot) {
           slot.remove();
           renumberScheduleSlots();
+          restoreVisibleScheduleSlots("scheduleContainer");
         }
       }
 
@@ -4239,6 +4324,7 @@
         if (slot) {
           slot.remove();
           renumberFutureScheduleSlots();
+          restoreVisibleScheduleSlots("futureScheduleContainer");
         }
       }
 
@@ -4441,6 +4527,13 @@
               });
             });
 
+            setVisibleScheduleSlot(
+              "scheduleContainer",
+              options && typeof options.onlyIndex === "number"
+                ? options.onlyIndex
+                : undefined,
+            );
+
             if (typeof focusIndex === "number") {
               highlightSlot("scheduleContainer", focusIndex);
             }
@@ -4620,6 +4713,13 @@
               slot.querySelector(".future-to").value = schedule.toTime || "";
             });
 
+            setVisibleScheduleSlot(
+              "futureScheduleContainer",
+              options && typeof options.onlyIndex === "number"
+                ? options.onlyIndex
+                : undefined,
+            );
+
             if (typeof focusIndex === "number") {
               highlightSlot("futureScheduleContainer", focusIndex);
             }
@@ -4701,6 +4801,10 @@
           typeof forceVisible === "boolean"
             ? forceVisible
             : !list.classList.contains("active");
+        if (visible) {
+          setScheduleEditorVisible(false);
+          document.getElementById("scheduleValidation").innerHTML = "";
+        }
         setAutomationListVisibility(
           "scheduleList",
           "showSchedulesBtn",
@@ -4764,8 +4868,11 @@
         var select = document.getElementById("scheduleSwitch");
         if (select) select.value = String(switchIndex);
         toggleScheduleList(false);
-        document.getElementById("scheduleContainer").style.display = "";
-        loadSchedulesForSwitch(slotIndex, { showSaveButton: true });
+        setScheduleEditorVisible(true);
+        loadSchedulesForSwitch(slotIndex, {
+          showSaveButton: true,
+          onlyIndex: slotIndex,
+        });
       }
 
       function removeSchedule(sw, index) {
@@ -4814,6 +4921,10 @@
           typeof forceVisible === "boolean"
             ? forceVisible
             : !list.classList.contains("active");
+        if (visible) {
+          setFutureScheduleEditorVisible(false);
+          document.getElementById("futureScheduleValidation").innerHTML = "";
+        }
         setAutomationListVisibility(
           "futureScheduleList",
           "showFutureSchedulesBtn",
@@ -4877,8 +4988,11 @@
         var select = document.getElementById("futureScheduleSwitch");
         if (select) select.value = String(switchIndex);
         toggleFutureScheduleList(false);
-        document.getElementById("futureScheduleContainer").style.display = "";
-        loadFutureSchedulesForSwitch(slotIndex, { showSaveButton: true });
+        setFutureScheduleEditorVisible(true);
+        loadFutureSchedulesForSwitch(slotIndex, {
+          showSaveButton: true,
+          onlyIndex: slotIndex,
+        });
       }
 
       function toggleSensorAutomationList(forceVisible) {
