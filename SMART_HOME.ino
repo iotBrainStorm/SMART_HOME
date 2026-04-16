@@ -93,6 +93,9 @@ unsigned long forgetWifiAt = 0;
 bool coreRoutesOnly = false;
 
 const uint32_t MIN_FREE_HEAP_FOR_EXTENDED_ROUTES = 38000;
+const int WIFI_CONNECT_MAX_ATTEMPTS = 5;
+const unsigned long WIFI_CONNECT_RETRY_MS = 2000;
+const unsigned long WIFI_PORTAL_RECOVERY_RESTART_MS = 200;
 
 //  BEEP + LED ON NVS CHANGE
 void notifyStorage()
@@ -221,14 +224,28 @@ void saveCurrentWifiCredentials(bool notifyChange = false)
   }
 }
 
-bool runWifiConfigPortal(bool notifyChange = false)
+void prepareWifiForConfigPortal()
+{
+  WiFi.disconnect(false, true);
+  delay(200);
+  WiFi.softAPdisconnect(true);
+  delay(100);
+  WiFi.mode(WIFI_AP_STA);
+  delay(100);
+}
+
+bool runWifiConfigPortal(bool notifyChange = false, bool restartOnSuccess = true)
 {
   WiFiManager wm;
   bool success = false;
 
   wm.setConfigPortalTimeout(180); // 3 minutes
+  wm.setAPCallback([](WiFiManager *myWiFiManager)
+                   { Serial.println("[WIFI] Config portal ready - connect to ESP HOME and open 192.168.4.1"); });
+  prepareWifiForConfigPortal();
+  Serial.println("[WIFI] Starting forced config portal...");
   Serial.println("[WIFI] SSID: 'ESP HOME' | IP: 192.168.4.1");
-  success = wm.autoConnect("ESP HOME");
+  success = wm.startConfigPortal("ESP HOME");
 
   if (success)
   {
@@ -237,7 +254,12 @@ bool runWifiConfigPortal(bool notifyChange = false)
     Serial.printf("IP Address : %s\n", WiFi.localIP().toString().c_str());
     Serial.println("==============================\n");
     saveCurrentWifiCredentials(notifyChange);
-    delay(2000);
+    if (restartOnSuccess)
+    {
+      Serial.println("[WIFI] Restarting to bring the web server up on the saved network...");
+      delay(500);
+      ESP.restart();
+    }
     return true;
   }
 
@@ -968,12 +990,11 @@ bool connectToSavedWiFi()
   WiFi.begin(savedSsid.c_str(), savedPass.c_str());
 
   int attempts = 0;
-  const int MAX_ATTEMPTS = 5;
 
-  while (attempts < MAX_ATTEMPTS)
+  while (attempts < WIFI_CONNECT_MAX_ATTEMPTS)
   {
     char attemptStr[16];
-    snprintf(attemptStr, sizeof(attemptStr), "Attempt: %d/5", attempts + 1);
+    snprintf(attemptStr, sizeof(attemptStr), "Attempt: %d/%d", attempts + 1, WIFI_CONNECT_MAX_ATTEMPTS);
     Serial.printf("[INFO] %s\n", attemptStr);
 
     if (WiFi.status() == WL_CONNECTED)
@@ -986,7 +1007,7 @@ bool connectToSavedWiFi()
       return true;
     }
 
-    delay(2000);
+    delay(WIFI_CONNECT_RETRY_MS);
     attempts++;
   }
 
@@ -996,7 +1017,6 @@ bool connectToSavedWiFi()
   Serial.println("AP IP      : 192.168.4.1");
   Serial.println("Timeout    : 180 seconds");
   Serial.println("------------------------------");
-  delay(1500);
   return runWifiConfigPortal();
 }
 
@@ -1476,7 +1496,7 @@ void setupWebServer()
 
     server.on("/api/wifi/scan", HTTP_POST, [](AsyncWebServerRequest *req)
               {
-      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"WiFi portal starting. Connect to ESP HOME at 192.168.4.1\"}");
+      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"WiFi portal starting. Connect to ESP HOME at 192.168.4.1. The current web session will disconnect until setup finishes.\"}");
       portalFlag = true; });
 
     server.on("/api/wifi/saved", HTTP_GET, [](AsyncWebServerRequest *req)
@@ -2105,8 +2125,11 @@ void loop()
     portalFlag = false;
     server.end();
     delay(100);
-    runWifiConfigPortal(true);
-    ESP.restart();
+    if (!runWifiConfigPortal(true))
+    {
+      restartFlag = true;
+      restartAt = millis() + WIFI_PORTAL_RECOVERY_RESTART_MS;
+    }
   }
 
   if (forgetWifiFlag && millis() >= forgetWifiAt)

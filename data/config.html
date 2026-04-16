@@ -2012,7 +2012,9 @@
         <div class="panel" id="panel-wifi-connect">
           <div class="panel-title">Connect WiFi</div>
           <div class="info-box wifi-section-note">
-            Save or update the router SSID and password in ESP32 memory.
+            Save or update the router SSID and password in ESP32 memory. The
+            ESP32 restarts after saving so the web server comes back on the new
+            network.
           </div>
           <div
             class="setting-row"
@@ -2157,20 +2159,6 @@
               />
               <span class="sm-toggle-track"></span>
             </label>
-          </div>
-
-          <div class="setting-row">
-            <div class="setting-info">
-              <div class="setting-label">MAC Address</div>
-              <div
-                class="setting-sub"
-                id="wifiMacAddress"
-                style="font-family: monospace"
-              >
-                Unavailable
-              </div>
-            </div>
-            <span style="font-size: 0.75rem; color: #64748b">(Read Only)</span>
           </div>
 
           <div id="staticIpSection" class="static-ip-section hidden">
@@ -2982,7 +2970,9 @@
         </div>
         <p style="font-size: 0.82rem; color: #94a3b8; margin-bottom: 18px">
           Connect to the ESP HOME hotspot and navigate to the IP address above
-          to configure WiFi settings.
+          to configure WiFi settings. After WiFi is saved successfully, the
+          ESP32 restarts automatically and the web page moves back to the new
+          network.
         </p>
         <div class="modal-actions">
           <button class="modal-cancel" onclick="closeWifiScanModal()">
@@ -5321,7 +5311,7 @@
             if (d.ok) {
               alert(
                 d.msg ||
-                  "WiFi portal starting. Connect to ESP HOME at 192.168.4.1",
+                  "WiFi portal starting. Connect to ESP HOME at 192.168.4.1. The current web page will disconnect until setup finishes.",
               );
             } else {
               alert(d.error || "Unable to start WiFi portal");
@@ -5393,7 +5383,6 @@
               "Unavailable",
             );
             setWifiText("wifiStatusMac", d.mac, "Unavailable");
-            setWifiText("wifiMacAddress", d.mac, "Unavailable");
             setWifiText("dhcpIpAddress", d.ip, "Unavailable");
             setWifiText("dhcpSubnetMask", d.subnet, "Unavailable");
             setWifiText("dhcpGateway", d.gateway, "Unavailable");
