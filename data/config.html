@@ -3565,6 +3565,10 @@
         var target = document.getElementById(panelId);
         if (target) target.classList.add("active");
 
+        if (panelId === "panel-fb-auth-show") {
+          loadFirebaseAuthUsers();
+        }
+
         var sideItems = sidebar.querySelectorAll(".sidebar-item");
         sideItems.forEach(function (s) {
           s.classList.toggle(
@@ -5484,37 +5488,26 @@
           return;
         }
 
-        showPasswordModal(
-          "Enter admin credentials to add Firebase authentication user",
-          function (data, adminUser, adminPass) {
-            apiPost(
-              "/api/fb/auth/users/add",
-              appendAdminCredentials(
-                "email=" +
-                  encodeURIComponent(email) +
-                  "&password=" +
-                  encodeURIComponent(password),
-                adminUser,
-                adminPass,
-              ),
-            )
-              .then(function (d) {
-                if (d.ok) {
-                  alert("Firebase authentication user added successfully!");
-                  document.getElementById("firebaseAuthNewEmail").value = "";
-                  document.getElementById("firebaseAuthNewPassword").value = "";
-                  loadFirebaseAuthUsers();
-                } else {
-                  alert(
-                    d.error || "Failed to add Firebase authentication user",
-                  );
-                }
-              })
-              .catch(function () {
-                alert("Connection error");
-              });
-          },
-        );
+        apiPost(
+          "/api/fb/auth/users/add",
+          "email=" +
+            encodeURIComponent(email) +
+            "&password=" +
+            encodeURIComponent(password),
+        )
+          .then(function (d) {
+            if (d.ok) {
+              alert("Firebase authentication user added successfully!");
+              document.getElementById("firebaseAuthNewEmail").value = "";
+              document.getElementById("firebaseAuthNewPassword").value = "";
+              loadFirebaseAuthUsers();
+            } else {
+              alert(d.error || "Failed to add Firebase authentication user");
+            }
+          })
+          .catch(function () {
+            alert("Connection error");
+          });
       }
 
       function openFirebaseAuthEditModal(email) {
@@ -5559,68 +5552,49 @@
         }
 
         closeFirebaseAuthUserModal();
-        showPasswordModal(
-          "Enter admin credentials to update Firebase authentication user",
-          function (data, adminUser, adminPass) {
-            var body =
-              "currentEmail=" +
-              encodeURIComponent(currentEmail) +
-              "&email=" +
-              encodeURIComponent(nextEmail);
-            if (nextPassword) {
-              body += "&password=" + encodeURIComponent(nextPassword);
-            }
+        var body =
+          "currentEmail=" +
+          encodeURIComponent(currentEmail) +
+          "&email=" +
+          encodeURIComponent(nextEmail);
+        if (nextPassword) {
+          body += "&password=" + encodeURIComponent(nextPassword);
+        }
 
-            apiPost(
-              "/api/fb/auth/users/edit",
-              appendAdminCredentials(body, adminUser, adminPass),
-            )
-              .then(function (d) {
-                if (d.ok) {
-                  alert("Firebase authentication user updated successfully!");
-                  loadFirebaseAuthUsers();
-                } else {
-                  alert(
-                    d.error || "Failed to update Firebase authentication user",
-                  );
-                }
-              })
-              .catch(function () {
-                alert("Connection error");
-              });
-          },
-        );
+        apiPost("/api/fb/auth/users/edit", body)
+          .then(function (d) {
+            if (d.ok) {
+              alert("Firebase authentication user updated successfully!");
+              loadFirebaseAuthUsers();
+            } else {
+              alert(d.error || "Failed to update Firebase authentication user");
+            }
+          })
+          .catch(function () {
+            alert("Connection error");
+          });
       }
 
       function confirmFirebaseAuthRemove(email) {
-        showPasswordModal(
-          "Enter admin credentials to remove Firebase authentication user '" +
-            email +
-            "'",
-          function (data, adminUser, adminPass) {
-            apiPost(
-              "/api/fb/auth/users/remove",
-              appendAdminCredentials(
-                "email=" + encodeURIComponent(email),
-                adminUser,
-                adminPass,
-              ),
-            )
-              .then(function (d) {
-                if (d.ok) {
-                  alert("Firebase authentication user removed successfully!");
-                  loadFirebaseAuthUsers();
-                } else {
-                  alert(
-                    d.error || "Failed to remove Firebase authentication user",
-                  );
-                }
-              })
-              .catch(function () {
-                alert("Connection error");
-              });
-          },
-        );
+        if (!confirm("Remove Firebase authentication user '" + email + "'?")) {
+          return;
+        }
+
+        apiPost(
+          "/api/fb/auth/users/remove",
+          "email=" + encodeURIComponent(email),
+        )
+          .then(function (d) {
+            if (d.ok) {
+              alert("Firebase authentication user removed successfully!");
+              loadFirebaseAuthUsers();
+            } else {
+              alert(d.error || "Failed to remove Firebase authentication user");
+            }
+          })
+          .catch(function () {
+            alert("Connection error");
+          });
       }
 
       /* ══════════════════════════════════════════════════════════════
@@ -6384,8 +6358,9 @@
 
           var sub = document.createElement("div");
           sub.className = "setting-sub";
-          sub.textContent =
-            "Stored on ESP32 for Firebase email/password authentication";
+          sub.textContent = user.password
+            ? "Password: " + user.password
+            : "No password saved";
 
           info.appendChild(label);
           info.appendChild(sub);

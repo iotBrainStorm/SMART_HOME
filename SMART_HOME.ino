@@ -1269,6 +1269,116 @@ void setupWebServer()
     notifyStorage();
     req->send(200, "application/json", "{\"ok\":true}"); });
 
+  // Keep Firebase auth user APIs available even in low-memory mode.
+  server.on("/api/fb/auth/users", HTTP_GET, [](AsyncWebServerRequest *req)
+            {
+    DynamicJsonDocument stored(4096);
+    loadFirebaseAuthUsersDoc(stored);
+
+    String r;
+    serializeJson(stored, r);
+    req->send(200, "application/json", r); });
+
+  server.on("/api/fb/auth/users/add", HTTP_POST, [](AsyncWebServerRequest *req)
+            {
+    if (!req->hasParam("email", true) || !req->hasParam("password", true)) {
+      req->send(400, "application/json", "{\"error\":\"Missing params\"}");
+      return;
+    }
+
+    String email = normalizeEmail(req->getParam("email", true)->value());
+    String password = req->getParam("password", true)->value();
+    if (!isValidEmailAddress(email)) {
+      req->send(400, "application/json", "{\"error\":\"Invalid email address\"}");
+      return;
+    }
+    if (password.isEmpty()) {
+      req->send(400, "application/json", "{\"error\":\"Password is required\"}");
+      return;
+    }
+
+    DynamicJsonDocument doc(4096);
+    loadFirebaseAuthUsersDoc(doc);
+    JsonArray users = doc.as<JsonArray>();
+    if (findFirebaseAuthUserIndex(users, email) >= 0) {
+      req->send(409, "application/json", "{\"error\":\"Firebase auth user already exists\"}");
+      return;
+    }
+
+    JsonObject user = users.createNestedObject();
+    user["email"] = email;
+    user["password"] = password;
+    saveFirebaseAuthUsersDoc(doc);
+    notifyStorage();
+    req->send(200, "application/json", "{\"ok\":true}"); });
+
+  server.on("/api/fb/auth/users/edit", HTTP_POST, [](AsyncWebServerRequest *req)
+            {
+    if (!req->hasParam("currentEmail", true) || !req->hasParam("email", true)) {
+      req->send(400, "application/json", "{\"error\":\"Missing params\"}");
+      return;
+    }
+
+    String currentEmail = normalizeEmail(req->getParam("currentEmail", true)->value());
+    String nextEmail = normalizeEmail(req->getParam("email", true)->value());
+    String nextPassword = req->hasParam("password", true) ? req->getParam("password", true)->value() : "";
+    if (!isValidEmailAddress(currentEmail) || !isValidEmailAddress(nextEmail)) {
+      req->send(400, "application/json", "{\"error\":\"Invalid email address\"}");
+      return;
+    }
+
+    DynamicJsonDocument doc(4096);
+    loadFirebaseAuthUsersDoc(doc);
+    JsonArray users = doc.as<JsonArray>();
+    int userIndex = findFirebaseAuthUserIndex(users, currentEmail);
+    if (userIndex < 0) {
+      req->send(404, "application/json", "{\"error\":\"Firebase auth user not found\"}");
+      return;
+    }
+
+    int duplicateIndex = findFirebaseAuthUserIndex(users, nextEmail);
+    if (duplicateIndex >= 0 && duplicateIndex != userIndex) {
+      req->send(409, "application/json", "{\"error\":\"Firebase auth user already exists\"}");
+      return;
+    }
+
+    JsonObject user = users[userIndex].as<JsonObject>();
+    user["email"] = nextEmail;
+    if (!nextPassword.isEmpty()) {
+      user["password"] = nextPassword;
+    }
+
+    saveFirebaseAuthUsersDoc(doc);
+    notifyStorage();
+    req->send(200, "application/json", "{\"ok\":true}"); });
+
+  server.on("/api/fb/auth/users/remove", HTTP_POST, [](AsyncWebServerRequest *req)
+            {
+    if (!req->hasParam("email", true)) {
+      req->send(400, "application/json", "{\"error\":\"Missing email\"}");
+      return;
+    }
+
+    String email = normalizeEmail(req->getParam("email", true)->value());
+    if (!isValidEmailAddress(email)) {
+      req->send(400, "application/json", "{\"error\":\"Invalid email address\"}");
+      return;
+    }
+
+    DynamicJsonDocument doc(4096);
+    loadFirebaseAuthUsersDoc(doc);
+    JsonArray users = doc.as<JsonArray>();
+    int userIndex = findFirebaseAuthUserIndex(users, email);
+    if (userIndex < 0) {
+      req->send(404, "application/json", "{\"error\":\"Firebase auth user not found\"}");
+      return;
+    }
+
+    users.remove(userIndex);
+    saveFirebaseAuthUsersDoc(doc);
+    notifyStorage();
+    req->send(200, "application/json", "{\"ok\":true}"); });
+
   uint32_t heapAfterCoreRoutes = ESP.getFreeHeap();
   if (heapAfterCoreRoutes < MIN_FREE_HEAP_FOR_EXTENDED_ROUTES)
   {
@@ -1769,131 +1879,6 @@ void setupWebServer()
         req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Rules saved and uploaded to Firebase\"}");
       else
         req->send(400, "application/json", "{\"error\":\"Saved locally but upload failed: HTTP " + String(code) + "\"}"); });
-
-    server.on("/api/fb/auth/users", HTTP_GET, [](AsyncWebServerRequest *req)
-              {
-      DynamicJsonDocument stored(4096);
-      loadFirebaseAuthUsersDoc(stored);
-
-      DynamicJsonDocument response(2048);
-      JsonArray out = response.to<JsonArray>();
-      for (JsonObject user : stored.as<JsonArray>()) {
-        JsonObject item = out.createNestedObject();
-        item["email"] = user["email"].as<String>();
-      }
-
-      String r;
-      serializeJson(response, r);
-      req->send(200, "application/json", r); });
-
-    server.on("/api/fb/auth/users/add", HTTP_POST, [](AsyncWebServerRequest *req)
-              {
-      if (!req->hasParam("email", true) || !req->hasParam("password", true)) {
-        req->send(400, "application/json", "{\"error\":\"Missing params\"}");
-        return;
-      }
-      if (!requireAdminVerification(req)) {
-        return;
-      }
-
-      String email = normalizeEmail(req->getParam("email", true)->value());
-      String password = req->getParam("password", true)->value();
-      if (!isValidEmailAddress(email)) {
-        req->send(400, "application/json", "{\"error\":\"Invalid email address\"}");
-        return;
-      }
-      if (password.isEmpty()) {
-        req->send(400, "application/json", "{\"error\":\"Password is required\"}");
-        return;
-      }
-
-      DynamicJsonDocument doc(4096);
-      loadFirebaseAuthUsersDoc(doc);
-      JsonArray users = doc.as<JsonArray>();
-      if (findFirebaseAuthUserIndex(users, email) >= 0) {
-        req->send(409, "application/json", "{\"error\":\"Firebase auth user already exists\"}");
-        return;
-      }
-
-      JsonObject user = users.createNestedObject();
-      user["email"] = email;
-      user["password"] = password;
-      saveFirebaseAuthUsersDoc(doc);
-      notifyStorage();
-      req->send(200, "application/json", "{\"ok\":true}"); });
-
-    server.on("/api/fb/auth/users/edit", HTTP_POST, [](AsyncWebServerRequest *req)
-              {
-      if (!req->hasParam("currentEmail", true) || !req->hasParam("email", true)) {
-        req->send(400, "application/json", "{\"error\":\"Missing params\"}");
-        return;
-      }
-      if (!requireAdminVerification(req)) {
-        return;
-      }
-
-      String currentEmail = normalizeEmail(req->getParam("currentEmail", true)->value());
-      String nextEmail = normalizeEmail(req->getParam("email", true)->value());
-      String nextPassword = req->hasParam("password", true) ? req->getParam("password", true)->value() : "";
-      if (!isValidEmailAddress(currentEmail) || !isValidEmailAddress(nextEmail)) {
-        req->send(400, "application/json", "{\"error\":\"Invalid email address\"}");
-        return;
-      }
-
-      DynamicJsonDocument doc(4096);
-      loadFirebaseAuthUsersDoc(doc);
-      JsonArray users = doc.as<JsonArray>();
-      int userIndex = findFirebaseAuthUserIndex(users, currentEmail);
-      if (userIndex < 0) {
-        req->send(404, "application/json", "{\"error\":\"Firebase auth user not found\"}");
-        return;
-      }
-
-      int duplicateIndex = findFirebaseAuthUserIndex(users, nextEmail);
-      if (duplicateIndex >= 0 && duplicateIndex != userIndex) {
-        req->send(409, "application/json", "{\"error\":\"Firebase auth user already exists\"}");
-        return;
-      }
-
-      JsonObject user = users[userIndex].as<JsonObject>();
-      user["email"] = nextEmail;
-      if (!nextPassword.isEmpty()) {
-        user["password"] = nextPassword;
-      }
-
-      saveFirebaseAuthUsersDoc(doc);
-      notifyStorage();
-      req->send(200, "application/json", "{\"ok\":true}"); });
-
-    server.on("/api/fb/auth/users/remove", HTTP_POST, [](AsyncWebServerRequest *req)
-              {
-      if (!req->hasParam("email", true)) {
-        req->send(400, "application/json", "{\"error\":\"Missing email\"}");
-        return;
-      }
-      if (!requireAdminVerification(req)) {
-        return;
-      }
-
-      String email = normalizeEmail(req->getParam("email", true)->value());
-      if (!isValidEmailAddress(email)) {
-        req->send(400, "application/json", "{\"error\":\"Invalid email address\"}");
-        return;
-      }
-
-      DynamicJsonDocument doc(4096);
-      loadFirebaseAuthUsersDoc(doc);
-      JsonArray users = doc.as<JsonArray>();
-      int userIndex = findFirebaseAuthUserIndex(users, email);
-      if (userIndex < 0) {
-        req->send(404, "application/json", "{\"error\":\"Firebase auth user not found\"}");
-        return;
-      }
-
-      users.remove(userIndex);
-      saveFirebaseAuthUsersDoc(doc);
-      notifyStorage();
-      req->send(200, "application/json", "{\"ok\":true}"); });
 
     // ──── USERS ────
     server.on("/api/users", HTTP_GET, [](AsyncWebServerRequest *req)
