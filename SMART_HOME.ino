@@ -330,6 +330,23 @@ bool verifyAdmin(const String &u, const String &p)
   return false;
 }
 
+bool requireAdminVerification(AsyncWebServerRequest *req)
+{
+  if (!req->hasParam("adminUser", true) || !req->hasParam("adminPass", true))
+  {
+    req->send(400, "application/json", "{\"error\":\"Admin credentials required\"}");
+    return false;
+  }
+
+  if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value()))
+  {
+    req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+    return false;
+  }
+
+  return true;
+}
+
 bool verifyLogin(const String &u, const String &p, String &role)
 {
   prefs.begin("users", true);
@@ -1604,7 +1621,11 @@ void setupWebServer()
         req->send(400, "application/json", "{\"error\":\"Missing\"}");
         return;
       }
-      fbOn = req->getParam("enabled", true)->value() == "true";
+      bool enableFirebase = req->getParam("enabled", true)->value() == "true";
+      if (enableFirebase && !requireAdminVerification(req)) {
+        return;
+      }
+      fbOn = enableFirebase;
       prefs.begin("fb", false);
       prefs.putBool("en", fbOn);
       prefs.end();
@@ -1615,6 +1636,9 @@ void setupWebServer()
               {
       if (!req->hasParam("url", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing\"}");
+        return;
+      }
+      if (!requireAdminVerification(req)) {
         return;
       }
       fbUrl = req->getParam("url", true)->value();
@@ -1628,6 +1652,9 @@ void setupWebServer()
               {
       if (!req->hasParam("token", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing\"}");
+        return;
+      }
+      if (!requireAdminVerification(req)) {
         return;
       }
       fbToken = req->getParam("token", true)->value();
@@ -1662,6 +1689,9 @@ void setupWebServer()
               {
       if (!req->hasParam("rules", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing rules\"}");
+        return;
+      }
+      if (!requireAdminVerification(req)) {
         return;
       }
       String rules = req->getParam("rules", true)->value();

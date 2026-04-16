@@ -2345,7 +2345,7 @@
               </div>
             </div>
             <label class="sm-toggle">
-              <input type="checkbox" id="firebaseToggle" checked />
+              <input type="checkbox" id="firebaseToggle" />
               <span class="sm-toggle-track"></span>
             </label>
           </div>
@@ -2392,12 +2392,28 @@
             style="flex-direction: column; align-items: flex-start; gap: 10px"
           >
             <div class="setting-label">Database Secret / Auth Token</div>
-            <input
-              class="cfg-input"
-              type="password"
-              placeholder="Paste your database secret here"
-              style="max-width: 100%; font-family: monospace"
-            />
+            <div class="input-with-action">
+              <input
+                class="cfg-input"
+                id="firebaseTokenInput"
+                type="password"
+                placeholder="Paste your database secret here"
+                style="max-width: 100%; font-family: monospace"
+              />
+              <button
+                type="button"
+                class="password-toggle-btn"
+                id="firebaseTokenToggle"
+                onclick="toggleFirebaseTokenVisibility()"
+                aria-label="Show token"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+                  <circle cx="12" cy="12" r="3" />
+                  <path class="eye-slash" d="M4 4l16 16" />
+                </svg>
+              </button>
+            </div>
           </div>
           <div
             style="
@@ -5432,16 +5448,46 @@
           });
       }
 
-      function toggleWifiPasswordVisibility() {
-        var input = document.getElementById("wifiPasswordInput");
-        var toggleBtn = document.getElementById("wifiPasswordToggle");
+      function appendAdminCredentials(body, adminUser, adminPass) {
+        return (
+          body +
+          "&adminUser=" +
+          encodeURIComponent(adminUser) +
+          "&adminPass=" +
+          encodeURIComponent(adminPass)
+        );
+      }
+
+      function toggleProtectedFieldVisibility(
+        inputId,
+        toggleId,
+        showLabel,
+        hideLabel,
+      ) {
+        var input = document.getElementById(inputId);
+        var toggleBtn = document.getElementById(toggleId);
         if (!input || !toggleBtn) return;
-        var showPassword = input.type === "password";
-        input.type = showPassword ? "text" : "password";
-        toggleBtn.classList.toggle("active", showPassword);
-        toggleBtn.setAttribute(
-          "aria-label",
-          showPassword ? "Hide password" : "Show password",
+        var showValue = input.type === "password";
+        input.type = showValue ? "text" : "password";
+        toggleBtn.classList.toggle("active", showValue);
+        toggleBtn.setAttribute("aria-label", showValue ? hideLabel : showLabel);
+      }
+
+      function toggleWifiPasswordVisibility() {
+        toggleProtectedFieldVisibility(
+          "wifiPasswordInput",
+          "wifiPasswordToggle",
+          "Show password",
+          "Hide password",
+        );
+      }
+
+      function toggleFirebaseTokenVisibility() {
+        toggleProtectedFieldVisibility(
+          "firebaseTokenInput",
+          "firebaseTokenToggle",
+          "Show token",
+          "Hide token",
         );
       }
 
@@ -6271,13 +6317,42 @@
         var fbToggle = document.getElementById("firebaseToggle");
         if (fbToggle) {
           fbToggle.addEventListener("change", function () {
-            apiPost("/api/fb/toggle", "enabled=" + this.checked)
-              .then(function (d) {
-                if (!d.ok) alert(d.error || "Toggle failed");
-              })
-              .catch(function () {
-                alert("Connection error");
-              });
+            var wantsEnable = this.checked;
+            if (!wantsEnable) {
+              apiPost("/api/fb/toggle", "enabled=false")
+                .then(function (d) {
+                  if (!d.ok) {
+                    fbToggle.checked = true;
+                    alert(d.error || "Toggle failed");
+                  }
+                })
+                .catch(function () {
+                  fbToggle.checked = true;
+                  alert("Connection error");
+                });
+              return;
+            }
+
+            fbToggle.checked = false;
+            showPasswordModal(
+              "Enter admin credentials to enable Firebase",
+              function (data, adminUser, adminPass) {
+                apiPost(
+                  "/api/fb/toggle",
+                  appendAdminCredentials("enabled=true", adminUser, adminPass),
+                )
+                  .then(function (d) {
+                    if (d.ok) {
+                      fbToggle.checked = true;
+                    } else {
+                      alert(d.error || "Toggle failed");
+                    }
+                  })
+                  .catch(function () {
+                    alert("Connection error");
+                  });
+              },
+            );
           });
         }
 
@@ -6288,14 +6363,31 @@
           if (fbUrlBtn) {
             fbUrlBtn.addEventListener("click", function () {
               var input = fbUrlPanel.querySelector(".cfg-input");
-              apiPost("/api/fb/url", "url=" + encodeURIComponent(input.value))
-                .then(function (d) {
-                  if (d.ok) alert("Firebase URL saved!");
-                  else alert(d.error || "Save failed");
-                })
-                .catch(function () {
-                  alert("Connection error");
-                });
+              var url = input.value.trim();
+              if (!url) {
+                alert("Enter Firebase URL");
+                return;
+              }
+              showPasswordModal(
+                "Enter admin credentials to save Firebase URL",
+                function (data, adminUser, adminPass) {
+                  apiPost(
+                    "/api/fb/url",
+                    appendAdminCredentials(
+                      "url=" + encodeURIComponent(url),
+                      adminUser,
+                      adminPass,
+                    ),
+                  )
+                    .then(function (d) {
+                      if (d.ok) alert("Firebase URL saved!");
+                      else alert(d.error || "Save failed");
+                    })
+                    .catch(function () {
+                      alert("Connection error");
+                    });
+                },
+              );
             });
           }
         }
@@ -6308,17 +6400,31 @@
           if (saveTkBtn) {
             saveTkBtn.addEventListener("click", function () {
               var input = fbTokenPanel.querySelector(".cfg-input");
-              apiPost(
-                "/api/fb/token",
-                "token=" + encodeURIComponent(input.value),
-              )
-                .then(function (d) {
-                  if (d.ok) alert("Token saved!");
-                  else alert(d.error || "Save failed");
-                })
-                .catch(function () {
-                  alert("Connection error");
-                });
+              var token = input.value;
+              if (!token.trim()) {
+                alert("Enter authentication token");
+                return;
+              }
+              showPasswordModal(
+                "Enter admin credentials to save Firebase token",
+                function (data, adminUser, adminPass) {
+                  apiPost(
+                    "/api/fb/token",
+                    appendAdminCredentials(
+                      "token=" + encodeURIComponent(token),
+                      adminUser,
+                      adminPass,
+                    ),
+                  )
+                    .then(function (d) {
+                      if (d.ok) alert("Token saved!");
+                      else alert(d.error || "Save failed");
+                    })
+                    .catch(function () {
+                      alert("Connection error");
+                    });
+                },
+              );
             });
           }
           if (testBtn) {
@@ -6358,14 +6464,26 @@
                 alert("Invalid JSON: " + e.message);
                 return;
               }
-              apiPost("/api/fb/rules", "rules=" + encodeURIComponent(rules))
-                .then(function (d) {
-                  if (d.ok) alert(d.msg || "Rules saved!");
-                  else alert(d.error || "Save failed");
-                })
-                .catch(function () {
-                  alert("Connection error");
-                });
+              showPasswordModal(
+                "Enter admin credentials to save Firebase rules",
+                function (data, adminUser, adminPass) {
+                  apiPost(
+                    "/api/fb/rules",
+                    appendAdminCredentials(
+                      "rules=" + encodeURIComponent(rules),
+                      adminUser,
+                      adminPass,
+                    ),
+                  )
+                    .then(function (d) {
+                      if (d.ok) alert(d.msg || "Rules saved!");
+                      else alert(d.error || "Save failed");
+                    })
+                    .catch(function () {
+                      alert("Connection error");
+                    });
+                },
+              );
             });
           }
         }
