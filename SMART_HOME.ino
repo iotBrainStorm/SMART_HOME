@@ -62,6 +62,12 @@ bool portalFlag = false;
 // Firebase
 bool fbOn = false;
 String fbUrl, fbToken;
+const char *DEFAULT_FIREBASE_RULES_JSON = R"RULES({
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null"
+  }
+})RULES";
 
 // Admin / Time
 String ntpSrv = "pool.ntp.org";
@@ -1823,8 +1829,14 @@ void setupWebServer()
       d["url"] = fbUrl;
       d["token"] = fbToken;
       prefs.begin("fb", true);
-      d["rules"] = prefs.getString("rules", "");
+      String rules = prefs.getString("rules", DEFAULT_FIREBASE_RULES_JSON);
       prefs.end();
+
+      if (rules.isEmpty()) {
+        rules = DEFAULT_FIREBASE_RULES_JSON;
+      }
+      d["rules"] = rules;
+
       String r;
       serializeJson(d, r);
       req->send(200, "application/json", r); });

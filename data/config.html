@@ -316,6 +316,19 @@
         opacity: 1;
       }
 
+      .firebase-auth-edit-fields {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .firebase-auth-edit-input {
+        width: 100%;
+        max-width: 100%;
+        display: block;
+      }
+
       .setting-info {
         flex: 1;
         min-width: 0;
@@ -331,7 +344,7 @@
         font-size: 0.85rem;
         outline: none;
         width: 100%;
-        max-width: 260px;
+        max-width: 300px;
         transition: border-color 0.2s;
       }
 
@@ -2491,23 +2504,21 @@
           <div class="info-box">
             <strong>Instructions:</strong><br />
             Go to Firebase Console → Realtime Database → Rules tab<br />
-            Copy your database rules JSON or enter custom rules below
+            Default template below allows only authenticated users to read/write
           </div>
           <div
             class="setting-row"
             style="flex-direction: column; align-items: flex-start; gap: 10px"
           >
             <div class="setting-label">Database Rules (JSON)</div>
-            <textarea
-              class="cfg-textarea"
-              id="firebaseRules"
-              placeholder='{
+            <textarea class="cfg-textarea" id="firebaseRules">
+{
   "rules": {
-    ".read": true,
-    ".write": true
+    ".read": "auth != null",
+    ".write": "auth != null"
   }
-}'
-            ></textarea>
+}</textarea
+            >
             <div class="setting-sub">
               Enter your Firebase Realtime Database security rules in JSON
               format
@@ -3173,34 +3184,34 @@
           Update the email address or enter a new password. Leave the password
           blank to keep the existing value.
         </p>
-        <input
-          type="email"
-          id="firebaseAuthEditEmail"
-          class="cfg-input"
-          placeholder="user@example.com"
-          style="max-width: 100%; margin-bottom: 10px"
-        />
-        <div class="input-with-action" style="margin-bottom: 18px">
+        <div class="firebase-auth-edit-fields">
           <input
-            type="password"
-            id="firebaseAuthEditPassword"
-            class="cfg-input"
-            placeholder="Leave blank to keep existing password"
-            style="max-width: 100%"
+            type="email"
+            id="firebaseAuthEditEmail"
+            class="cfg-input firebase-auth-edit-input"
+            placeholder="user@example.com"
           />
-          <button
-            type="button"
-            class="password-toggle-btn"
-            id="firebaseAuthEditPasswordToggle"
-            onclick="toggleFirebaseAuthEditPasswordVisibility()"
-            aria-label="Show password"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
-              <circle cx="12" cy="12" r="3" />
-              <path class="eye-slash" d="M4 4l16 16" />
-            </svg>
-          </button>
+          <div class="input-with-action">
+            <input
+              type="password"
+              id="firebaseAuthEditPassword"
+              class="cfg-input firebase-auth-edit-input"
+              placeholder="Enter new password"
+            />
+            <button
+              type="button"
+              class="password-toggle-btn"
+              id="firebaseAuthEditPasswordToggle"
+              onclick="toggleFirebaseAuthEditPasswordVisibility()"
+              aria-label="Show password"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+                <circle cx="12" cy="12" r="3" />
+                <path class="eye-slash" d="M4 4l16 16" />
+              </svg>
+            </button>
+          </div>
         </div>
         <div class="modal-actions">
           <button class="modal-cancel" onclick="closeFirebaseAuthUserModal()">
@@ -3485,6 +3496,9 @@
           return r.json();
         });
       }
+
+      var DEFAULT_FIREBASE_RULES =
+        '{\n  "rules": {\n    ".read": "auth != null",\n    ".write": "auth != null"\n  }\n}';
 
       /* ── Data: tabs → sidebar items → panel IDs ── */
       var tabConfig = {
@@ -6991,6 +7005,11 @@
         }
 
         /* — Firebase Rules Save — */
+        var firebaseRulesInput = document.getElementById("firebaseRules");
+        if (firebaseRulesInput && !firebaseRulesInput.value.trim()) {
+          firebaseRulesInput.value = DEFAULT_FIREBASE_RULES;
+        }
+
         var fbRulesPanel = document.getElementById("panel-fb-rules");
         if (fbRulesPanel) {
           var rulesBtn = fbRulesPanel.querySelector(".cfg-btn-primary");
@@ -7072,8 +7091,12 @@
               "#panel-fb-token .cfg-input",
             );
             if (tokenInput && d.token) tokenInput.value = d.token;
-            if (d.rules)
-              document.getElementById("firebaseRules").value = d.rules;
+            var rulesInput = document.getElementById("firebaseRules");
+            if (rulesInput) {
+              var incomingRules =
+                d && typeof d.rules === "string" ? d.rules.trim() : "";
+              rulesInput.value = incomingRules || DEFAULT_FIREBASE_RULES;
+            }
           })
           .catch(function () {});
 
