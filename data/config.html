@@ -1052,6 +1052,52 @@
         font-family: monospace;
         font-weight: 500;
       }
+
+      #panel-wifi-disconnect .status-value {
+        color: #7dd3fc;
+      }
+
+      .status-value-actions {
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .copy-icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border: 1px solid rgba(125, 211, 252, 0.28);
+        border-radius: 999px;
+        background: rgba(14, 116, 144, 0.16);
+        color: #7dd3fc;
+        cursor: pointer;
+        flex-shrink: 0;
+        transition:
+          background 0.15s ease,
+          border-color 0.15s ease,
+          color 0.15s ease;
+      }
+
+      .copy-icon-btn:hover {
+        background: rgba(14, 116, 144, 0.28);
+        border-color: rgba(125, 211, 252, 0.45);
+        color: #bae6fd;
+      }
+
+      .copy-icon-btn svg {
+        width: 15px;
+        height: 15px;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
     </style>
   </head>
   <body>
@@ -2105,9 +2151,26 @@
             </div>
             <div class="status-row">
               <span class="status-key">Device MAC Address</span>
-              <span class="status-value mono" id="wifiStatusMac"
-                >Unavailable</span
-              >
+              <span class="status-value-actions">
+                <span class="status-value mono" id="wifiStatusMac"
+                  >Unavailable</span
+                >
+                <button
+                  type="button"
+                  class="copy-icon-btn"
+                  id="copyWifiMacBtn"
+                  onclick="copyWifiMacAddress()"
+                  aria-label="Copy MAC address"
+                  title="Copy MAC address"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="9" y="9" width="11" height="11" rx="2" />
+                    <path
+                      d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"
+                    />
+                  </svg>
+                </button>
+              </span>
             </div>
           </div>
         </div>
@@ -5322,6 +5385,53 @@
           });
       }
 
+      function copyTextToClipboard(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          return navigator.clipboard.writeText(text);
+        }
+
+        return new Promise(function (resolve, reject) {
+          var textArea = document.createElement("textarea");
+          textArea.value = text;
+          textArea.setAttribute("readonly", "readonly");
+          textArea.style.position = "fixed";
+          textArea.style.opacity = "0";
+          document.body.appendChild(textArea);
+          textArea.focus();
+          textArea.select();
+
+          try {
+            if (document.execCommand("copy")) {
+              resolve();
+            } else {
+              reject(new Error("Copy command failed"));
+            }
+          } catch (err) {
+            reject(err);
+          } finally {
+            document.body.removeChild(textArea);
+          }
+        });
+      }
+
+      function copyWifiMacAddress() {
+        var macValue = document.getElementById("wifiStatusMac");
+        if (!macValue) return;
+        var text = macValue.textContent.trim();
+        if (!text || text === "Unavailable") {
+          alert("MAC address is not available.");
+          return;
+        }
+
+        copyTextToClipboard(text)
+          .then(function () {
+            alert("MAC address copied.");
+          })
+          .catch(function () {
+            alert("Unable to copy MAC address.");
+          });
+      }
+
       function toggleWifiPasswordVisibility() {
         var input = document.getElementById("wifiPasswordInput");
         var toggleBtn = document.getElementById("wifiPasswordToggle");
@@ -6067,20 +6177,31 @@
                 alert("Enter SSID");
                 return;
               }
-              apiPost(
-                "/api/wifi/connect",
-                "ssid=" +
-                  encodeURIComponent(ssid) +
-                  "&pass=" +
-                  encodeURIComponent(pass),
-              )
-                .then(function (d) {
-                  if (d.ok) alert(d.msg || "WiFi credentials saved.");
-                  else alert(d.error || "Connection failed");
-                })
-                .catch(function () {
-                  alert("Connection error");
-                });
+              showPasswordModal(
+                "Enter admin credentials to save WiFi settings for '" +
+                  ssid +
+                  "'",
+                function (data, adminUser, adminPass) {
+                  apiPost(
+                    "/api/wifi/connect",
+                    "ssid=" +
+                      encodeURIComponent(ssid) +
+                      "&pass=" +
+                      encodeURIComponent(pass) +
+                      "&adminUser=" +
+                      encodeURIComponent(adminUser) +
+                      "&adminPass=" +
+                      encodeURIComponent(adminPass),
+                  )
+                    .then(function (d) {
+                      if (d.ok) alert(d.msg || "WiFi credentials saved.");
+                      else alert(d.error || "Connection failed");
+                    })
+                    .catch(function () {
+                      alert("Connection error");
+                    });
+                },
+              );
             });
           }
         }

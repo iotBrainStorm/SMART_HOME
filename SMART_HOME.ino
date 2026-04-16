@@ -1474,6 +1474,14 @@ void setupWebServer()
         req->send(400, "application/json", "{\"error\":\"Missing SSID\"}");
         return;
       }
+      if (!req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
+        req->send(400, "application/json", "{\"error\":\"Admin credentials required\"}");
+        return;
+      }
+      if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
+        req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+        return;
+      }
       String ssid = req->getParam("ssid", true)->value();
       String pass = req->hasParam("pass", true) ? req->getParam("pass", true)->value() : "";
       if (ssid.isEmpty()) {
