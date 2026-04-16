@@ -261,6 +261,61 @@
         margin-top: 3px;
       }
 
+      .setting-sub.with-action {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .setting-sub-password {
+        line-height: 1.35;
+      }
+
+      .setting-sub-eye-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border: none;
+        border-radius: 999px;
+        background: transparent;
+        color: #94a3b8;
+        cursor: pointer;
+        padding: 0;
+        transition:
+          color 0.15s ease,
+          background 0.15s ease;
+      }
+
+      .setting-sub-eye-btn:hover {
+        color: #e2e8f0;
+        background: rgba(255, 255, 255, 0.06);
+      }
+
+      .setting-sub-eye-btn.active {
+        color: #60a5fa;
+      }
+
+      .setting-sub-eye-btn svg {
+        width: 14px;
+        height: 14px;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .setting-sub-eye-btn .eye-slash {
+        opacity: 0;
+        transition: opacity 0.15s ease;
+      }
+
+      .setting-sub-eye-btn.active .eye-slash {
+        opacity: 1;
+      }
+
       .setting-info {
         flex: 1;
         min-width: 0;
@@ -3123,7 +3178,7 @@
           id="firebaseAuthEditEmail"
           class="cfg-input"
           placeholder="user@example.com"
-          style="width: 100%; margin-bottom: 10px"
+          style="max-width: 100%; margin-bottom: 10px"
         />
         <div class="input-with-action" style="margin-bottom: 18px">
           <input
@@ -5488,26 +5543,37 @@
           return;
         }
 
-        apiPost(
-          "/api/fb/auth/users/add",
-          "email=" +
-            encodeURIComponent(email) +
-            "&password=" +
-            encodeURIComponent(password),
-        )
-          .then(function (d) {
-            if (d.ok) {
-              alert("Firebase authentication user added successfully!");
-              document.getElementById("firebaseAuthNewEmail").value = "";
-              document.getElementById("firebaseAuthNewPassword").value = "";
-              loadFirebaseAuthUsers();
-            } else {
-              alert(d.error || "Failed to add Firebase authentication user");
-            }
-          })
-          .catch(function () {
-            alert("Connection error");
-          });
+        showPasswordModal(
+          "Enter admin credentials to add Firebase authentication user",
+          function (data, adminUser, adminPass) {
+            apiPost(
+              "/api/fb/auth/users/add",
+              appendAdminCredentials(
+                "email=" +
+                  encodeURIComponent(email) +
+                  "&password=" +
+                  encodeURIComponent(password),
+                adminUser,
+                adminPass,
+              ),
+            )
+              .then(function (d) {
+                if (d.ok) {
+                  alert("Firebase authentication user added successfully!");
+                  document.getElementById("firebaseAuthNewEmail").value = "";
+                  document.getElementById("firebaseAuthNewPassword").value = "";
+                  loadFirebaseAuthUsers();
+                } else {
+                  alert(
+                    d.error || "Failed to add Firebase authentication user",
+                  );
+                }
+              })
+              .catch(function () {
+                alert("Connection error");
+              });
+          },
+        );
       }
 
       function openFirebaseAuthEditModal(email) {
@@ -5552,27 +5618,37 @@
         }
 
         closeFirebaseAuthUserModal();
-        var body =
-          "currentEmail=" +
-          encodeURIComponent(currentEmail) +
-          "&email=" +
-          encodeURIComponent(nextEmail);
-        if (nextPassword) {
-          body += "&password=" + encodeURIComponent(nextPassword);
-        }
-
-        apiPost("/api/fb/auth/users/edit", body)
-          .then(function (d) {
-            if (d.ok) {
-              alert("Firebase authentication user updated successfully!");
-              loadFirebaseAuthUsers();
-            } else {
-              alert(d.error || "Failed to update Firebase authentication user");
+        showPasswordModal(
+          "Enter admin credentials to update Firebase authentication user",
+          function (data, adminUser, adminPass) {
+            var body =
+              "currentEmail=" +
+              encodeURIComponent(currentEmail) +
+              "&email=" +
+              encodeURIComponent(nextEmail);
+            if (nextPassword) {
+              body += "&password=" + encodeURIComponent(nextPassword);
             }
-          })
-          .catch(function () {
-            alert("Connection error");
-          });
+
+            apiPost(
+              "/api/fb/auth/users/edit",
+              appendAdminCredentials(body, adminUser, adminPass),
+            )
+              .then(function (d) {
+                if (d.ok) {
+                  alert("Firebase authentication user updated successfully!");
+                  loadFirebaseAuthUsers();
+                } else {
+                  alert(
+                    d.error || "Failed to update Firebase authentication user",
+                  );
+                }
+              })
+              .catch(function () {
+                alert("Connection error");
+              });
+          },
+        );
       }
 
       function confirmFirebaseAuthRemove(email) {
@@ -5580,21 +5656,34 @@
           return;
         }
 
-        apiPost(
-          "/api/fb/auth/users/remove",
-          "email=" + encodeURIComponent(email),
-        )
-          .then(function (d) {
-            if (d.ok) {
-              alert("Firebase authentication user removed successfully!");
-              loadFirebaseAuthUsers();
-            } else {
-              alert(d.error || "Failed to remove Firebase authentication user");
-            }
-          })
-          .catch(function () {
-            alert("Connection error");
-          });
+        showPasswordModal(
+          "Enter admin credentials to remove Firebase authentication user '" +
+            email +
+            "'",
+          function (data, adminUser, adminPass) {
+            apiPost(
+              "/api/fb/auth/users/remove",
+              appendAdminCredentials(
+                "email=" + encodeURIComponent(email),
+                adminUser,
+                adminPass,
+              ),
+            )
+              .then(function (d) {
+                if (d.ok) {
+                  alert("Firebase authentication user removed successfully!");
+                  loadFirebaseAuthUsers();
+                } else {
+                  alert(
+                    d.error || "Failed to remove Firebase authentication user",
+                  );
+                }
+              })
+              .catch(function () {
+                alert("Connection error");
+              });
+          },
+        );
       }
 
       /* ══════════════════════════════════════════════════════════════
@@ -6357,10 +6446,30 @@
           label.textContent = user.email;
 
           var sub = document.createElement("div");
-          sub.className = "setting-sub";
-          sub.textContent = user.password
-            ? "Password: " + user.password
-            : "No password saved";
+          sub.className = "setting-sub with-action";
+
+          var passwordText = document.createElement("span");
+          passwordText.className = "setting-sub-password";
+          passwordText.textContent = "Password: ********";
+
+          var revealBtn = document.createElement("button");
+          revealBtn.type = "button";
+          revealBtn.className = "setting-sub-eye-btn";
+          revealBtn.setAttribute("aria-label", "Show password");
+          revealBtn.innerHTML =
+            '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="3" /><path class="eye-slash" d="M4 4l16 16" /></svg>';
+          revealBtn.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            requestFirebaseAuthPasswordReveal(
+              user.email,
+              passwordText,
+              revealBtn,
+            );
+          });
+
+          sub.appendChild(passwordText);
+          sub.appendChild(revealBtn);
 
           info.appendChild(label);
           info.appendChild(sub);
@@ -6394,6 +6503,50 @@
           row.appendChild(actions);
           container.appendChild(row);
         });
+      }
+
+      function requestFirebaseAuthPasswordReveal(
+        email,
+        passwordText,
+        revealBtn,
+      ) {
+        if (!email || !passwordText || !revealBtn) return;
+
+        if (revealBtn.classList.contains("active")) {
+          passwordText.textContent = "Password: ********";
+          revealBtn.classList.remove("active");
+          revealBtn.setAttribute("aria-label", "Show password");
+          return;
+        }
+
+        showPasswordModal(
+          "Enter admin credentials to show password for Firebase user '" +
+            email +
+            "'",
+          function (data, adminUser, adminPass) {
+            apiPost(
+              "/api/fb/auth/users/password",
+              appendAdminCredentials(
+                "email=" + encodeURIComponent(email),
+                adminUser,
+                adminPass,
+              ),
+            )
+              .then(function (d) {
+                if (d.ok) {
+                  passwordText.textContent =
+                    "Password: " + (d.password || "(empty)");
+                  revealBtn.classList.add("active");
+                  revealBtn.setAttribute("aria-label", "Hide password");
+                } else {
+                  alert(d.error || "Failed to read Firebase user password");
+                }
+              })
+              .catch(function () {
+                alert("Connection error");
+              });
+          },
+        );
       }
 
       function loadFirebaseAuthUsers() {

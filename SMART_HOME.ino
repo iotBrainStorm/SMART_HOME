@@ -1275,14 +1275,59 @@ void setupWebServer()
     DynamicJsonDocument stored(4096);
     loadFirebaseAuthUsersDoc(stored);
 
+    DynamicJsonDocument response(2048);
+    JsonArray out = response.to<JsonArray>();
+    for (JsonObject user : stored.as<JsonArray>()) {
+      JsonObject item = out.createNestedObject();
+      item["email"] = user["email"].as<String>();
+    }
+
     String r;
-    serializeJson(stored, r);
+    serializeJson(response, r);
+    req->send(200, "application/json", r); });
+
+  server.on("/api/fb/auth/users/password", HTTP_POST, [](AsyncWebServerRequest *req)
+            {
+    if (!req->hasParam("email", true)) {
+      req->send(400, "application/json", "{\"error\":\"Missing email\"}");
+      return;
+    }
+    if (!requireAdminVerification(req)) {
+      return;
+    }
+
+    String email = normalizeEmail(req->getParam("email", true)->value());
+    if (!isValidEmailAddress(email)) {
+      req->send(400, "application/json", "{\"error\":\"Invalid email address\"}");
+      return;
+    }
+
+    DynamicJsonDocument doc(4096);
+    loadFirebaseAuthUsersDoc(doc);
+    JsonArray users = doc.as<JsonArray>();
+    int userIndex = findFirebaseAuthUserIndex(users, email);
+    if (userIndex < 0) {
+      req->send(404, "application/json", "{\"error\":\"Firebase auth user not found\"}");
+      return;
+    }
+
+    JsonObject user = users[userIndex].as<JsonObject>();
+    String password = user["password"].as<String>();
+
+    DynamicJsonDocument response(256);
+    response["ok"] = true;
+    response["password"] = password;
+    String r;
+    serializeJson(response, r);
     req->send(200, "application/json", r); });
 
   server.on("/api/fb/auth/users/add", HTTP_POST, [](AsyncWebServerRequest *req)
             {
     if (!req->hasParam("email", true) || !req->hasParam("password", true)) {
       req->send(400, "application/json", "{\"error\":\"Missing params\"}");
+      return;
+    }
+    if (!requireAdminVerification(req)) {
       return;
     }
 
@@ -1316,6 +1361,9 @@ void setupWebServer()
             {
     if (!req->hasParam("currentEmail", true) || !req->hasParam("email", true)) {
       req->send(400, "application/json", "{\"error\":\"Missing params\"}");
+      return;
+    }
+    if (!requireAdminVerification(req)) {
       return;
     }
 
@@ -1356,6 +1404,9 @@ void setupWebServer()
             {
     if (!req->hasParam("email", true)) {
       req->send(400, "application/json", "{\"error\":\"Missing email\"}");
+      return;
+    }
+    if (!requireAdminVerification(req)) {
       return;
     }
 
