@@ -307,18 +307,50 @@ void loadAdminSettings()
 void initDefaultUser()
 {
   prefs.begin("users", false);
-  if (prefs.getInt("cnt", 0) == 0)
+  int count = prefs.getInt("cnt", 0);
+  if (count == 0)
   {
     DynamicJsonDocument d(1024);
-    d["id"] = "mrinal";
-    d["pass"] = "1234";
+    d["id"] = "esp";
+    d["pass"] = "456456";
     d["role"] = "admin";
     String j;
     serializeJson(d, j);
     prefs.putString("u0", j);
     prefs.putInt("cnt", 1);
   }
+  else if (count == 1)
+  {
+    String existing = prefs.getString("u0", "");
+    if (!existing.isEmpty())
+    {
+      DynamicJsonDocument d(1024);
+      if (!deserializeJson(d, existing))
+      {
+        String role = d["role"].as<String>();
+        role.toLowerCase();
+        if (d["id"].as<String>() == "mrinal" && d["pass"].as<String>() == "1234" && role == "admin")
+        {
+          d["id"] = "esp";
+          d["pass"] = "456456";
+          d["role"] = "admin";
+          String migrated;
+          serializeJson(d, migrated);
+          prefs.putString("u0", migrated);
+        }
+      }
+    }
+  }
   prefs.end();
+}
+
+String normalizeUserRole(String role)
+{
+  role.trim();
+  role.toLowerCase();
+  if (role == "admin")
+    return "admin";
+  return "user";
 }
 
 bool verifyAdmin(const String &u, const String &p)
@@ -332,7 +364,7 @@ bool verifyAdmin(const String &u, const String &p)
       continue;
     DynamicJsonDocument d(1024);
     deserializeJson(d, js);
-    if (d["id"].as<String>() == u && d["pass"].as<String>() == p && d["role"].as<String>() == "admin")
+    if (d["id"].as<String>() == u && d["pass"].as<String>() == p && normalizeUserRole(d["role"].as<String>()) == "admin")
     {
       prefs.end();
       return true;
@@ -372,7 +404,7 @@ bool verifyLogin(const String &u, const String &p, String &role)
     deserializeJson(d, js);
     if (d["id"].as<String>() == u && d["pass"].as<String>() == p)
     {
-      role = d["role"].as<String>();
+      role = normalizeUserRole(d["role"].as<String>());
       prefs.end();
       return true;
     }
@@ -392,7 +424,7 @@ bool hasAdmin()
       continue;
     DynamicJsonDocument d(1024);
     deserializeJson(d, js);
-    if (d["role"].as<String>() == "admin")
+    if (normalizeUserRole(d["role"].as<String>()) == "admin")
     {
       prefs.end();
       return true;
@@ -413,7 +445,7 @@ int countAdmins()
       continue;
     DynamicJsonDocument d(1024);
     deserializeJson(d, js);
-    if (d["role"].as<String>() == "admin")
+    if (normalizeUserRole(d["role"].as<String>()) == "admin")
       a++;
   }
   prefs.end();
@@ -1904,7 +1936,7 @@ void setupWebServer()
         deserializeJson(ud, js);
         JsonObject o = a.createNestedObject();
         o["id"] = ud["id"];
-        o["role"] = ud["role"];
+        o["role"] = normalizeUserRole(ud["role"].as<String>());
       }
       prefs.end();
       String r;
@@ -1926,9 +1958,10 @@ void setupWebServer()
         return;
       }
       DynamicJsonDocument nd(512);
+      String role = normalizeUserRole(req->getParam("role", true)->value());
       nd["id"] = req->getParam("id", true)->value();
       nd["pass"] = req->getParam("pass", true)->value();
-      nd["role"] = req->getParam("role", true)->value();
+      nd["role"] = role;
       String nj;
       serializeJson(nd, nj);
       prefs.begin("users", false);
@@ -1964,7 +1997,7 @@ void setupWebServer()
         deserializeJson(d, js);
         if (d["id"].as<String>() == uid) {
           targetIdx = i;
-          targetIsAdmin = (d["role"].as<String>() == "admin");
+          targetIsAdmin = (normalizeUserRole(d["role"].as<String>()) == "admin");
           break;
         }
       }

@@ -2686,7 +2686,7 @@
               <tbody>
                 <tr>
                   <td>1</td>
-                  <td>mrinal</td>
+                  <td>esp</td>
                   <td><span class="user-badge badge-admin">Admin</span></td>
                 </tr>
               </tbody>
@@ -2729,8 +2729,8 @@
           >
             <div class="setting-label">Role</div>
             <select class="cfg-input" id="newUserRole" style="max-width: 100%">
-              <option>User</option>
-              <option>Admin</option>
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
             </select>
           </div>
           <div style="margin-top: 16px; text-align: right">
@@ -2752,7 +2752,7 @@
           </div>
           <div class="action-row">
             <div>
-              <span class="action-label">mrinal</span>
+              <span class="action-label">esp</span>
               <span class="user-badge badge-admin" style="margin-left: 8px"
                 >Admin</span
               >
@@ -2760,7 +2760,7 @@
             <button
               class="cfg-btn cfg-btn-danger"
               style="padding: 6px 14px; font-size: 0.78rem"
-              onclick="confirmUserAction('remove', 'mrinal')"
+              onclick="confirmUserAction('remove', 'esp')"
             >
               Remove
             </button>
@@ -5438,7 +5438,11 @@
           var newUserId = document.getElementById("newUserId").value.trim();
           var newUserPassword =
             document.getElementById("newUserPassword").value;
-          var newUserRole = document.getElementById("newUserRole").value;
+          var newUserRole = (
+            document.getElementById("newUserRole").value || "user"
+          )
+            .trim()
+            .toLowerCase();
           if (!newUserId || !newUserPassword) {
             alert("Please fill in all fields");
             return;
@@ -6485,6 +6489,7 @@
             if (tbody) {
               tbody.innerHTML = "";
               users.forEach(function (u, i) {
+                var role = String(u.role || "user").toLowerCase();
                 var tr = document.createElement("tr");
                 tr.innerHTML =
                   "<td>" +
@@ -6492,9 +6497,9 @@
                   "</td><td>" +
                   u.id +
                   '</td><td><span class="user-badge badge-' +
-                  u.role +
+                  role +
                   '">' +
-                  (u.role === "admin" ? "Admin" : "User") +
+                  (role === "admin" ? "Admin" : "User") +
                   "</span></td>";
                 tbody.appendChild(tr);
               });
@@ -6508,15 +6513,16 @@
                 r.remove();
               });
               users.forEach(function (u) {
+                var role = String(u.role || "user").toLowerCase();
                 var row = document.createElement("div");
                 row.className = "action-row";
                 row.innerHTML =
                   '<div><span class="action-label">' +
                   u.id +
                   '</span><span class="user-badge badge-' +
-                  u.role +
+                  role +
                   '" style="margin-left:8px">' +
-                  (u.role === "admin" ? "Admin" : "User") +
+                  (role === "admin" ? "Admin" : "User") +
                   "</span></div>" +
                   '<button class="cfg-btn cfg-btn-danger" style="padding:6px 14px;font-size:0.78rem" onclick="confirmUserAction(\'remove\',\'' +
                   u.id +
