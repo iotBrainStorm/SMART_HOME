@@ -2798,6 +2798,129 @@
         </div>
 
         <!-- ═══════════ ADMINISTRATOR ═══════════ -->
+        <!-- Device Name -->
+        <div class="panel" id="panel-admin-device-name">
+          <div class="panel-title">Device Name</div>
+          <div class="info-box">
+            It is recommended to set your device name human understandable as
+            short as possible (like: bedroomGndFlr, bathroomTopFlr etc.).
+            Modification of device name can be done by admin verification and
+            saved into ESP memory.
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Default Device Name (MAC)</div>
+              <div class="setting-sub" id="defaultDeviceName">Loading...</div>
+            </div>
+          </div>
+          <div
+            class="setting-row"
+            style="flex-direction: column; align-items: flex-start; gap: 10px"
+          >
+            <div class="setting-label">Device Name</div>
+            <input
+              class="cfg-input"
+              type="text"
+              id="adminDeviceName"
+              placeholder="Enter device name"
+              maxlength="32"
+              style="max-width: 100%"
+            />
+            <div class="setting-sub">Max length: 32 characters</div>
+          </div>
+          <div style="margin-top: 16px; text-align: right">
+            <button
+              class="cfg-btn cfg-btn-primary"
+              onclick="saveDeviceNameSettings()"
+            >
+              Save Device Name
+            </button>
+          </div>
+        </div>
+
+        <!-- Schedule Priority -->
+        <div class="panel" id="panel-admin-schedule-priority">
+          <div class="panel-title">Schedule Priority</div>
+          <div class="info-box">
+            Set the automation priority order used when two or more automations
+            conflict on the same GPIO at the same time. Saving requires admin
+            verification and is stored in ESP memory.
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Priority 1 (Highest)</div>
+            </div>
+            <select
+              class="cfg-input"
+              id="priorityRank1"
+              style="max-width: 220px"
+            ></select>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Priority 2</div>
+            </div>
+            <select
+              class="cfg-input"
+              id="priorityRank2"
+              style="max-width: 220px"
+            ></select>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Priority 3</div>
+            </div>
+            <select
+              class="cfg-input"
+              id="priorityRank3"
+              style="max-width: 220px"
+            ></select>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Priority 4</div>
+            </div>
+            <select
+              class="cfg-input"
+              id="priorityRank4"
+              style="max-width: 220px"
+            ></select>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Priority 5</div>
+            </div>
+            <select
+              class="cfg-input"
+              id="priorityRank5"
+              style="max-width: 220px"
+            ></select>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Priority 6 (Lowest)</div>
+            </div>
+            <select
+              class="cfg-input"
+              id="priorityRank6"
+              style="max-width: 220px"
+            ></select>
+          </div>
+          <div
+            class="setting-sub"
+            id="priorityValidation"
+            style="margin-top: 10px"
+          ></div>
+          <div style="margin-top: 16px; text-align: right">
+            <button
+              class="cfg-btn cfg-btn-primary"
+              onclick="saveSchedulePrioritySettings()"
+            >
+              Save Priority Order
+            </button>
+          </div>
+        </div>
+
         <!-- Reset Storage -->
         <div class="panel" id="panel-admin-storage">
           <div class="panel-title">Reset Storage</div>
@@ -3546,6 +3669,11 @@
           { label: "Edit Admin", panel: "panel-usr-edit-admin" },
         ],
         admin: [
+          { label: "Device Name", panel: "panel-admin-device-name" },
+          {
+            label: "Schedule Priority",
+            panel: "panel-admin-schedule-priority",
+          },
           { label: "Time Setup", panel: "panel-admin-time" },
           { label: "Location Setup", panel: "panel-admin-location" },
           { label: "Restart", panel: "panel-admin-restart" },
@@ -5657,6 +5785,219 @@
         );
       }
 
+      var DEFAULT_AUTOMATION_PRIORITY_ORDER = [
+        "timer",
+        "schedule",
+        "future",
+        "temperature",
+        "humidity",
+        "sun",
+      ];
+
+      var AUTOMATION_PRIORITY_OPTIONS = [
+        { key: "timer", label: "Timer" },
+        { key: "schedule", label: "Schedule" },
+        { key: "future", label: "Future Schedule" },
+        { key: "temperature", label: "Temperature" },
+        { key: "humidity", label: "Humidity" },
+        { key: "sun", label: "Sunrise & Sunset" },
+      ];
+
+      function getPrioritySelectElements() {
+        return [
+          document.getElementById("priorityRank1"),
+          document.getElementById("priorityRank2"),
+          document.getElementById("priorityRank3"),
+          document.getElementById("priorityRank4"),
+          document.getElementById("priorityRank5"),
+          document.getElementById("priorityRank6"),
+        ];
+      }
+
+      function ensurePrioritySelectOptions() {
+        var selects = getPrioritySelectElements();
+        selects.forEach(function (select) {
+          if (!select || select.options.length > 0) return;
+          AUTOMATION_PRIORITY_OPTIONS.forEach(function (option) {
+            var el = document.createElement("option");
+            el.value = option.key;
+            el.textContent = option.label;
+            select.appendChild(el);
+          });
+        });
+      }
+
+      function setPriorityValidationMessage(message, isError) {
+        var el = document.getElementById("priorityValidation");
+        if (!el) return;
+        el.textContent = message || "";
+        el.style.color = isError ? "#f87171" : "#86efac";
+      }
+
+      function setPriorityOrderInUi(order) {
+        ensurePrioritySelectOptions();
+        var safeOrder = Array.isArray(order) ? order.slice(0) : [];
+        if (safeOrder.length !== 6) {
+          safeOrder = DEFAULT_AUTOMATION_PRIORITY_ORDER.slice(0);
+        }
+
+        var selects = getPrioritySelectElements();
+        selects.forEach(function (select, i) {
+          if (!select) return;
+          var value = safeOrder[i] || DEFAULT_AUTOMATION_PRIORITY_ORDER[i];
+          select.value = value;
+        });
+      }
+
+      function getPriorityOrderFromUi() {
+        var selects = getPrioritySelectElements();
+        var order = [];
+        var seen = {};
+
+        for (var i = 0; i < selects.length; i++) {
+          var select = selects[i];
+          if (!select) {
+            setPriorityValidationMessage(
+              "Priority controls are not ready yet.",
+              true,
+            );
+            return null;
+          }
+          var value = String(select.value || "")
+            .trim()
+            .toLowerCase();
+          if (!value) {
+            setPriorityValidationMessage(
+              "All six priorities must be selected.",
+              true,
+            );
+            return null;
+          }
+          if (seen[value]) {
+            setPriorityValidationMessage(
+              "Each automation type can be used only once in the priority order.",
+              true,
+            );
+            return null;
+          }
+          seen[value] = true;
+          order.push(value);
+        }
+
+        return order;
+      }
+
+      function loadDeviceNameSettings() {
+        apiGet("/api/admin/device-name")
+          .then(function (d) {
+            var defaultEl = document.getElementById("defaultDeviceName");
+            if (defaultEl) {
+              defaultEl.textContent = d.defaultName || "Unavailable";
+            }
+            var input = document.getElementById("adminDeviceName");
+            if (input) {
+              input.value = d.name || d.defaultName || "";
+            }
+          })
+          .catch(function () {});
+      }
+
+      function saveDeviceNameSettings() {
+        var input = document.getElementById("adminDeviceName");
+        var newName = input ? input.value.trim() : "";
+        if (!newName) {
+          alert("Please enter device name");
+          return;
+        }
+        if (newName.length > 32) {
+          alert("Device name must be 32 characters or less");
+          return;
+        }
+
+        showPasswordModal(
+          "Enter admin credentials to save device name",
+          function (data, adminUser, adminPass) {
+            apiPost(
+              "/api/admin/device-name",
+              appendAdminCredentials(
+                "name=" + encodeURIComponent(newName),
+                adminUser,
+                adminPass,
+              ),
+            )
+              .then(function (d) {
+                if (d.ok) {
+                  if (input) input.value = d.name || newName;
+                  alert("Device name saved successfully!");
+                  loadDeviceNameSettings();
+                } else {
+                  alert(d.error || "Failed to save device name");
+                }
+              })
+              .catch(function () {
+                alert("Connection error");
+              });
+          },
+        );
+      }
+
+      function loadSchedulePrioritySettings() {
+        ensurePrioritySelectOptions();
+        setPriorityOrderInUi(DEFAULT_AUTOMATION_PRIORITY_ORDER);
+        setPriorityValidationMessage("", false);
+
+        apiGet("/api/admin/schedule-priority")
+          .then(function (d) {
+            var order =
+              d && Array.isArray(d.order)
+                ? d.order.map(function (x) {
+                    return String(x || "")
+                      .trim()
+                      .toLowerCase();
+                  })
+                : DEFAULT_AUTOMATION_PRIORITY_ORDER;
+            setPriorityOrderInUi(order);
+          })
+          .catch(function () {});
+      }
+
+      function saveSchedulePrioritySettings() {
+        var order = getPriorityOrderFromUi();
+        if (!order) {
+          return;
+        }
+
+        showPasswordModal(
+          "Enter admin credentials to save schedule priority order",
+          function (data, adminUser, adminPass) {
+            apiPost(
+              "/api/admin/schedule-priority",
+              appendAdminCredentials(
+                "data=" + encodeURIComponent(JSON.stringify(order)),
+                adminUser,
+                adminPass,
+              ),
+            )
+              .then(function (d) {
+                if (d.ok) {
+                  setPriorityValidationMessage(
+                    "Priority order saved successfully!",
+                    false,
+                  );
+                } else {
+                  setPriorityValidationMessage(
+                    d.error || "Failed to save priority order",
+                    true,
+                  );
+                }
+              })
+              .catch(function () {
+                setPriorityValidationMessage("Connection error", true);
+              });
+          },
+        );
+      }
+
       /* ══════════════════════════════════════════════════════════════
          ADMINISTRATOR ACTIONS
       ══════════════════════════════════════════════════════════════ */
@@ -7110,6 +7451,10 @@
             if (d.lat && d.lon) updateLocationDisplay(d.lat, d.lon);
           })
           .catch(function () {});
+
+        /* Load Admin device name + priority settings */
+        loadDeviceNameSettings();
+        loadSchedulePrioritySettings();
 
         /* Fetch device time from ESP32 */
         fetchDeviceTime();

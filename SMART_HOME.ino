@@ -29,6 +29,17 @@
 #define BOOT_BUTTON 0
 
 #define NUM_SWITCHES 4
+#define AUTOMATION_SOURCE_COUNT 6
+
+enum AutomationSourceType : uint8_t
+{
+  AUTOMATION_TIMER = 0,
+  AUTOMATION_SCHEDULE = 1,
+  AUTOMATION_FUTURE_SCHEDULE = 2,
+  AUTOMATION_TEMPERATURE = 3,
+  AUTOMATION_HUMIDITY = 4,
+  AUTOMATION_SUN = 5
+};
 
 const int outPin[NUM_SWITCHES] = {OUTPUT_SWITCH_1, OUTPUT_SWITCH_2, OUTPUT_SWITCH_3, OUTPUT_SWITCH_4};
 const int inPin[NUM_SWITCHES] = {INPUT_SWITCH_1, INPUT_SWITCH_2, INPUT_SWITCH_3, INPUT_SWITCH_4};
@@ -64,6 +75,8 @@ bool fbOn = false;
 String fbUrl, fbToken;
 const char *PRIMARY_ADMIN_ID = "esp";
 const char *PRIMARY_ADMIN_PASS = "456456";
+String configuredPrimaryAdminId = String(PRIMARY_ADMIN_ID);
+String configuredPrimaryAdminPass = String(PRIMARY_ADMIN_PASS);
 const char *DEFAULT_FIREBASE_RULES_JSON = R"RULES({
   "rules": {
     "devices": {
@@ -82,9 +95,26 @@ String ntpSrv = "pool.ntp.org";
 String tzStr = "+05:30";
 long gmtOff = 19800;
 float geoLat = 0.0, geoLon = 0.0;
+String deviceName = "";
 bool timeSynced = false;
 bool ahtOk = false;
 bool locOk = false;
+
+uint8_t automationPriorityOrder[AUTOMATION_SOURCE_COUNT] = {
+    AUTOMATION_TIMER,
+    AUTOMATION_SCHEDULE,
+    AUTOMATION_FUTURE_SCHEDULE,
+    AUTOMATION_TEMPERATURE,
+    AUTOMATION_HUMIDITY,
+    AUTOMATION_SUN};
+
+bool pendingAutomationAction[NUM_SWITCHES] = {false, false, false, false};
+bool pendingAutomationState[NUM_SWITCHES] = {false, false, false, false};
+uint8_t pendingAutomationSource[NUM_SWITCHES] = {
+    AUTOMATION_TIMER,
+    AUTOMATION_TIMER,
+    AUTOMATION_TIMER,
+    AUTOMATION_TIMER};
 
 // Sunrise / Sunset
 int srMin = 0, ssMin = 0, lastCalcDay = -1;
@@ -110,6 +140,14 @@ const uint32_t MIN_FREE_HEAP_FOR_EXTENDED_ROUTES = 38000;
 const int WIFI_CONNECT_MAX_ATTEMPTS = 5;
 const unsigned long WIFI_CONNECT_RETRY_MS = 2000;
 const unsigned long WIFI_PORTAL_RECOVERY_RESTART_MS = 200;
+const unsigned long BOOT_HOLD_RESET_MS = 5000;
+const unsigned long BOOT_HOLD_READY_WINDOW_MS = 15000;
+
+unsigned long bootButtonPressedAt = 0;
+unsigned long bootHoldSatisfiedAt = 0;
+bool bootHoldSatisfied = false;
+
+void setSwitch(int i, bool st);
 
 //  BEEP + LED ON NVS CHANGE
 void notifyStorage()
@@ -185,6 +223,10 @@ bool hasValidStaticConfig(IPAddress &ip, IPAddress &gateway, IPAddress &subnet, 
 void applyStationIpConfig()
 {
   WiFi.mode(WIFI_STA);
+  if (!deviceName.isEmpty())
+  {
+    WiFi.setHostname(deviceName.c_str());
+  }
 
   if (dhcpOn)
   {
@@ -284,6 +326,162 @@ bool runWifiConfigPortal(bool notifyChange = false, bool restartOnSuccess = true
   return false;
 }
 
+String getDefaultDeviceName()
+{
+  uint64_t chipId = ESP.getEfuseMac();
+  char buf[13];
+  snprintf(buf, sizeof(buf), "%02X%02X%02X%02X%02X%02X",
+           (uint8_t)(chipId >> 40),
+           (uint8_t)(chipId >> 32),
+           (uint8_t)(chipId >> 24),
+           (uint8_t)(chipId >> 16),
+           (uint8_t)(chipId >> 8),
+           (uint8_t)(chipId));
+  return String(buf);
+}
+
+void setDefaultAutomationPriorityOrder()
+{
+  automationPriorityOrder[0] = AUTOMATION_TIMER;
+  automationPriorityOrder[1] = AUTOMATION_SCHEDULE;
+  automationPriorityOrder[2] = AUTOMATION_FUTURE_SCHEDULE;
+  automationPriorityOrder[3] = AUTOMATION_TEMPERATURE;
+  automationPriorityOrder[4] = AUTOMATION_HUMIDITY;
+  automationPriorityOrder[5] = AUTOMATION_SUN;
+}
+
+bool validateAutomationPriorityOrder(const uint8_t *order)
+{
+  bool seen[AUTOMATION_SOURCE_COUNT] = {false, false, false, false, false, false};
+  for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++)
+  {
+    uint8_t src = order[i];
+    if (src >= AUTOMATION_SOURCE_COUNT || seen[src])
+      return false;
+    seen[src] = true;
+  }
+  return true;
+}
+
+int getAutomationPriorityRank(uint8_t source)
+{
+  for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++)
+  {
+    if (automationPriorityOrder[i] == source)
+      return i;
+  }
+  return AUTOMATION_SOURCE_COUNT;
+}
+
+const char *automationSourceKey(uint8_t source)
+{
+  switch (source)
+  {
+  case AUTOMATION_TIMER:
+    return "timer";
+  case AUTOMATION_SCHEDULE:
+    return "schedule";
+  case AUTOMATION_FUTURE_SCHEDULE:
+    return "future";
+  case AUTOMATION_TEMPERATURE:
+    return "temperature";
+  case AUTOMATION_HUMIDITY:
+    return "humidity";
+  case AUTOMATION_SUN:
+    return "sun";
+  default:
+    return "timer";
+  }
+}
+
+const char *automationSourceLabel(uint8_t source)
+{
+  switch (source)
+  {
+  case AUTOMATION_TIMER:
+    return "Timer";
+  case AUTOMATION_SCHEDULE:
+    return "Schedule";
+  case AUTOMATION_FUTURE_SCHEDULE:
+    return "Future Schedule";
+  case AUTOMATION_TEMPERATURE:
+    return "Temperature";
+  case AUTOMATION_HUMIDITY:
+    return "Humidity";
+  case AUTOMATION_SUN:
+    return "Sunrise & Sunset";
+  default:
+    return "Timer";
+  }
+}
+
+int automationSourceFromKey(String key)
+{
+  key.trim();
+  key.toLowerCase();
+  if (key == "timer")
+    return AUTOMATION_TIMER;
+  if (key == "schedule")
+    return AUTOMATION_SCHEDULE;
+  if (key == "future")
+    return AUTOMATION_FUTURE_SCHEDULE;
+  if (key == "temperature")
+    return AUTOMATION_TEMPERATURE;
+  if (key == "humidity")
+    return AUTOMATION_HUMIDITY;
+  if (key == "sun")
+    return AUTOMATION_SUN;
+  return -1;
+}
+
+void clearPendingAutomationActions()
+{
+  for (int i = 0; i < NUM_SWITCHES; i++)
+  {
+    pendingAutomationAction[i] = false;
+  }
+}
+
+void queueAutomationAction(int sw, bool targetState, uint8_t source)
+{
+  if (sw < 0 || sw >= NUM_SWITCHES)
+    return;
+
+  int newRank = getAutomationPriorityRank(source);
+  if (newRank >= AUTOMATION_SOURCE_COUNT)
+    return;
+
+  if (!pendingAutomationAction[sw])
+  {
+    pendingAutomationAction[sw] = true;
+    pendingAutomationState[sw] = targetState;
+    pendingAutomationSource[sw] = source;
+    return;
+  }
+
+  int currentRank = getAutomationPriorityRank(pendingAutomationSource[sw]);
+  if (newRank <= currentRank)
+  {
+    pendingAutomationState[sw] = targetState;
+    pendingAutomationSource[sw] = source;
+  }
+}
+
+void applyPendingAutomationActions()
+{
+  for (int i = 0; i < NUM_SWITCHES; i++)
+  {
+    if (!pendingAutomationAction[i])
+      continue;
+    setSwitch(i, pendingAutomationState[i]);
+    Serial.printf("[AUTO] SW%d -> %s (source=%s, rank=%d)\n",
+                  i,
+                  pendingAutomationState[i] ? "ON" : "OFF",
+                  automationSourceLabel(pendingAutomationSource[i]),
+                  getAutomationPriorityRank(pendingAutomationSource[i]) + 1);
+  }
+}
+
 void loadFbSettings()
 {
   prefs.begin("fb", true);
@@ -295,12 +493,85 @@ void loadFbSettings()
 
 void loadAdminSettings()
 {
+  String storedDeviceName;
+  String storedPrimaryAdminId;
+  String storedPrimaryAdminPass;
+  uint8_t loadedPriority[AUTOMATION_SOURCE_COUNT];
   prefs.begin("admin", true);
   ntpSrv = prefs.getString("ntp", "pool.ntp.org");
   tzStr = prefs.getString("tz", "+05:30");
   geoLat = prefs.getFloat("lat", 0.0);
   geoLon = prefs.getFloat("lon", 0.0);
+  storedDeviceName = prefs.getString("devname", "");
+  storedPrimaryAdminId = prefs.getString("puid", String(PRIMARY_ADMIN_ID));
+  storedPrimaryAdminPass = prefs.getString("ppass", String(PRIMARY_ADMIN_PASS));
+  for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++)
+  {
+    loadedPriority[i] = (uint8_t)prefs.getInt(("pr" + String(i)).c_str(), i);
+  }
   prefs.end();
+
+  storedDeviceName.trim();
+  if (storedDeviceName.isEmpty())
+  {
+    deviceName = getDefaultDeviceName();
+  }
+  else
+  {
+    deviceName = storedDeviceName;
+  }
+
+  storedPrimaryAdminId = normalizeUserId(storedPrimaryAdminId);
+  storedPrimaryAdminPass = normalizeUserPass(storedPrimaryAdminPass);
+  bool missingPrimaryAdminProfile = false;
+  if (storedPrimaryAdminId.isEmpty())
+  {
+    storedPrimaryAdminId = normalizeUserId(String(PRIMARY_ADMIN_ID));
+    missingPrimaryAdminProfile = true;
+  }
+  if (storedPrimaryAdminPass.isEmpty())
+  {
+    storedPrimaryAdminPass = normalizeUserPass(String(PRIMARY_ADMIN_PASS));
+    missingPrimaryAdminProfile = true;
+  }
+  configuredPrimaryAdminId = storedPrimaryAdminId;
+  configuredPrimaryAdminPass = storedPrimaryAdminPass;
+
+  bool orderValid = validateAutomationPriorityOrder(loadedPriority);
+  if (orderValid)
+  {
+    for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++)
+    {
+      automationPriorityOrder[i] = loadedPriority[i];
+    }
+  }
+  else
+  {
+    setDefaultAutomationPriorityOrder();
+  }
+
+  if (storedDeviceName.isEmpty() || !orderValid || missingPrimaryAdminProfile)
+  {
+    prefs.begin("admin", false);
+    if (storedDeviceName.isEmpty())
+    {
+      prefs.putString("devname", deviceName);
+    }
+    if (!orderValid)
+    {
+      for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++)
+      {
+        prefs.putInt(("pr" + String(i)).c_str(), automationPriorityOrder[i]);
+      }
+    }
+    if (missingPrimaryAdminProfile)
+    {
+      prefs.putString("puid", configuredPrimaryAdminId);
+      prefs.putString("ppass", configuredPrimaryAdminPass);
+    }
+    prefs.end();
+  }
+
   locOk = (geoLat != 0.0 || geoLon != 0.0);
   parseTZ();
 }
@@ -327,6 +598,161 @@ String normalizeUserPass(String pass)
   return pass;
 }
 
+void persistConfiguredPrimaryAdmin(const String &adminId, const String &adminPass)
+{
+  String normalizedId = normalizeUserId(adminId);
+  String normalizedPass = normalizeUserPass(adminPass);
+
+  if (normalizedId.isEmpty())
+    normalizedId = normalizeUserId(String(PRIMARY_ADMIN_ID));
+  if (normalizedPass.isEmpty())
+    normalizedPass = normalizeUserPass(String(PRIMARY_ADMIN_PASS));
+
+  configuredPrimaryAdminId = normalizedId;
+  configuredPrimaryAdminPass = normalizedPass;
+
+  prefs.begin("admin", false);
+  prefs.putString("puid", configuredPrimaryAdminId);
+  prefs.putString("ppass", configuredPrimaryAdminPass);
+  prefs.end();
+}
+
+void replaceUsersWithSingleAdmin(const String &adminId, const String &adminPass)
+{
+  String targetAdminId = normalizeUserId(adminId);
+  String targetAdminPass = normalizeUserPass(adminPass);
+
+  prefs.begin("users", false);
+  int count = prefs.getInt("cnt", 0);
+
+  int preferredIndex = -1;
+  int firstAdminIndex = -1;
+  for (int i = 0; i < count; i++)
+  {
+    String js = prefs.getString(("u" + String(i)).c_str(), "");
+    if (js.isEmpty())
+      continue;
+
+    DynamicJsonDocument d(1024);
+    if (deserializeJson(d, js))
+      continue;
+
+    String id = normalizeUserId(d["id"].as<String>());
+    String role = normalizeUserRole(d["role"].as<String>());
+
+    if (preferredIndex < 0 && id == targetAdminId)
+      preferredIndex = i;
+    if (firstAdminIndex < 0 && role == "admin")
+      firstAdminIndex = i;
+  }
+
+  int targetAdminIndex = preferredIndex >= 0 ? preferredIndex : firstAdminIndex;
+  if (targetAdminIndex < 0)
+  {
+    DynamicJsonDocument d(1024);
+    d["id"] = targetAdminId;
+    d["pass"] = targetAdminPass;
+    d["role"] = "admin";
+    String serialized;
+    serializeJson(d, serialized);
+    prefs.putString(("u" + String(count)).c_str(), serialized);
+    prefs.putInt("cnt", count + 1);
+    prefs.end();
+    return;
+  }
+
+  for (int i = 0; i < count; i++)
+  {
+    String js = prefs.getString(("u" + String(i)).c_str(), "");
+    if (js.isEmpty())
+      continue;
+
+    DynamicJsonDocument d(1024);
+    if (deserializeJson(d, js))
+      continue;
+
+    bool changed = false;
+    String role = normalizeUserRole(d["role"].as<String>());
+
+    if (i == targetAdminIndex)
+    {
+      d["id"] = targetAdminId;
+      d["pass"] = targetAdminPass;
+      d["role"] = "admin";
+      changed = true;
+    }
+    else if (role == "admin")
+    {
+      d["role"] = "user";
+      changed = true;
+    }
+
+    if (changed)
+    {
+      String updated;
+      serializeJson(d, updated);
+      prefs.putString(("u" + String(i)).c_str(), updated);
+    }
+  }
+
+  prefs.end();
+}
+
+void resetAdminToFactoryDefault()
+{
+  persistConfiguredPrimaryAdmin(String(PRIMARY_ADMIN_ID), String(PRIMARY_ADMIN_PASS));
+  replaceUsersWithSingleAdmin(configuredPrimaryAdminId, configuredPrimaryAdminPass);
+  notifyStorage();
+}
+
+void updateBootButtonHoldState()
+{
+  unsigned long now = millis();
+
+  if (digitalRead(BOOT_BUTTON) == LOW)
+  {
+    if (bootButtonPressedAt == 0)
+    {
+      bootButtonPressedAt = now;
+    }
+
+    if (!bootHoldSatisfied && (now - bootButtonPressedAt >= BOOT_HOLD_RESET_MS))
+    {
+      bootHoldSatisfied = true;
+      bootHoldSatisfiedAt = now;
+      Serial.println("[BOOT] Hold detected for admin reset");
+    }
+
+    return;
+  }
+
+  bootButtonPressedAt = 0;
+  if (bootHoldSatisfied && (now - bootHoldSatisfiedAt > BOOT_HOLD_READY_WINDOW_MS))
+  {
+    bootHoldSatisfied = false;
+    bootHoldSatisfiedAt = 0;
+  }
+}
+
+bool consumeBootButtonHoldForReset()
+{
+  unsigned long now = millis();
+  if (!bootHoldSatisfied)
+    return false;
+
+  if (now - bootHoldSatisfiedAt > BOOT_HOLD_READY_WINDOW_MS)
+  {
+    bootHoldSatisfied = false;
+    bootHoldSatisfiedAt = 0;
+    return false;
+  }
+
+  bootHoldSatisfied = false;
+  bootHoldSatisfiedAt = 0;
+  bootButtonPressedAt = now;
+  return true;
+}
+
 //  USER MANAGEMENT HELPERS
 void initDefaultUser()
 {
@@ -335,8 +761,8 @@ void initDefaultUser()
   if (count <= 0)
   {
     DynamicJsonDocument d(1024);
-    d["id"] = PRIMARY_ADMIN_ID;
-    d["pass"] = PRIMARY_ADMIN_PASS;
+    d["id"] = configuredPrimaryAdminId;
+    d["pass"] = configuredPrimaryAdminPass;
     d["role"] = "admin";
     String j;
     serializeJson(d, j);
@@ -367,7 +793,7 @@ void initDefaultUser()
     if (role == "admin")
       totalAdminCount++;
 
-    if (id == normalizeUserId(PRIMARY_ADMIN_ID))
+    if (id == normalizeUserId(configuredPrimaryAdminId))
     {
       if (espIndex < 0)
         espIndex = i;
@@ -386,8 +812,8 @@ void initDefaultUser()
   if (!hasEspAdmin)
   {
     DynamicJsonDocument d(1024);
-    d["id"] = PRIMARY_ADMIN_ID;
-    d["pass"] = PRIMARY_ADMIN_PASS;
+    d["id"] = configuredPrimaryAdminId;
+    d["pass"] = configuredPrimaryAdminPass;
     d["role"] = "admin";
     String migrated;
     serializeJson(d, migrated);
@@ -674,7 +1100,7 @@ void checkTimers()
   {
     if (swTimers[i].active && now >= swTimers[i].endMs)
     {
-      setSwitch(i, swTimers[i].targetState);
+      queueAutomationAction(i, swTimers[i].targetState, AUTOMATION_TIMER);
       swTimers[i].active = false;
       Serial.printf("[TIMER] SW%d -> %s\n", i, swTimers[i].targetState ? "ON" : "OFF");
     }
@@ -963,14 +1389,14 @@ void checkSchedules()
       int fromMin = parseClockMinutes(fromT);
       if (fromMin >= 0 && curMin == fromMin)
       {
-        setSwitch(sw, action == "on");
+        queueAutomationAction(sw, action == "on", AUTOMATION_SCHEDULE);
       }
 
       String toT = getRecurringEndTime(o);
       int toMin = parseClockMinutes(toT);
       if (toMin >= 0 && curMin == toMin)
       {
-        setSwitch(sw, action != "on");
+        queueAutomationAction(sw, action != "on", AUTOMATION_SCHEDULE);
       }
     }
 
@@ -1008,7 +1434,7 @@ void checkSchedules()
 
       if (fromMin >= 0 && curMin == fromMin)
       {
-        setSwitch(sw, action == "on");
+        queueAutomationAction(sw, action == "on", AUTOMATION_FUTURE_SCHEDULE);
         if (toMin < 0)
         {
           removeEntry = true;
@@ -1017,7 +1443,7 @@ void checkSchedules()
 
       if (toMin >= 0 && curMin == toMin)
       {
-        setSwitch(sw, action != "on");
+        queueAutomationAction(sw, action != "on", AUTOMATION_FUTURE_SCHEDULE);
         removeEntry = true;
       }
 
@@ -1073,7 +1499,7 @@ void checkSensors()
         else if (c == "between")
           act = cTemp >= d["min"].as<float>() && cTemp <= d["max"].as<float>();
         if (act)
-          setSwitch(sw, d["action"].as<String>() == "on");
+          queueAutomationAction(sw, d["action"].as<String>() == "on", AUTOMATION_TEMPERATURE);
       }
     }
     // Humidity
@@ -1093,7 +1519,7 @@ void checkSensors()
         else if (c == "between")
           act = cHum >= d["min"].as<float>() && cHum <= d["max"].as<float>();
         if (act)
-          setSwitch(sw, d["action"].as<String>() == "on");
+          queueAutomationAction(sw, d["action"].as<String>() == "on", AUTOMATION_HUMIDITY);
       }
     }
     // Sunrise/Sunset
@@ -1122,7 +1548,7 @@ void checkSensors()
           else if (c == "between_sunrise_sunset")
             act = now >= srMin + off && now <= ssMin + off;
           if (act)
-            setSwitch(sw, d["action"].as<String>() == "on");
+            queueAutomationAction(sw, d["action"].as<String>() == "on", AUTOMATION_SUN);
         }
       }
     }
@@ -1334,6 +1760,26 @@ void setupWebServer()
   // ──── LOGIN ────
   server.on("/api/login", HTTP_POST, [](AsyncWebServerRequest *req)
             {
+    bool resetAdminRequested = false;
+    if (req->hasParam("resetAdmin", true)) {
+      String resetValue = req->getParam("resetAdmin", true)->value();
+      resetValue.trim();
+      resetValue.toLowerCase();
+      resetAdminRequested = (resetValue == "1" || resetValue == "true" || resetValue == "yes" || resetValue == "on");
+    }
+
+    if (resetAdminRequested) {
+      if (consumeBootButtonHoldForReset()) {
+        Serial.println("[AUTH] Admin reset requested: BOOT hold verified");
+        resetAdminToFactoryDefault();
+        req->send(200, "application/json", "{\"ok\":true,\"resetAdmin\":true,\"msg\":\"Admin reset to default (esp / 456456). Sign in now.\"}");
+      } else {
+        Serial.println("[AUTH] Admin reset requested: BOOT hold not detected yet");
+        req->send(400, "application/json", "{\"ok\":false,\"resetAdmin\":true,\"error\":\"Hold BOOT button for 5 seconds first, then press SIGN IN to reset admin.\"}");
+      }
+      return;
+    }
+
     if (!req->hasParam("user", true) || !req->hasParam("pass", true)) {
       req->send(400, "application/json", "{\"error\":\"Missing credentials\"}");
       return;
@@ -2310,10 +2756,118 @@ void setupWebServer()
       }
 
       prefs.end();
+      persistConfiguredPrimaryAdmin(newAdminId, newAdminPass);
       notifyStorage();
       req->send(200, "application/json", "{\"ok\":true}"); });
 
     // ──── ADMINISTRATOR ────
+    server.on("/api/admin/device-name", HTTP_GET, [](AsyncWebServerRequest *req)
+              {
+      DynamicJsonDocument d(512);
+      d["name"] = deviceName;
+      d["defaultName"] = getDefaultDeviceName();
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r); });
+
+    server.on("/api/admin/device-name", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("name", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing device name\"}");
+        return;
+      }
+      if (!requireAdminVerification(req)) {
+        return;
+      }
+
+      String newName = req->getParam("name", true)->value();
+      newName.trim();
+      if (newName.isEmpty()) {
+        req->send(400, "application/json", "{\"error\":\"Device name is required\"}");
+        return;
+      }
+      if (newName.length() > 32) {
+        req->send(400, "application/json", "{\"error\":\"Device name must be 32 characters or less\"}");
+        return;
+      }
+
+      deviceName = newName;
+      prefs.begin("admin", false);
+      prefs.putString("devname", deviceName);
+      prefs.end();
+
+      WiFi.setHostname(deviceName.c_str());
+      notifyStorage();
+
+      DynamicJsonDocument d(512);
+      d["ok"] = true;
+      d["name"] = deviceName;
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r); });
+
+    server.on("/api/admin/schedule-priority", HTTP_GET, [](AsyncWebServerRequest *req)
+              {
+      DynamicJsonDocument d(1024);
+      JsonArray arr = d["order"].to<JsonArray>();
+      JsonArray labels = d["labels"].to<JsonArray>();
+      for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++) {
+        uint8_t src = automationPriorityOrder[i];
+        arr.add(automationSourceKey(src));
+        labels.add(automationSourceLabel(src));
+      }
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r); });
+
+    server.on("/api/admin/schedule-priority", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("data", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing data\"}");
+        return;
+      }
+      if (!requireAdminVerification(req)) {
+        return;
+      }
+
+      String raw = req->getParam("data", true)->value();
+      DynamicJsonDocument doc(1024);
+      if (deserializeJson(doc, raw)) {
+        req->send(400, "application/json", "{\"error\":\"Invalid priority data\"}");
+        return;
+      }
+
+      JsonArray arr = doc.as<JsonArray>();
+      if (arr.isNull() || arr.size() != AUTOMATION_SOURCE_COUNT) {
+        req->send(400, "application/json", "{\"error\":\"Priority order must contain all automation types\"}");
+        return;
+      }
+
+      bool seen[AUTOMATION_SOURCE_COUNT] = {false, false, false, false, false, false};
+      uint8_t newOrder[AUTOMATION_SOURCE_COUNT];
+      for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++) {
+        int src = automationSourceFromKey(arr[i].as<String>());
+        if (src < 0 || src >= AUTOMATION_SOURCE_COUNT || seen[src]) {
+          req->send(400, "application/json", "{\"error\":\"Priority order contains invalid or duplicate items\"}");
+          return;
+        }
+        seen[src] = true;
+        newOrder[i] = (uint8_t)src;
+      }
+
+      for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++) {
+        automationPriorityOrder[i] = newOrder[i];
+      }
+
+      prefs.begin("admin", false);
+      for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++) {
+        prefs.putInt(("pr" + String(i)).c_str(), automationPriorityOrder[i]);
+      }
+      prefs.end();
+
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
     server.on("/api/admin/time", HTTP_GET, [](AsyncWebServerRequest *req)
               {
       DynamicJsonDocument d(1024);
@@ -2633,8 +3187,13 @@ void setup()
 //  LOOP
 void loop()
 {
+  updateBootButtonHoldState();
+
   // Physical switch input
   checkPhysicalSwitches();
+
+  // Collect automation actions and resolve conflicts by configured priority.
+  clearPendingAutomationActions();
 
   // Timer execution (volatile)
   checkTimers();
@@ -2654,6 +3213,8 @@ void loop()
     lastSensorCheck = now;
     checkSensors();
   }
+
+  applyPendingAutomationActions();
 
   // WiFi portal request
   if (portalFlag)

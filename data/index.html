@@ -101,18 +101,26 @@
       .remember-field {
         display: flex;
         align-items: center;
-        gap: 8px;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
         margin-bottom: 18px;
       }
 
-      .remember-field input[type="checkbox"] {
+      .remember-option {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .remember-option input[type="checkbox"] {
         width: 16px;
         height: 16px;
         accent-color: #2563eb;
         cursor: pointer;
       }
 
-      .remember-field label {
+      .remember-option label {
         font-size: 0.82rem;
         color: #94a3b8;
         cursor: pointer;
@@ -621,8 +629,14 @@
           />
         </div>
         <div class="remember-field">
-          <input type="checkbox" id="rememberMe" />
-          <label for="rememberMe">Remember me</label>
+          <div class="remember-option">
+            <input type="checkbox" id="rememberMe" />
+            <label for="rememberMe">Remember me</label>
+          </div>
+          <div class="remember-option">
+            <input type="checkbox" id="resetAdmin" />
+            <label for="resetAdmin">Reset admin</label>
+          </div>
         </div>
         <button class="login-btn" id="loginBtn">SIGN IN</button>
         <div class="login-error" id="loginError"></div>
@@ -909,6 +923,8 @@
       var loginUserInput = document.getElementById("loginUser");
       var loginPassInput = document.getElementById("loginPass");
       var rememberMeCheckbox = document.getElementById("rememberMe");
+      var resetAdminCheckbox = document.getElementById("resetAdmin");
+      var RESET_ADMIN_REQUEST_DELAY_MS = 5200;
 
       /* ── Toggle Cards ── */
       var cards = document.querySelectorAll(".card");
@@ -1110,20 +1126,17 @@
         });
 
       /* ── Login via API ── */
-      function doLogin() {
-        var u = loginUserInput.value.trim();
-        var p = loginPassInput.value;
-        if (!u || !p) {
-          loginError.textContent = "Please enter credentials";
-          return;
-        }
-        loginBtn.disabled = true;
-        loginBtn.textContent = "SIGNING IN...";
+      function submitLoginRequest(u, p, resetAdminRequested) {
         fetch("/api/login", {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body:
-            "user=" + encodeURIComponent(u) + "&pass=" + encodeURIComponent(p),
+            "user=" +
+            encodeURIComponent(u) +
+            "&pass=" +
+            encodeURIComponent(p) +
+            "&resetAdmin=" +
+            (resetAdminRequested ? "true" : "false"),
         })
           .then(function (r) {
             return r.json().then(function (d) {
@@ -1133,6 +1146,26 @@
           .then(function (res) {
             loginBtn.disabled = false;
             loginBtn.textContent = "SIGN IN";
+
+            if (res.data && res.data.resetAdmin) {
+              if (res.ok) {
+                loginError.style.color = "#86efac";
+                loginError.textContent =
+                  res.data.msg ||
+                  "Admin reset to default (esp / 456456). Sign in now.";
+                loginUserInput.value = "esp";
+                loginPassInput.value = "456456";
+                if (resetAdminCheckbox) resetAdminCheckbox.checked = false;
+              } else {
+                loginError.style.color = "#f87171";
+                loginError.textContent =
+                  res.data.error ||
+                  "Hold BOOT for 5 seconds first, then press SIGN IN.";
+                loginPassInput.value = "";
+              }
+              return;
+            }
+
             if (res.ok && res.data.ok) {
               setLoggedIn(rememberMeCheckbox.checked, res.data.role, u);
               loginScreen.classList.add("hidden");
@@ -1150,6 +1183,36 @@
             loginBtn.textContent = "SIGN IN";
             loginError.textContent = "Connection failed";
           });
+      }
+
+      function doLogin() {
+        var u = loginUserInput.value.trim();
+        var p = loginPassInput.value;
+        var resetAdminRequested = !!(
+          resetAdminCheckbox && resetAdminCheckbox.checked
+        );
+
+        loginError.style.color = "#f87171";
+
+        if (!resetAdminRequested && (!u || !p)) {
+          loginError.textContent = "Please enter credentials";
+          return;
+        }
+
+        loginBtn.disabled = true;
+
+        if (resetAdminRequested) {
+          loginBtn.textContent = "HOLD BOOT...";
+          loginError.textContent = "Press and hold BOOT now for 5 seconds...";
+          setTimeout(function () {
+            loginBtn.textContent = "SIGNING IN...";
+            submitLoginRequest(u, p, true);
+          }, RESET_ADMIN_REQUEST_DELAY_MS);
+          return;
+        }
+
+        loginBtn.textContent = "SIGNING IN...";
+        submitLoginRequest(u, p, false);
       }
 
       loginBtn.addEventListener("click", doLogin);
