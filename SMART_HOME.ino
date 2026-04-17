@@ -349,6 +349,7 @@ void initDefaultUser()
   bool hasEspAdmin = false;
   int espIndex = -1;
   int legacyDefaultIndex = -1;
+  int totalAdminCount = 0;
   for (int i = 0; i < count; i++)
   {
     String js = prefs.getString(("u" + String(i)).c_str(), "");
@@ -362,6 +363,9 @@ void initDefaultUser()
     String id = normalizeUserId(d["id"].as<String>());
     String pass = normalizeUserPass(d["pass"].as<String>());
     String role = normalizeUserRole(d["role"].as<String>());
+
+    if (role == "admin")
+      totalAdminCount++;
 
     if (id == normalizeUserId(PRIMARY_ADMIN_ID))
     {
@@ -390,17 +394,21 @@ void initDefaultUser()
 
     if (legacyDefaultIndex >= 0)
     {
+      // Migrate legacy mrinal/1234 admin to the default esp admin.
       prefs.putString(("u" + String(legacyDefaultIndex)).c_str(), migrated);
     }
     else if (espIndex >= 0)
     {
+      // esp user exists but without admin role — promote it.
       prefs.putString(("u" + String(espIndex)).c_str(), migrated);
     }
-    else
+    else if (totalAdminCount == 0)
     {
+      // No admin of any kind exists — add esp as the last-resort fallback.
       prefs.putString(("u" + String(count)).c_str(), migrated);
       prefs.putInt("cnt", count + 1);
     }
+    // else: other admins already exist; esp was intentionally removed — do nothing.
   }
 
   prefs.end();
