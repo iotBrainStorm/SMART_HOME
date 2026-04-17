@@ -316,19 +316,6 @@
         opacity: 1;
       }
 
-      .firebase-auth-edit-fields {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        margin-bottom: 18px;
-      }
-
-      .firebase-auth-edit-input {
-        width: 100%;
-        max-width: 100%;
-        display: block;
-      }
-
       .setting-info {
         flex: 1;
         min-width: 0;
@@ -2504,21 +2491,43 @@
           <div class="info-box">
             <strong>Instructions:</strong><br />
             Go to Firebase Console → Realtime Database → Rules tab<br />
-            Default template below allows only authenticated users to read/write
+            Rules are loaded from ESP32 memory and saved locally after admin
+            verification
           </div>
           <div
             class="setting-row"
             style="flex-direction: column; align-items: flex-start; gap: 10px"
           >
-            <div class="setting-label">Database Rules (JSON)</div>
-            <textarea class="cfg-textarea" id="firebaseRules">
-{
-  "rules": {
-    ".read": "auth != null",
-    ".write": "auth != null"
-  }
-}</textarea
+            <div
+              style="
+                width: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+              "
             >
+              <div class="setting-label">Database Rules (JSON)</div>
+              <button
+                type="button"
+                class="copy-icon-btn"
+                onclick="copyFirebaseRulesToClipboard()"
+                aria-label="Copy database rules"
+                title="Copy database rules"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="9" y="9" width="11" height="11" rx="2" />
+                  <path
+                    d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"
+                  />
+                </svg>
+              </button>
+            </div>
+            <textarea
+              class="cfg-textarea"
+              id="firebaseRules"
+              placeholder="Rules are fetched from ESP32 memory"
+            ></textarea>
             <div class="setting-sub">
               Enter your Firebase Realtime Database security rules in JSON
               format
@@ -2575,8 +2584,8 @@
         <div class="panel" id="panel-fb-auth-add">
           <div class="panel-title">Add Firebase User</div>
           <div class="info-box">
-            These credentials are stored locally on the ESP32 for Firebase
-            email/password authentication.
+            Email, password, and UID are stored locally on the ESP32 for
+            Firebase email/password authentication.
           </div>
           <div
             class="setting-row"
@@ -2588,6 +2597,19 @@
               type="email"
               id="firebaseAuthNewEmail"
               placeholder="user@example.com"
+              style="max-width: 100%"
+            />
+          </div>
+          <div
+            class="setting-row"
+            style="flex-direction: column; align-items: flex-start; gap: 10px"
+          >
+            <div class="setting-label">UID</div>
+            <input
+              class="cfg-input"
+              type="text"
+              id="firebaseAuthNewUid"
+              placeholder="Firebase UID"
               style="max-width: 100%"
             />
           </div>
@@ -2632,8 +2654,8 @@
         <div class="panel" id="panel-fb-auth-show">
           <div class="panel-title">Saved Firebase Users</div>
           <div class="info-box">
-            Each saved user can be edited or removed. During edit, leaving the
-            password blank keeps the existing password unchanged.
+            Each saved user can be removed. To change credentials, remove and
+            add the user again with updated values.
           </div>
           <div id="firebaseAuthUsersList"></div>
         </div>
@@ -3167,63 +3189,6 @@
       </div>
     </div>
 
-    <div class="modal-overlay hidden" id="firebaseAuthUserModal">
-      <div class="modal-box">
-        <div
-          class="modal-title"
-          style="
-            font-size: 1rem;
-            font-weight: 600;
-            color: #e2e8f0;
-            margin-bottom: 16px;
-          "
-        >
-          Edit Firebase User
-        </div>
-        <p style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 16px">
-          Update the email address or enter a new password. Leave the password
-          blank to keep the existing value.
-        </p>
-        <div class="firebase-auth-edit-fields">
-          <input
-            type="email"
-            id="firebaseAuthEditEmail"
-            class="cfg-input firebase-auth-edit-input"
-            placeholder="user@example.com"
-          />
-          <div class="input-with-action">
-            <input
-              type="password"
-              id="firebaseAuthEditPassword"
-              class="cfg-input firebase-auth-edit-input"
-              placeholder="Enter new password"
-            />
-            <button
-              type="button"
-              class="password-toggle-btn"
-              id="firebaseAuthEditPasswordToggle"
-              onclick="toggleFirebaseAuthEditPasswordVisibility()"
-              aria-label="Show password"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
-                <circle cx="12" cy="12" r="3" />
-                <path class="eye-slash" d="M4 4l16 16" />
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div class="modal-actions">
-          <button class="modal-cancel" onclick="closeFirebaseAuthUserModal()">
-            Cancel
-          </button>
-          <button class="modal-confirm" onclick="submitFirebaseAuthUserEdit()">
-            Save
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- ── WiFi Scan Info Modal ── -->
     <div class="modal-overlay hidden" id="wifiScanModal">
       <div class="modal-box">
@@ -3497,9 +3462,6 @@
         });
       }
 
-      var DEFAULT_FIREBASE_RULES =
-        '{\n  "rules": {\n    ".read": "auth != null",\n    ".write": "auth != null"\n  }\n}';
-
       /* ── Data: tabs → sidebar items → panel IDs ── */
       var tabConfig = {
         switches: [
@@ -3560,7 +3522,6 @@
       var tabs = document.querySelectorAll(".tab");
       var allPanels = document.querySelectorAll(".panel");
       var currentTab = "switches";
-      var firebaseAuthEditOriginalEmail = "";
 
       /* Build sidebar for a tab */
       function buildSidebar(tabKey) {
@@ -5541,19 +5502,30 @@
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
       }
 
+      function isValidFirebaseAuthUid(uid) {
+        return /^[A-Za-z0-9_-]+$/.test(uid);
+      }
+
       function confirmFirebaseAuthAdd() {
         var email = document
           .getElementById("firebaseAuthNewEmail")
           .value.trim()
           .toLowerCase();
+        var uid = document.getElementById("firebaseAuthNewUid").value.trim();
         var password = document.getElementById("firebaseAuthNewPassword").value;
 
-        if (!email || !password) {
-          alert("Please fill in email and password");
+        if (!email || !uid || !password) {
+          alert("Please fill in email, UID, and password");
           return;
         }
         if (!isValidFirebaseAuthEmail(email)) {
           alert("Enter a valid email address");
+          return;
+        }
+        if (!isValidFirebaseAuthUid(uid)) {
+          alert(
+            "UID can contain only letters, numbers, underscore, and hyphen",
+          );
           return;
         }
 
@@ -5565,6 +5537,8 @@
               appendAdminCredentials(
                 "email=" +
                   encodeURIComponent(email) +
+                  "&uid=" +
+                  encodeURIComponent(uid) +
                   "&password=" +
                   encodeURIComponent(password),
                 adminUser,
@@ -5575,86 +5549,12 @@
                 if (d.ok) {
                   alert("Firebase authentication user added successfully!");
                   document.getElementById("firebaseAuthNewEmail").value = "";
+                  document.getElementById("firebaseAuthNewUid").value = "";
                   document.getElementById("firebaseAuthNewPassword").value = "";
                   loadFirebaseAuthUsers();
                 } else {
                   alert(
                     d.error || "Failed to add Firebase authentication user",
-                  );
-                }
-              })
-              .catch(function () {
-                alert("Connection error");
-              });
-          },
-        );
-      }
-
-      function openFirebaseAuthEditModal(email) {
-        firebaseAuthEditOriginalEmail = email;
-        document.getElementById("firebaseAuthEditEmail").value = email;
-        document.getElementById("firebaseAuthEditPassword").value = "";
-        document
-          .getElementById("firebaseAuthUserModal")
-          .classList.remove("hidden");
-      }
-
-      function closeFirebaseAuthUserModal() {
-        firebaseAuthEditOriginalEmail = "";
-        document.getElementById("firebaseAuthEditEmail").value = "";
-        document.getElementById("firebaseAuthEditPassword").value = "";
-        document
-          .getElementById("firebaseAuthUserModal")
-          .classList.add("hidden");
-      }
-
-      function submitFirebaseAuthUserEdit() {
-        var nextEmail = document
-          .getElementById("firebaseAuthEditEmail")
-          .value.trim()
-          .toLowerCase();
-        var nextPassword = document.getElementById(
-          "firebaseAuthEditPassword",
-        ).value;
-        var currentEmail = firebaseAuthEditOriginalEmail;
-
-        if (!currentEmail) {
-          alert("Select a Firebase authentication user first");
-          return;
-        }
-        if (!nextEmail) {
-          alert("Email address is required");
-          return;
-        }
-        if (!isValidFirebaseAuthEmail(nextEmail)) {
-          alert("Enter a valid email address");
-          return;
-        }
-
-        closeFirebaseAuthUserModal();
-        showPasswordModal(
-          "Enter admin credentials to update Firebase authentication user",
-          function (data, adminUser, adminPass) {
-            var body =
-              "currentEmail=" +
-              encodeURIComponent(currentEmail) +
-              "&email=" +
-              encodeURIComponent(nextEmail);
-            if (nextPassword) {
-              body += "&password=" + encodeURIComponent(nextPassword);
-            }
-
-            apiPost(
-              "/api/fb/auth/users/edit",
-              appendAdminCredentials(body, adminUser, adminPass),
-            )
-              .then(function (d) {
-                if (d.ok) {
-                  alert("Firebase authentication user updated successfully!");
-                  loadFirebaseAuthUsers();
-                } else {
-                  alert(
-                    d.error || "Failed to update Firebase authentication user",
                   );
                 }
               })
@@ -5846,6 +5746,24 @@
           });
       }
 
+      function copyFirebaseRulesToClipboard() {
+        var rulesInput = document.getElementById("firebaseRules");
+        if (!rulesInput) return;
+        var text = rulesInput.value.trim();
+        if (!text) {
+          alert("No rules to copy.");
+          return;
+        }
+
+        copyTextToClipboard(text)
+          .then(function () {
+            alert("Rules copied to clipboard.");
+          })
+          .catch(function () {
+            alert("Unable to copy rules.");
+          });
+      }
+
       function appendAdminCredentials(body, adminUser, adminPass) {
         return (
           body +
@@ -5893,15 +5811,6 @@
         toggleProtectedFieldVisibility(
           "firebaseAuthNewPassword",
           "firebaseAuthNewPasswordToggle",
-          "Show password",
-          "Hide password",
-        );
-      }
-
-      function toggleFirebaseAuthEditPasswordVisibility() {
-        toggleProtectedFieldVisibility(
-          "firebaseAuthEditPassword",
-          "firebaseAuthEditPasswordToggle",
           "Show password",
           "Hide password",
         );
@@ -6459,6 +6368,10 @@
           label.className = "action-label";
           label.textContent = user.email;
 
+          var uidLine = document.createElement("div");
+          uidLine.className = "setting-sub";
+          uidLine.textContent = "UID: " + (user.uid || "(not set)");
+
           var sub = document.createElement("div");
           sub.className = "setting-sub with-action";
 
@@ -6486,21 +6399,13 @@
           sub.appendChild(revealBtn);
 
           info.appendChild(label);
+          info.appendChild(uidLine);
           info.appendChild(sub);
 
           var actions = document.createElement("div");
           actions.style.display = "flex";
           actions.style.gap = "8px";
           actions.style.flexShrink = "0";
-
-          var editBtn = document.createElement("button");
-          editBtn.className = "cfg-btn cfg-btn-secondary";
-          editBtn.style.padding = "6px 14px";
-          editBtn.style.fontSize = "0.78rem";
-          editBtn.textContent = "Edit";
-          editBtn.addEventListener("click", function () {
-            openFirebaseAuthEditModal(user.email);
-          });
 
           var removeBtn = document.createElement("button");
           removeBtn.className = "cfg-btn cfg-btn-danger";
@@ -6511,7 +6416,6 @@
             confirmFirebaseAuthRemove(user.email);
           });
 
-          actions.appendChild(editBtn);
           actions.appendChild(removeBtn);
           row.appendChild(info);
           row.appendChild(actions);
@@ -7005,11 +6909,6 @@
         }
 
         /* — Firebase Rules Save — */
-        var firebaseRulesInput = document.getElementById("firebaseRules");
-        if (firebaseRulesInput && !firebaseRulesInput.value.trim()) {
-          firebaseRulesInput.value = DEFAULT_FIREBASE_RULES;
-        }
-
         var fbRulesPanel = document.getElementById("panel-fb-rules");
         if (fbRulesPanel) {
           var rulesBtn = fbRulesPanel.querySelector(".cfg-btn-primary");
@@ -7095,7 +6994,7 @@
             if (rulesInput) {
               var incomingRules =
                 d && typeof d.rules === "string" ? d.rules.trim() : "";
-              rulesInput.value = incomingRules || DEFAULT_FIREBASE_RULES;
+              rulesInput.value = incomingRules;
             }
           })
           .catch(function () {});

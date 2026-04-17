@@ -64,8 +64,12 @@ bool fbOn = false;
 String fbUrl, fbToken;
 const char *DEFAULT_FIREBASE_RULES_JSON = R"RULES({
   "rules": {
-    ".read": "auth != null",
-    ".write": "auth != null"
+    "devices": {
+      "$uid": {
+        ".read": "auth.uid == $uid",
+        ".write": "auth.uid == $uid"
+      }
+    }
   }
 })RULES";
 
@@ -428,6 +432,31 @@ bool isValidEmailAddress(const String &email)
   return !email.isEmpty() && atPos > 0 && dotPos > atPos + 1 && dotPos < email.length() - 1 && email.indexOf(' ') < 0;
 }
 
+String normalizeFirebaseUid(String uid)
+{
+  uid.trim();
+  return uid;
+}
+
+bool isValidFirebaseUid(const String &uid)
+{
+  if (uid.isEmpty())
+    return false;
+
+  for (size_t i = 0; i < uid.length(); i++)
+  {
+    char c = uid.charAt(i);
+    bool valid = (c >= 'a' && c <= 'z') ||
+                 (c >= 'A' && c <= 'Z') ||
+                 (c >= '0' && c <= '9') ||
+                 c == '_' || c == '-';
+    if (!valid)
+      return false;
+  }
+
+  return true;
+}
+
 void loadFirebaseAuthUsersDoc(DynamicJsonDocument &doc)
 {
   doc.clear();
@@ -459,6 +488,21 @@ int findFirebaseAuthUserIndex(JsonArray users, const String &email)
   for (JsonObject user : users)
   {
     if (normalizeEmail(user["email"].as<String>()) == targetEmail)
+    {
+      return index;
+    }
+    index++;
+  }
+  return -1;
+}
+
+int findFirebaseAuthUserIndexByUid(JsonArray users, const String &uid)
+{
+  String targetUid = normalizeFirebaseUid(uid);
+  int index = 0;
+  for (JsonObject user : users)
+  {
+    if (normalizeFirebaseUid(user["uid"].as<String>()) == targetUid)
     {
       return index;
     }
@@ -1286,6 +1330,7 @@ void setupWebServer()
     for (JsonObject user : stored.as<JsonArray>()) {
       JsonObject item = out.createNestedObject();
       item["email"] = user["email"].as<String>();
+      item["uid"] = normalizeFirebaseUid(user["uid"].as<String>());
     }
 
     String r;
@@ -1329,7 +1374,7 @@ void setupWebServer()
 
   server.on("/api/fb/auth/users/add", HTTP_POST, [](AsyncWebServerRequest *req)
             {
-    if (!req->hasParam("email", true) || !req->hasParam("password", true)) {
+    if (!req->hasParam("email", true) || !req->hasParam("uid", true) || !req->hasParam("password", true)) {
       req->send(400, "application/json", "{\"error\":\"Missing params\"}");
       return;
     }
@@ -1338,9 +1383,14 @@ void setupWebServer()
     }
 
     String email = normalizeEmail(req->getParam("email", true)->value());
+    String uid = normalizeFirebaseUid(req->getParam("uid", true)->value());
     String password = req->getParam("password", true)->value();
     if (!isValidEmailAddress(email)) {
       req->send(400, "application/json", "{\"error\":\"Invalid email address\"}");
+      return;
+    }
+    if (!isValidFirebaseUid(uid)) {
+      req->send(400, "application/json", "{\"error\":\"Invalid UID\"}");
       return;
     }
     if (password.isEmpty()) {
@@ -1355,53 +1405,15 @@ void setupWebServer()
       req->send(409, "application/json", "{\"error\":\"Firebase auth user already exists\"}");
       return;
     }
+    if (findFirebaseAuthUserIndexByUid(users, uid) >= 0) {
+      req->send(409, "application/json", "{\"error\":\"Firebase auth UID already exists\"}");
+      return;
+    }
 
     JsonObject user = users.createNestedObject();
     user["email"] = email;
+    user["uid"] = uid;
     user["password"] = password;
-    saveFirebaseAuthUsersDoc(doc);
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true}"); });
-
-  server.on("/api/fb/auth/users/edit", HTTP_POST, [](AsyncWebServerRequest *req)
-            {
-    if (!req->hasParam("currentEmail", true) || !req->hasParam("email", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing params\"}");
-      return;
-    }
-    if (!requireAdminVerification(req)) {
-      return;
-    }
-
-    String currentEmail = normalizeEmail(req->getParam("currentEmail", true)->value());
-    String nextEmail = normalizeEmail(req->getParam("email", true)->value());
-    String nextPassword = req->hasParam("password", true) ? req->getParam("password", true)->value() : "";
-    if (!isValidEmailAddress(currentEmail) || !isValidEmailAddress(nextEmail)) {
-      req->send(400, "application/json", "{\"error\":\"Invalid email address\"}");
-      return;
-    }
-
-    DynamicJsonDocument doc(4096);
-    loadFirebaseAuthUsersDoc(doc);
-    JsonArray users = doc.as<JsonArray>();
-    int userIndex = findFirebaseAuthUserIndex(users, currentEmail);
-    if (userIndex < 0) {
-      req->send(404, "application/json", "{\"error\":\"Firebase auth user not found\"}");
-      return;
-    }
-
-    int duplicateIndex = findFirebaseAuthUserIndex(users, nextEmail);
-    if (duplicateIndex >= 0 && duplicateIndex != userIndex) {
-      req->send(409, "application/json", "{\"error\":\"Firebase auth user already exists\"}");
-      return;
-    }
-
-    JsonObject user = users[userIndex].as<JsonObject>();
-    user["email"] = nextEmail;
-    if (!nextPassword.isEmpty()) {
-      user["password"] = nextPassword;
-    }
-
     saveFirebaseAuthUsersDoc(doc);
     notifyStorage();
     req->send(200, "application/json", "{\"ok\":true}"); });
@@ -1925,23 +1937,7 @@ void setupWebServer()
       prefs.putString("rules", rules);
       prefs.end();
       notifyStorage();
-      if (fbUrl.isEmpty() || fbToken.isEmpty()) {
-        req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Saved locally (no Firebase credentials)\"}");
-        return;
-      }
-      if (WiFi.status() != WL_CONNECTED) {
-        req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Saved locally (WiFi not connected)\"}");
-        return;
-      }
-      HTTPClient http;
-      http.begin(fbUrl + "/.settings/rules.json?auth=" + fbToken);
-      http.addHeader("Content-Type", "application/json");
-      int code = http.PUT(rules);
-      http.end();
-      if (code == 200)
-        req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Rules saved and uploaded to Firebase\"}");
-      else
-        req->send(400, "application/json", "{\"error\":\"Saved locally but upload failed: HTTP " + String(code) + "\"}"); });
+      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Rules saved!\"}"); });
 
     // ──── USERS ────
     server.on("/api/users", HTTP_GET, [](AsyncWebServerRequest *req)
