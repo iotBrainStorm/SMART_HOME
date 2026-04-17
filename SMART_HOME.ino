@@ -62,6 +62,8 @@ bool portalFlag = false;
 // Firebase
 bool fbOn = false;
 String fbUrl, fbToken;
+const char *PRIMARY_ADMIN_ID = "esp";
+const char *PRIMARY_ADMIN_PASS = "456456";
 const char *DEFAULT_FIREBASE_RULES_JSON = R"RULES({
   "rules": {
     "devices": {
@@ -312,6 +314,19 @@ String normalizeUserRole(String role)
   return "user";
 }
 
+String normalizeUserId(String id)
+{
+  id.trim();
+  id.toLowerCase();
+  return id;
+}
+
+String normalizeUserPass(String pass)
+{
+  pass.trim();
+  return pass;
+}
+
 //  USER MANAGEMENT HELPERS
 void initDefaultUser()
 {
@@ -320,8 +335,8 @@ void initDefaultUser()
   if (count <= 0)
   {
     DynamicJsonDocument d(1024);
-    d["id"] = "esp";
-    d["pass"] = "456456";
+    d["id"] = PRIMARY_ADMIN_ID;
+    d["pass"] = PRIMARY_ADMIN_PASS;
     d["role"] = "admin";
     String j;
     serializeJson(d, j);
@@ -331,7 +346,8 @@ void initDefaultUser()
     return;
   }
 
-  bool hasEspDefault = false;
+  bool hasEspAdmin = false;
+  int espIndex = -1;
   int legacyDefaultIndex = -1;
   for (int i = 0; i < count; i++)
   {
@@ -343,15 +359,18 @@ void initDefaultUser()
     if (deserializeJson(d, js))
       continue;
 
-    String id = d["id"].as<String>();
-    id.trim();
-    String pass = d["pass"].as<String>();
+    String id = normalizeUserId(d["id"].as<String>());
+    String pass = normalizeUserPass(d["pass"].as<String>());
     String role = normalizeUserRole(d["role"].as<String>());
 
-    if (id == "esp" && pass == "456456" && role == "admin")
+    if (id == normalizeUserId(PRIMARY_ADMIN_ID))
     {
-      hasEspDefault = true;
-      break;
+      if (espIndex < 0)
+        espIndex = i;
+      if (role == "admin")
+      {
+        hasEspAdmin = true;
+      }
     }
 
     if (legacyDefaultIndex < 0 && id == "mrinal" && pass == "1234" && role == "admin")
@@ -360,15 +379,28 @@ void initDefaultUser()
     }
   }
 
-  if (!hasEspDefault && legacyDefaultIndex >= 0)
+  if (!hasEspAdmin)
   {
     DynamicJsonDocument d(1024);
-    d["id"] = "esp";
-    d["pass"] = "456456";
+    d["id"] = PRIMARY_ADMIN_ID;
+    d["pass"] = PRIMARY_ADMIN_PASS;
     d["role"] = "admin";
     String migrated;
     serializeJson(d, migrated);
-    prefs.putString(("u" + String(legacyDefaultIndex)).c_str(), migrated);
+
+    if (legacyDefaultIndex >= 0)
+    {
+      prefs.putString(("u" + String(legacyDefaultIndex)).c_str(), migrated);
+    }
+    else if (espIndex >= 0)
+    {
+      prefs.putString(("u" + String(espIndex)).c_str(), migrated);
+    }
+    else
+    {
+      prefs.putString(("u" + String(count)).c_str(), migrated);
+      prefs.putInt("cnt", count + 1);
+    }
   }
 
   prefs.end();
@@ -376,6 +408,8 @@ void initDefaultUser()
 
 bool verifyAdmin(const String &u, const String &p)
 {
+  String targetUser = normalizeUserId(u);
+  String targetPass = normalizeUserPass(p);
   prefs.begin("users", true);
   int n = prefs.getInt("cnt", 0);
   for (int i = 0; i < n; i++)
@@ -384,8 +418,10 @@ bool verifyAdmin(const String &u, const String &p)
     if (js.isEmpty())
       continue;
     DynamicJsonDocument d(1024);
-    deserializeJson(d, js);
-    if (d["id"].as<String>() == u && d["pass"].as<String>() == p && normalizeUserRole(d["role"].as<String>()) == "admin")
+    if (deserializeJson(d, js))
+      continue;
+    String storedPass = normalizeUserPass(d["pass"].as<String>());
+    if (normalizeUserId(d["id"].as<String>()) == targetUser && storedPass == targetPass && normalizeUserRole(d["role"].as<String>()) == "admin")
     {
       prefs.end();
       return true;
@@ -403,10 +439,18 @@ bool requireAdminVerification(AsyncWebServerRequest *req)
     return false;
   }
 
-  if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value()))
+  String adminUser = req->getParam("adminUser", true)->value();
+  String adminPass = req->getParam("adminPass", true)->value();
+
+  if (!verifyAdmin(adminUser, adminPass))
   {
-    req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
-    return false;
+    // Try to recover primary admin in case storage was previously corrupted.
+    initDefaultUser();
+    if (!verifyAdmin(adminUser, adminPass))
+    {
+      req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+      return false;
+    }
   }
 
   return true;
@@ -414,6 +458,8 @@ bool requireAdminVerification(AsyncWebServerRequest *req)
 
 bool verifyLogin(const String &u, const String &p, String &role)
 {
+  String targetUser = normalizeUserId(u);
+  String targetPass = normalizeUserPass(p);
   prefs.begin("users", true);
   int n = prefs.getInt("cnt", 0);
   for (int i = 0; i < n; i++)
@@ -422,8 +468,10 @@ bool verifyLogin(const String &u, const String &p, String &role)
     if (js.isEmpty())
       continue;
     DynamicJsonDocument d(1024);
-    deserializeJson(d, js);
-    if (d["id"].as<String>() == u && d["pass"].as<String>() == p)
+    if (deserializeJson(d, js))
+      continue;
+    String storedPass = normalizeUserPass(d["pass"].as<String>());
+    if (normalizeUserId(d["id"].as<String>()) == targetUser && storedPass == targetPass)
     {
       role = normalizeUserRole(d["role"].as<String>());
       prefs.end();
@@ -1956,7 +2004,7 @@ void setupWebServer()
         DynamicJsonDocument ud(512);
         deserializeJson(ud, js);
         JsonObject o = a.createNestedObject();
-        o["id"] = ud["id"];
+        o["id"] = normalizeUserId(ud["id"].as<String>());
         o["role"] = normalizeUserRole(ud["role"].as<String>());
       }
       prefs.end();
@@ -1971,16 +2019,23 @@ void setupWebServer()
         return;
       }
       if (!hasAdmin()) {
-        req->send(403, "application/json", "{\"error\":\"No admin user exists\"}");
-        return;
+        initDefaultUser();
+        if (!hasAdmin()) {
+          req->send(403, "application/json", "{\"error\":\"No admin user exists\"}");
+          return;
+        }
       }
-      if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
-        req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
-        return;
+      String adminUser = req->getParam("adminUser", true)->value();
+      String adminPass = req->getParam("adminPass", true)->value();
+      if (!verifyAdmin(adminUser, adminPass)) {
+        initDefaultUser();
+        if (!verifyAdmin(adminUser, adminPass)) {
+          req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+          return;
+        }
       }
-      String newId = req->getParam("id", true)->value();
-      newId.trim();
-      String newPass = req->getParam("pass", true)->value();
+      String newId = normalizeUserId(req->getParam("id", true)->value());
+      String newPass = normalizeUserPass(req->getParam("pass", true)->value());
       if (newId.isEmpty() || newPass.isEmpty()) {
         req->send(400, "application/json", "{\"error\":\"User ID and password are required\"}");
         return;
@@ -2002,8 +2057,7 @@ void setupWebServer()
         DynamicJsonDocument existing(1024);
         if (deserializeJson(existing, js))
           continue;
-        String existingId = existing["id"].as<String>();
-        existingId.trim();
+        String existingId = normalizeUserId(existing["id"].as<String>());
         if (existingId == newId) {
           prefs.end();
           req->send(409, "application/json", "{\"error\":\"User already exists\"}");
@@ -2024,15 +2078,22 @@ void setupWebServer()
         return;
       }
       if (!hasAdmin()) {
-        req->send(403, "application/json", "{\"error\":\"No admin user exists\"}");
-        return;
+        initDefaultUser();
+        if (!hasAdmin()) {
+          req->send(403, "application/json", "{\"error\":\"No admin user exists\"}");
+          return;
+        }
       }
-      if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
-        req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
-        return;
+      String adminUser = req->getParam("adminUser", true)->value();
+      String adminPass = req->getParam("adminPass", true)->value();
+      if (!verifyAdmin(adminUser, adminPass)) {
+        initDefaultUser();
+        if (!verifyAdmin(adminUser, adminPass)) {
+          req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+          return;
+        }
       }
-      String uid = req->getParam("id", true)->value();
-      uid.trim();
+      String uid = normalizeUserId(req->getParam("id", true)->value());
       if (uid.isEmpty()) {
         req->send(400, "application/json", "{\"error\":\"User ID is required\"}");
         return;
@@ -2052,8 +2113,7 @@ void setupWebServer()
         if (deserializeJson(d, js))
           continue;
 
-        String existingId = d["id"].as<String>();
-        existingId.trim();
+        String existingId = normalizeUserId(d["id"].as<String>());
         if (existingId == uid) {
           matchedUsers++;
           if (normalizeUserRole(d["role"].as<String>()) == "admin") {
@@ -2083,8 +2143,7 @@ void setupWebServer()
         bool shouldRemove = false;
         DynamicJsonDocument d(1024);
         if (!deserializeJson(d, js)) {
-          String existingId = d["id"].as<String>();
-          existingId.trim();
+          String existingId = normalizeUserId(d["id"].as<String>());
           shouldRemove = (existingId == uid);
         }
 
