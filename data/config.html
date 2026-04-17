@@ -2508,20 +2508,36 @@
               "
             >
               <div class="setting-label">Database Rules (JSON)</div>
-              <button
-                type="button"
-                class="copy-icon-btn"
-                onclick="copyFirebaseRulesToClipboard()"
-                aria-label="Copy database rules"
-                title="Copy database rules"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <rect x="9" y="9" width="11" height="11" rx="2" />
-                  <path
-                    d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"
-                  />
-                </svg>
-              </button>
+              <div style="display: inline-flex; align-items: center; gap: 8px">
+                <button
+                  type="button"
+                  class="copy-icon-btn"
+                  onclick="setDefaultFirebaseRules()"
+                  aria-label="Set default database rules"
+                  title="Set default database rules"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 12a9 9 0 0 1 15.36-6.36L21 8" />
+                    <path d="M21 3v5h-5" />
+                    <path d="M21 12a9 9 0 0 1-15.36 6.36L3 16" />
+                    <path d="M3 21v-5h5" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class="copy-icon-btn"
+                  onclick="copyFirebaseRulesToClipboard()"
+                  aria-label="Copy database rules"
+                  title="Copy database rules"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="9" y="9" width="11" height="11" rx="2" />
+                    <path
+                      d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"
+                    />
+                  </svg>
+                </button>
+              </div>
             </div>
             <textarea
               class="cfg-textarea"
@@ -2584,8 +2600,8 @@
         <div class="panel" id="panel-fb-auth-add">
           <div class="panel-title">Add Firebase User</div>
           <div class="info-box">
-            Email, password, and UID are stored locally on the ESP32 for
-            Firebase email/password authentication.
+            Email and password are stored locally on the ESP32 for Firebase
+            email/password authentication.
           </div>
           <div
             class="setting-row"
@@ -2597,19 +2613,6 @@
               type="email"
               id="firebaseAuthNewEmail"
               placeholder="user@example.com"
-              style="max-width: 100%"
-            />
-          </div>
-          <div
-            class="setting-row"
-            style="flex-direction: column; align-items: flex-start; gap: 10px"
-          >
-            <div class="setting-label">UID</div>
-            <input
-              class="cfg-input"
-              type="text"
-              id="firebaseAuthNewUid"
-              placeholder="Firebase UID"
               style="max-width: 100%"
             />
           </div>
@@ -3461,6 +3464,9 @@
           return r.json();
         });
       }
+
+      var DEFAULT_FIREBASE_RULES_JSON =
+        '{\n  "rules": {\n    "devices": {\n      "$uid": {\n        "$mac": {\n          ".read": "auth != null && auth.uid === $uid",\n          ".write": "auth != null && auth.uid === $uid"\n        }\n      }\n    }\n  }\n}';
 
       /* ── Data: tabs → sidebar items → panel IDs ── */
       var tabConfig = {
@@ -5502,30 +5508,19 @@
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
       }
 
-      function isValidFirebaseAuthUid(uid) {
-        return /^[A-Za-z0-9_-]+$/.test(uid);
-      }
-
       function confirmFirebaseAuthAdd() {
         var email = document
           .getElementById("firebaseAuthNewEmail")
           .value.trim()
           .toLowerCase();
-        var uid = document.getElementById("firebaseAuthNewUid").value.trim();
         var password = document.getElementById("firebaseAuthNewPassword").value;
 
-        if (!email || !uid || !password) {
-          alert("Please fill in email, UID, and password");
+        if (!email || !password) {
+          alert("Please fill in email and password");
           return;
         }
         if (!isValidFirebaseAuthEmail(email)) {
           alert("Enter a valid email address");
-          return;
-        }
-        if (!isValidFirebaseAuthUid(uid)) {
-          alert(
-            "UID can contain only letters, numbers, underscore, and hyphen",
-          );
           return;
         }
 
@@ -5537,8 +5532,6 @@
               appendAdminCredentials(
                 "email=" +
                   encodeURIComponent(email) +
-                  "&uid=" +
-                  encodeURIComponent(uid) +
                   "&password=" +
                   encodeURIComponent(password),
                 adminUser,
@@ -5549,7 +5542,6 @@
                 if (d.ok) {
                   alert("Firebase authentication user added successfully!");
                   document.getElementById("firebaseAuthNewEmail").value = "";
-                  document.getElementById("firebaseAuthNewUid").value = "";
                   document.getElementById("firebaseAuthNewPassword").value = "";
                   loadFirebaseAuthUsers();
                 } else {
@@ -5762,6 +5754,13 @@
           .catch(function () {
             alert("Unable to copy rules.");
           });
+      }
+
+      function setDefaultFirebaseRules() {
+        var rulesInput = document.getElementById("firebaseRules");
+        if (!rulesInput) return;
+        rulesInput.value = DEFAULT_FIREBASE_RULES_JSON;
+        alert("Default Firebase rules applied.");
       }
 
       function appendAdminCredentials(body, adminUser, adminPass) {
@@ -6368,10 +6367,6 @@
           label.className = "action-label";
           label.textContent = user.email;
 
-          var uidLine = document.createElement("div");
-          uidLine.className = "setting-sub";
-          uidLine.textContent = "UID: " + (user.uid || "(not set)");
-
           var sub = document.createElement("div");
           sub.className = "setting-sub with-action";
 
@@ -6399,7 +6394,6 @@
           sub.appendChild(revealBtn);
 
           info.appendChild(label);
-          info.appendChild(uidLine);
           info.appendChild(sub);
 
           var actions = document.createElement("div");
