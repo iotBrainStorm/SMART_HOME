@@ -2697,6 +2697,10 @@
         <!-- Add User -->
         <div class="panel" id="panel-usr-add">
           <div class="panel-title">Add User</div>
+          <div class="info-box">
+            New users are always created as normal users. Admin role cannot be
+            assigned from this section.
+          </div>
           <div
             class="setting-row"
             style="flex-direction: column; align-items: flex-start; gap: 10px"
@@ -2723,16 +2727,6 @@
               style="max-width: 100%"
             />
           </div>
-          <div
-            class="setting-row"
-            style="flex-direction: column; align-items: flex-start; gap: 10px"
-          >
-            <div class="setting-label">Role</div>
-            <select class="cfg-input" id="newUserRole" style="max-width: 100%">
-              <option value="user">User</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
           <div style="margin-top: 16px; text-align: right">
             <button
               class="cfg-btn cfg-btn-primary"
@@ -2747,22 +2741,58 @@
         <div class="panel" id="panel-usr-remove">
           <div class="panel-title">Remove User</div>
           <div class="info-box">
-            Select a user to remove. Admin accounts cannot be removed unless
-            another admin exists.
+            Only normal users are shown here. Admin user cannot be removed.
           </div>
-          <div class="action-row">
-            <div>
-              <span class="action-label">esp</span>
-              <span class="user-badge badge-admin" style="margin-left: 8px"
-                >Admin</span
-              >
+          <div id="removeUsersList">
+            <div class="setting-sub">No normal users available to remove.</div>
+          </div>
+        </div>
+
+        <!-- Edit Admin -->
+        <div class="panel" id="panel-usr-edit-admin">
+          <div class="panel-title">Edit Admin</div>
+          <div class="info-box">
+            Update the single admin username and password used for management
+            actions.
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Current Admin</div>
+              <div class="setting-sub" id="currentAdminId">Loading...</div>
             </div>
+          </div>
+          <div
+            class="setting-row"
+            style="flex-direction: column; align-items: flex-start; gap: 10px"
+          >
+            <div class="setting-label">New Admin User ID</div>
+            <input
+              class="cfg-input"
+              type="text"
+              id="editAdminId"
+              placeholder="Enter admin user ID"
+              style="max-width: 100%"
+            />
+          </div>
+          <div
+            class="setting-row"
+            style="flex-direction: column; align-items: flex-start; gap: 10px"
+          >
+            <div class="setting-label">New Admin Password</div>
+            <input
+              class="cfg-input"
+              type="password"
+              id="editAdminPassword"
+              placeholder="Set admin password"
+              style="max-width: 100%"
+            />
+          </div>
+          <div style="margin-top: 16px; text-align: right">
             <button
-              class="cfg-btn cfg-btn-danger"
-              style="padding: 6px 14px; font-size: 0.78rem"
-              onclick="confirmUserAction('remove', 'esp')"
+              class="cfg-btn cfg-btn-primary"
+              onclick="confirmUserAction('editAdmin')"
             >
-              Remove
+              Save Admin
             </button>
           </div>
         </div>
@@ -3513,6 +3543,7 @@
           { label: "Show Users", panel: "panel-usr-show" },
           { label: "Add User", panel: "panel-usr-add" },
           { label: "Remove User", panel: "panel-usr-remove" },
+          { label: "Edit Admin", panel: "panel-usr-edit-admin" },
         ],
         admin: [
           { label: "Time Setup", panel: "panel-admin-time" },
@@ -5438,11 +5469,6 @@
           var newUserId = document.getElementById("newUserId").value.trim();
           var newUserPassword =
             document.getElementById("newUserPassword").value;
-          var newUserRole = (
-            document.getElementById("newUserRole").value || "user"
-          )
-            .trim()
-            .toLowerCase();
           if (!newUserId || !newUserPassword) {
             alert("Please fill in all fields");
             return;
@@ -5456,8 +5482,6 @@
                   encodeURIComponent(newUserId) +
                   "&pass=" +
                   encodeURIComponent(newUserPassword) +
-                  "&role=" +
-                  encodeURIComponent(newUserRole) +
                   "&adminUser=" +
                   encodeURIComponent(adminUser) +
                   "&adminPass=" +
@@ -5504,6 +5528,43 @@
                 });
             },
             userId,
+          );
+        } else if (actionType === "editAdmin") {
+          var editAdminId = document.getElementById("editAdminId").value.trim();
+          var editAdminPassword =
+            document.getElementById("editAdminPassword").value;
+          if (!editAdminId || !editAdminPassword) {
+            alert("Please provide new admin user ID and password");
+            return;
+          }
+          showPasswordModal(
+            "Enter current admin credentials to update admin login",
+            function (data, adminUser, adminPass) {
+              apiPost(
+                "/api/users/admin/edit",
+                "id=" +
+                  encodeURIComponent(editAdminId) +
+                  "&pass=" +
+                  encodeURIComponent(editAdminPassword) +
+                  "&adminUser=" +
+                  encodeURIComponent(adminUser) +
+                  "&adminPass=" +
+                  encodeURIComponent(adminPass),
+              )
+                .then(function (d) {
+                  if (d.ok) {
+                    alert("Admin credentials updated successfully!");
+                    sessionStorage.setItem("smartHomeUser", editAdminId);
+                    document.getElementById("editAdminPassword").value = "";
+                    loadUsers();
+                  } else {
+                    alert(d.error || "Failed to update admin credentials");
+                  }
+                })
+                .catch(function () {
+                  alert("Connection error");
+                });
+            },
           );
         }
       }
@@ -6504,30 +6565,51 @@
                 tbody.appendChild(tr);
               });
             }
+            var currentAdmin = null;
+            users.forEach(function (u) {
+              var role = String(u.role || "user").toLowerCase();
+              if (!currentAdmin && role === "admin") {
+                currentAdmin = u;
+              }
+            });
+
+            var currentAdminIdEl = document.getElementById("currentAdminId");
+            if (currentAdminIdEl) {
+              currentAdminIdEl.textContent = currentAdmin
+                ? String(currentAdmin.id || "")
+                : "No admin found";
+            }
+
+            var editAdminIdInput = document.getElementById("editAdminId");
+            if (editAdminIdInput && currentAdmin && currentAdmin.id) {
+              editAdminIdInput.value = String(currentAdmin.id);
+            }
+
             // Update remove user panel
-            var removePanel = document.getElementById("panel-usr-remove");
-            if (removePanel) {
-              var infoBox = removePanel.querySelector(".info-box");
-              var rows = removePanel.querySelectorAll(".action-row");
-              rows.forEach(function (r) {
-                r.remove();
+            var removeUsersList = document.getElementById("removeUsersList");
+            if (removeUsersList) {
+              removeUsersList.innerHTML = "";
+              var normalUsers = users.filter(function (u) {
+                return String(u.role || "user").toLowerCase() !== "admin";
               });
-              users.forEach(function (u) {
-                var role = String(u.role || "user").toLowerCase();
+
+              if (normalUsers.length === 0) {
+                removeUsersList.innerHTML =
+                  '<div class="setting-sub">No normal users available to remove.</div>';
+              }
+
+              normalUsers.forEach(function (u) {
                 var row = document.createElement("div");
                 row.className = "action-row";
                 row.innerHTML =
                   '<div><span class="action-label">' +
                   u.id +
-                  '</span><span class="user-badge badge-' +
-                  role +
-                  '" style="margin-left:8px">' +
-                  (role === "admin" ? "Admin" : "User") +
+                  '</span><span class="user-badge badge-user" style="margin-left:8px">User' +
                   "</span></div>" +
                   '<button class="cfg-btn cfg-btn-danger" style="padding:6px 14px;font-size:0.78rem" onclick="confirmUserAction(\'remove\',\'' +
                   u.id +
                   "')\">Remove</button>";
-                removePanel.appendChild(row);
+                removeUsersList.appendChild(row);
               });
             }
           })

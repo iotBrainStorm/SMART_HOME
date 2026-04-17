@@ -411,6 +411,33 @@ void initDefaultUser()
     // else: other admins already exist; esp was intentionally removed — do nothing.
   }
 
+  // Enforce single-admin policy: keep the first admin, demote any extra admins.
+  int keepAdminIndex = -1;
+  for (int i = 0; i < count; i++)
+  {
+    String js = prefs.getString(("u" + String(i)).c_str(), "");
+    if (js.isEmpty())
+      continue;
+
+    DynamicJsonDocument d(1024);
+    if (deserializeJson(d, js))
+      continue;
+
+    if (normalizeUserRole(d["role"].as<String>()) != "admin")
+      continue;
+
+    if (keepAdminIndex < 0)
+    {
+      keepAdminIndex = i;
+      continue;
+    }
+
+    d["role"] = "user";
+    String updated;
+    serializeJson(d, updated);
+    prefs.putString(("u" + String(i)).c_str(), updated);
+  }
+
   prefs.end();
 }
 
@@ -2022,7 +2049,7 @@ void setupWebServer()
 
     server.on("/api/users/add", HTTP_POST, [](AsyncWebServerRequest *req)
               {
-      if (!req->hasParam("id", true) || !req->hasParam("pass", true) || !req->hasParam("role", true) || !req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
+      if (!req->hasParam("id", true) || !req->hasParam("pass", true) || !req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing params\"}");
         return;
       }
@@ -2049,10 +2076,9 @@ void setupWebServer()
         return;
       }
       DynamicJsonDocument nd(512);
-      String role = normalizeUserRole(req->getParam("role", true)->value());
       nd["id"] = newId;
       nd["pass"] = newPass;
-      nd["role"] = role;
+      nd["role"] = "user";
       String nj;
       serializeJson(nd, nj);
       prefs.begin("users", false);
@@ -2107,7 +2133,6 @@ void setupWebServer()
         return;
       }
 
-      int adminCountBefore = countAdmins();
       prefs.begin("users", false);
       int cnt = prefs.getInt("cnt", 0);
 
@@ -2136,9 +2161,9 @@ void setupWebServer()
         return;
       }
 
-      if (matchedAdmins > 0 && (adminCountBefore - matchedAdmins) < 1) {
+      if (matchedAdmins > 0) {
         prefs.end();
-        req->send(403, "application/json", "{\"error\":\"Cannot remove the last admin user\"}");
+        req->send(403, "application/json", "{\"error\":\"Admin user cannot be removed\"}");
         return;
       }
 
@@ -2171,6 +2196,122 @@ void setupWebServer()
       prefs.end();
       notifyStorage();
       req->send(200, "application/json", "{\"ok\":true,\"removed\":" + String(matchedUsers) + "}"); });
+
+    server.on("/api/users/admin/edit", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("id", true) || !req->hasParam("pass", true) || !req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing params\"}");
+        return;
+      }
+
+      if (!hasAdmin()) {
+        initDefaultUser();
+        if (!hasAdmin()) {
+          req->send(403, "application/json", "{\"error\":\"No admin user exists\"}");
+          return;
+        }
+      }
+
+      String adminUser = req->getParam("adminUser", true)->value();
+      String adminPass = req->getParam("adminPass", true)->value();
+      if (!verifyAdmin(adminUser, adminPass)) {
+        initDefaultUser();
+        if (!verifyAdmin(adminUser, adminPass)) {
+          req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+          return;
+        }
+      }
+
+      String newAdminId = normalizeUserId(req->getParam("id", true)->value());
+      String newAdminPass = normalizeUserPass(req->getParam("pass", true)->value());
+      if (newAdminId.isEmpty() || newAdminPass.isEmpty()) {
+        req->send(400, "application/json", "{\"error\":\"Admin user ID and password are required\"}");
+        return;
+      }
+
+      String currentAdminId = normalizeUserId(adminUser);
+      String currentAdminPass = normalizeUserPass(adminPass);
+
+      prefs.begin("users", false);
+      int cnt = prefs.getInt("cnt", 0);
+      int targetAdminIndex = -1;
+
+      for (int i = 0; i < cnt; i++) {
+        String js = prefs.getString(("u" + String(i)).c_str(), "");
+        if (js.isEmpty())
+          continue;
+
+        DynamicJsonDocument d(1024);
+        if (deserializeJson(d, js))
+          continue;
+
+        String id = normalizeUserId(d["id"].as<String>());
+        String pass = normalizeUserPass(d["pass"].as<String>());
+        String role = normalizeUserRole(d["role"].as<String>());
+        if (role == "admin" && id == currentAdminId && pass == currentAdminPass) {
+          targetAdminIndex = i;
+          break;
+        }
+      }
+
+      if (targetAdminIndex < 0) {
+        prefs.end();
+        req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+        return;
+      }
+
+      for (int i = 0; i < cnt; i++) {
+        if (i == targetAdminIndex)
+          continue;
+
+        String js = prefs.getString(("u" + String(i)).c_str(), "");
+        if (js.isEmpty())
+          continue;
+
+        DynamicJsonDocument d(1024);
+        if (deserializeJson(d, js))
+          continue;
+
+        if (normalizeUserId(d["id"].as<String>()) == newAdminId) {
+          prefs.end();
+          req->send(409, "application/json", "{\"error\":\"User ID already exists\"}");
+          return;
+        }
+      }
+
+      for (int i = 0; i < cnt; i++) {
+        String js = prefs.getString(("u" + String(i)).c_str(), "");
+        if (js.isEmpty())
+          continue;
+
+        DynamicJsonDocument d(1024);
+        if (deserializeJson(d, js))
+          continue;
+
+        bool changed = false;
+        String role = normalizeUserRole(d["role"].as<String>());
+
+        if (i == targetAdminIndex) {
+          d["id"] = newAdminId;
+          d["pass"] = newAdminPass;
+          d["role"] = "admin";
+          changed = true;
+        } else if (role == "admin") {
+          // Keep exactly one admin account in storage.
+          d["role"] = "user";
+          changed = true;
+        }
+
+        if (changed) {
+          String updated;
+          serializeJson(d, updated);
+          prefs.putString(("u" + String(i)).c_str(), updated);
+        }
+      }
+
+      prefs.end();
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true}"); });
 
     // ──── ADMINISTRATOR ────
     server.on("/api/admin/time", HTTP_GET, [](AsyncWebServerRequest *req)
