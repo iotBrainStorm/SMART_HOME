@@ -303,12 +303,21 @@ void loadAdminSettings()
   parseTZ();
 }
 
+String normalizeUserRole(String role)
+{
+  role.trim();
+  role.toLowerCase();
+  if (role == "admin")
+    return "admin";
+  return "user";
+}
+
 //  USER MANAGEMENT HELPERS
 void initDefaultUser()
 {
   prefs.begin("users", false);
   int count = prefs.getInt("cnt", 0);
-  if (count == 0)
+  if (count <= 0)
   {
     DynamicJsonDocument d(1024);
     d["id"] = "esp";
@@ -318,39 +327,51 @@ void initDefaultUser()
     serializeJson(d, j);
     prefs.putString("u0", j);
     prefs.putInt("cnt", 1);
+    prefs.end();
+    return;
   }
-  else if (count == 1)
+
+  bool hasEspDefault = false;
+  int legacyDefaultIndex = -1;
+  for (int i = 0; i < count; i++)
   {
-    String existing = prefs.getString("u0", "");
-    if (!existing.isEmpty())
+    String js = prefs.getString(("u" + String(i)).c_str(), "");
+    if (js.isEmpty())
+      continue;
+
+    DynamicJsonDocument d(1024);
+    if (deserializeJson(d, js))
+      continue;
+
+    String id = d["id"].as<String>();
+    id.trim();
+    String pass = d["pass"].as<String>();
+    String role = normalizeUserRole(d["role"].as<String>());
+
+    if (id == "esp" && pass == "456456" && role == "admin")
     {
-      DynamicJsonDocument d(1024);
-      if (!deserializeJson(d, existing))
-      {
-        String role = d["role"].as<String>();
-        role.toLowerCase();
-        if (d["id"].as<String>() == "mrinal" && d["pass"].as<String>() == "1234" && role == "admin")
-        {
-          d["id"] = "esp";
-          d["pass"] = "456456";
-          d["role"] = "admin";
-          String migrated;
-          serializeJson(d, migrated);
-          prefs.putString("u0", migrated);
-        }
-      }
+      hasEspDefault = true;
+      break;
+    }
+
+    if (legacyDefaultIndex < 0 && id == "mrinal" && pass == "1234" && role == "admin")
+    {
+      legacyDefaultIndex = i;
     }
   }
-  prefs.end();
-}
 
-String normalizeUserRole(String role)
-{
-  role.trim();
-  role.toLowerCase();
-  if (role == "admin")
-    return "admin";
-  return "user";
+  if (!hasEspDefault && legacyDefaultIndex >= 0)
+  {
+    DynamicJsonDocument d(1024);
+    d["id"] = "esp";
+    d["pass"] = "456456";
+    d["role"] = "admin";
+    String migrated;
+    serializeJson(d, migrated);
+    prefs.putString(("u" + String(legacyDefaultIndex)).c_str(), migrated);
+  }
+
+  prefs.end();
 }
 
 bool verifyAdmin(const String &u, const String &p)
@@ -1957,15 +1978,39 @@ void setupWebServer()
         req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
         return;
       }
+      String newId = req->getParam("id", true)->value();
+      newId.trim();
+      String newPass = req->getParam("pass", true)->value();
+      if (newId.isEmpty() || newPass.isEmpty()) {
+        req->send(400, "application/json", "{\"error\":\"User ID and password are required\"}");
+        return;
+      }
       DynamicJsonDocument nd(512);
       String role = normalizeUserRole(req->getParam("role", true)->value());
-      nd["id"] = req->getParam("id", true)->value();
-      nd["pass"] = req->getParam("pass", true)->value();
+      nd["id"] = newId;
+      nd["pass"] = newPass;
       nd["role"] = role;
       String nj;
       serializeJson(nd, nj);
       prefs.begin("users", false);
       int cnt = prefs.getInt("cnt", 0);
+
+      for (int i = 0; i < cnt; i++) {
+        String js = prefs.getString(("u" + String(i)).c_str(), "");
+        if (js.isEmpty())
+          continue;
+        DynamicJsonDocument existing(1024);
+        if (deserializeJson(existing, js))
+          continue;
+        String existingId = existing["id"].as<String>();
+        existingId.trim();
+        if (existingId == newId) {
+          prefs.end();
+          req->send(409, "application/json", "{\"error\":\"User already exists\"}");
+          return;
+        }
+      }
+
       prefs.putString(("u" + String(cnt)).c_str(), nj);
       prefs.putInt("cnt", cnt + 1);
       prefs.end();
@@ -1987,39 +2032,78 @@ void setupWebServer()
         return;
       }
       String uid = req->getParam("id", true)->value();
+      uid.trim();
+      if (uid.isEmpty()) {
+        req->send(400, "application/json", "{\"error\":\"User ID is required\"}");
+        return;
+      }
+
+      int adminCountBefore = countAdmins();
       prefs.begin("users", false);
       int cnt = prefs.getInt("cnt", 0);
-      int targetIdx = -1;
-      bool targetIsAdmin = false;
+
+      int matchedUsers = 0;
+      int matchedAdmins = 0;
       for (int i = 0; i < cnt; i++) {
         String js = prefs.getString(("u" + String(i)).c_str(), "");
+        if (js.isEmpty())
+          continue;
         DynamicJsonDocument d(1024);
-        deserializeJson(d, js);
-        if (d["id"].as<String>() == uid) {
-          targetIdx = i;
-          targetIsAdmin = (normalizeUserRole(d["role"].as<String>()) == "admin");
-          break;
+        if (deserializeJson(d, js))
+          continue;
+
+        String existingId = d["id"].as<String>();
+        existingId.trim();
+        if (existingId == uid) {
+          matchedUsers++;
+          if (normalizeUserRole(d["role"].as<String>()) == "admin") {
+            matchedAdmins++;
+          }
         }
       }
-      if (targetIdx < 0) {
+
+      if (matchedUsers <= 0) {
         prefs.end();
         req->send(404, "application/json", "{\"error\":\"User not found\"}");
         return;
       }
-      if (targetIsAdmin && countAdmins() <= 1) {
+
+      if (matchedAdmins > 0 && (adminCountBefore - matchedAdmins) < 1) {
         prefs.end();
         req->send(403, "application/json", "{\"error\":\"Cannot remove the last admin user\"}");
         return;
       }
-      for (int i = targetIdx; i < cnt - 1; i++) {
-        String next = prefs.getString(("u" + String(i + 1)).c_str(), "");
-        prefs.putString(("u" + String(i)).c_str(), next);
+
+      int writeIdx = 0;
+      for (int i = 0; i < cnt; i++) {
+        String js = prefs.getString(("u" + String(i)).c_str(), "");
+        if (js.isEmpty())
+          continue;
+
+        bool shouldRemove = false;
+        DynamicJsonDocument d(1024);
+        if (!deserializeJson(d, js)) {
+          String existingId = d["id"].as<String>();
+          existingId.trim();
+          shouldRemove = (existingId == uid);
+        }
+
+        if (shouldRemove)
+          continue;
+
+        if (writeIdx != i) {
+          prefs.putString(("u" + String(writeIdx)).c_str(), js);
+        }
+        writeIdx++;
       }
-      prefs.remove(("u" + String(cnt - 1)).c_str());
-      prefs.putInt("cnt", cnt - 1);
+
+      for (int i = writeIdx; i < cnt; i++) {
+        prefs.remove(("u" + String(i)).c_str());
+      }
+      prefs.putInt("cnt", writeIdx);
       prefs.end();
       notifyStorage();
-      req->send(200, "application/json", "{\"ok\":true}"); });
+      req->send(200, "application/json", "{\"ok\":true,\"removed\":" + String(matchedUsers) + "}"); });
 
     // ──── ADMINISTRATOR ────
     server.on("/api/admin/time", HTTP_GET, [](AsyncWebServerRequest *req)
