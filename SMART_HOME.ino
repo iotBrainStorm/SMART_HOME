@@ -137,6 +137,7 @@ bool restartScheduleEnabled = false;
 int restartScheduleMinute = -1;
 uint8_t restartScheduleDayMask = 0;
 long lastRestartScheduleStamp = -1;
+String restartScheduleLastRunKey = "";
 bool forgetWifiFlag = false;
 unsigned long forgetWifiAt = 0;
 bool coreRoutesOnly = false;
@@ -523,6 +524,7 @@ void loadAdminSettings()
   String storedDeviceName;
   String storedPrimaryAdminId;
   String storedPrimaryAdminPass;
+  String loadedRestartScheduleLastRunKey;
   bool loadedRestartScheduleEnabled = false;
   int loadedRestartScheduleMinute = -1;
   uint8_t loadedRestartScheduleDayMask = 0;
@@ -535,6 +537,7 @@ void loadAdminSettings()
   storedDeviceName = prefs.getString("devname", "");
   storedPrimaryAdminId = prefs.getString("puid", String(PRIMARY_ADMIN_ID));
   storedPrimaryAdminPass = prefs.getString("ppass", String(PRIMARY_ADMIN_PASS));
+  loadedRestartScheduleLastRunKey = prefs.getString("rsLast", "");
   loadedRestartScheduleEnabled = prefs.getBool("rsEn", false);
   loadedRestartScheduleMinute = prefs.getInt("rsMin", -1);
   loadedRestartScheduleDayMask = (uint8_t)prefs.getUInt("rsMask", 0);
@@ -620,6 +623,8 @@ void loadAdminSettings()
     restartScheduleMinute = -1;
     restartScheduleDayMask = 0;
   }
+  loadedRestartScheduleLastRunKey.trim();
+  restartScheduleLastRunKey = loadedRestartScheduleLastRunKey;
   lastRestartScheduleStamp = -1;
 
   locOk = (geoLat != 0.0 || geoLon != 0.0);
@@ -1100,8 +1105,26 @@ void setSwitch(int i, bool st)
   }
 }
 
+bool readCurrentLocalTime(struct tm *ti)
+{
+  if (!ti)
+    return false;
+
+  if (getLocalTime(ti))
+    return true;
+
+  time_t nowEpoch = time(nullptr);
+  if (nowEpoch > 100000)
+  {
+    localtime_r(&nowEpoch, ti);
+    return true;
+  }
+
+  return false;
+}
+
 //  TIME SYNC
-bool syncTime()
+bool syncTime(struct tm *syncedTime = nullptr)
 {
   if (WiFi.status() != WL_CONNECTED)
     return false;
@@ -1111,9 +1134,13 @@ bool syncTime()
   struct tm ti;
   for (int i = 0; i < 10; i++)
   {
-    if (getLocalTime(&ti))
+    if (readCurrentLocalTime(&ti))
     {
       timeSynced = true;
+      if (syncedTime)
+      {
+        *syncedTime = ti;
+      }
       Serial.printf("[TIME] Synced: %02d:%02d:%02d %02d/%02d/%04d\n",
                     ti.tm_hour, ti.tm_min, ti.tm_sec, ti.tm_mday, ti.tm_mon + 1, ti.tm_year + 1900);
       return true;
@@ -1564,11 +1591,21 @@ void checkRestartSchedule()
   if (curMin != restartScheduleMinute)
     return;
 
+  char slotBuf[20];
+  sprintf(slotBuf, "%04d-%02d-%02d-%02d:%02d", ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday, ti.tm_hour, ti.tm_min);
+  String currentSlotKey = String(slotBuf);
+  if (restartScheduleLastRunKey == currentSlotKey)
+    return;
+
   long stamp = (long)(ti.tm_year + 1900) * 1000000L + (long)ti.tm_yday * 1440L + curMin;
   if (stamp == lastRestartScheduleStamp)
     return;
 
   lastRestartScheduleStamp = stamp;
+  restartScheduleLastRunKey = currentSlotKey;
+  prefs.begin("admin", false);
+  prefs.putString("rsLast", restartScheduleLastRunKey);
+  prefs.end();
   Serial.printf("[RESTART] Scheduled restart at %02d:%02d (wday=%d)\n", ti.tm_hour, ti.tm_min, ti.tm_wday);
   restartFlag = true;
   restartAt = millis() + 500;
@@ -3004,17 +3041,15 @@ void setupWebServer()
 
     server.on("/api/admin/time/sync", HTTP_POST, [](AsyncWebServerRequest *req)
               {
-      if (!syncTime()) {
+      struct tm syncedTm;
+      if (!syncTime(&syncedTm)) {
         req->send(400, "application/json", "{\"error\":\"Time sync failed. Check WiFi and NTP server.\"}");
         return;
       }
 
-      struct tm ti;
-      char buf[32] = "--:--:-- --/--/----";
-      if (getLocalTime(&ti)) {
-        sprintf(buf, "%02d:%02d:%02d %02d/%02d/%04d", ti.tm_hour, ti.tm_min, ti.tm_sec,
-                ti.tm_mday, ti.tm_mon + 1, ti.tm_year + 1900);
-      }
+      char buf[32];
+      sprintf(buf, "%02d:%02d:%02d %02d/%02d/%04d", syncedTm.tm_hour, syncedTm.tm_min, syncedTm.tm_sec,
+              syncedTm.tm_mday, syncedTm.tm_mon + 1, syncedTm.tm_year + 1900);
 
       DynamicJsonDocument d(512);
       d["ok"] = true;
@@ -3028,7 +3063,7 @@ void setupWebServer()
     server.on("/api/admin/time/current", HTTP_GET, [](AsyncWebServerRequest *req)
               {
       struct tm ti;
-      if (getLocalTime(&ti)) {
+          if (readCurrentLocalTime(&ti)) {
         char buf[32];
         sprintf(buf, "%02d:%02d:%02d %02d/%02d/%04d", ti.tm_hour, ti.tm_min, ti.tm_sec,
                 ti.tm_mday, ti.tm_mon + 1, ti.tm_year + 1900);
@@ -3084,7 +3119,25 @@ void setupWebServer()
     server.on("/api/admin/restart-schedule", HTTP_POST, [](AsyncWebServerRequest *req)
               {
       if (!req->hasParam("data", true)) {
-        req->send(400, "application/json", "{\"error\":\"Missing data\"}");
+        if (!requireAdminVerification(req)) {
+          return;
+        }
+
+        restartScheduleEnabled = false;
+        restartScheduleMinute = -1;
+        restartScheduleDayMask = 0;
+        lastRestartScheduleStamp = -1;
+        restartScheduleLastRunKey = "";
+
+        prefs.begin("admin", false);
+        prefs.remove("rsEn");
+        prefs.remove("rsMin");
+        prefs.remove("rsMask");
+        prefs.remove("rsLast");
+        prefs.end();
+
+        notifyStorage();
+        req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Restart schedule cancelled\"}");
         return;
       }
       if (!requireAdminVerification(req)) {
@@ -3130,8 +3183,10 @@ void setupWebServer()
       restartScheduleMinute = scheduleMinute;
       restartScheduleDayMask = dayMask;
       lastRestartScheduleStamp = -1;
+      restartScheduleLastRunKey = "";
 
       prefs.begin("admin", false);
+      prefs.remove("rsLast");
       prefs.putBool("rsEn", restartScheduleEnabled);
       prefs.putInt("rsMin", restartScheduleMinute);
       prefs.putUInt("rsMask", restartScheduleDayMask);
@@ -3164,11 +3219,13 @@ void setupWebServer()
       restartScheduleMinute = -1;
       restartScheduleDayMask = 0;
       lastRestartScheduleStamp = -1;
+      restartScheduleLastRunKey = "";
 
       prefs.begin("admin", false);
       prefs.remove("rsEn");
       prefs.remove("rsMin");
       prefs.remove("rsMask");
+      prefs.remove("rsLast");
       prefs.end();
 
       notifyStorage();

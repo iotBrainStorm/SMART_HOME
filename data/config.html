@@ -518,6 +518,58 @@
         color: #93c5fd;
       }
 
+      .restart-overlay {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 1200;
+        background: rgba(3, 7, 18, 0.45);
+      }
+
+      .restart-overlay.active {
+        display: flex;
+      }
+
+      .restart-overlay::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        backdrop-filter: blur(6px);
+      }
+
+      .restart-overlay-card {
+        position: relative;
+        width: min(430px, calc(100% - 32px));
+        background: rgba(15, 23, 42, 0.88);
+        border: 1px solid rgba(96, 165, 250, 0.35);
+        border-radius: 16px;
+        padding: 18px 18px 14px;
+        box-shadow: 0 16px 42px rgba(2, 6, 23, 0.55);
+      }
+
+      .restart-overlay-title {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #bfdbfe;
+        margin-bottom: 10px;
+        letter-spacing: 0.4px;
+      }
+
+      body.restarting {
+        overflow: hidden;
+      }
+
+      body.restarting .topbar,
+      body.restarting .tabs,
+      body.restarting .config-body,
+      body.restarting .footer {
+        filter: blur(4px);
+        pointer-events: none;
+        user-select: none;
+      }
+
       /* ── Action Row ── */
       .action-row {
         background: rgba(255, 255, 255, 0.04);
@@ -3718,6 +3770,26 @@
       <span>Developer &copy; M.Maity</span>
     </div>
 
+    <div
+      id="restartOverlay"
+      class="restart-overlay"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div class="restart-overlay-card">
+        <div class="restart-overlay-title">Restarting Device</div>
+        <div class="restart-progress-track">
+          <div
+            id="restartOverlayProgressBar"
+            class="restart-progress-bar"
+          ></div>
+        </div>
+        <div id="restartOverlayProgressLabel" class="restart-progress-label">
+          Restart in progress...
+        </div>
+      </div>
+    </div>
+
     <script>
       /* ── API Helper ── */
       function apiPost(url, body) {
@@ -6497,16 +6569,57 @@
       ══════════════════════════════════════════════════════════════ */
       function setCurrentDeviceTimeDisplay(timeText) {
         var display = document.getElementById("currentDeviceTime");
-        if (display) {
-          display.textContent = timeText || "--:--:-- --/--/----";
+        var normalized = String(timeText || "").trim();
+        if (display && normalized) {
+          display.textContent = normalized;
         }
+      }
+
+      function fetchCurrentDeviceTimeOnce(retryCount) {
+        var remaining =
+          typeof retryCount === "number" && retryCount >= 0 ? retryCount : 4;
+        return apiGet("/api/admin/time/current")
+          .then(function (d) {
+            var timeText = d && d.time ? String(d.time).trim() : "";
+            if (timeText && timeText !== "--:--:-- --/--/----") {
+              setCurrentDeviceTimeDisplay(timeText);
+              return true;
+            }
+
+            if (remaining > 0) {
+              return new Promise(function (resolve) {
+                setTimeout(resolve, 350);
+              }).then(function () {
+                return fetchCurrentDeviceTimeOnce(remaining - 1);
+              });
+            }
+
+            if (timeText) {
+              setCurrentDeviceTimeDisplay(timeText);
+            }
+
+            return false;
+          })
+          .catch(function () {
+            if (remaining > 0) {
+              return new Promise(function (resolve) {
+                setTimeout(resolve, 350);
+              }).then(function () {
+                return fetchCurrentDeviceTimeOnce(remaining - 1);
+              });
+            }
+            return false;
+          });
       }
 
       function syncTimeNow() {
         apiPost("/api/admin/time/sync", "")
           .then(function (d) {
             if (d.ok) {
-              setCurrentDeviceTimeDisplay(d.time);
+              if (d.time) {
+                setCurrentDeviceTimeDisplay(d.time);
+              }
+              fetchCurrentDeviceTimeOnce(4);
               alert("Time synchronized successfully!");
             } else {
               alert(d.error || "Time sync failed");
@@ -6781,6 +6894,14 @@
         "sat",
       ];
 
+      function setRestartOverlayVisible(visible) {
+        var overlay = document.getElementById("restartOverlay");
+        document.body.classList.toggle("restarting", !!visible);
+        if (overlay) {
+          overlay.classList.toggle("active", !!visible);
+        }
+      }
+
       function setRestartScheduleStatus(message, type) {
         var el = document.getElementById("restartScheduleStatus");
         if (!el) return;
@@ -6891,10 +7012,9 @@
       }
 
       function startRestartProgress(seconds) {
-        var wrap = document.getElementById("restartProgressWrap");
-        var bar = document.getElementById("restartProgressBar");
-        var label = document.getElementById("restartProgressLabel");
-        if (!wrap || !bar || !label) {
+        var bar = document.getElementById("restartOverlayProgressBar");
+        var label = document.getElementById("restartOverlayProgressLabel");
+        if (!bar || !label) {
           window.setTimeout(function () {
             window.location.reload();
           }, 45000);
@@ -6908,7 +7028,7 @@
 
         var total = Math.max(1, parseInt(seconds, 10) || 45);
         var remaining = total;
-        wrap.style.display = "block";
+        setRestartOverlayVisible(true);
 
         function renderProgress() {
           var elapsed = total - remaining;
@@ -7012,7 +7132,7 @@
           "Enter admin credentials to cancel restart schedule",
           function (data, adminUser, adminPass) {
             apiPost(
-              "/api/admin/restart-schedule/cancel",
+              "/api/admin/restart-schedule",
               appendAdminCredentials("cancel=1", adminUser, adminPass),
             )
               .then(function (d) {
