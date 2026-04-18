@@ -3,6 +3,7 @@
 #include <WiFiManager.h>
 #include <ESPAsyncWebServer.h>
 #include <HTTPClient.h>
+#include <FirebaseClient.h> // from mobizt
 #include <Wire.h>
 #include <SPI.h>
 #include <EEPROM.h>
@@ -132,6 +133,10 @@ int lastCheckedMinute = -1;
 // Restart flag
 bool restartFlag = false;
 unsigned long restartAt = 0;
+bool restartScheduleEnabled = false;
+int restartScheduleMinute = -1;
+uint8_t restartScheduleDayMask = 0;
+long lastRestartScheduleStamp = -1;
 bool forgetWifiFlag = false;
 unsigned long forgetWifiAt = 0;
 bool coreRoutesOnly = false;
@@ -173,6 +178,28 @@ void parseTZ()
     m = tzStr.substring(c + 1).toInt();
   }
   gmtOff = sign * (h * 3600L + m * 60L);
+}
+
+void loadTimeSettingsFromAdminStorage()
+{
+  prefs.begin("admin", true);
+  String storedNtp = prefs.getString("ntp", ntpSrv);
+  String storedTz = prefs.getString("tz", tzStr);
+  prefs.end();
+
+  storedNtp.trim();
+  if (!storedNtp.isEmpty())
+  {
+    ntpSrv = storedNtp;
+  }
+
+  storedTz.trim();
+  if (!storedTz.isEmpty())
+  {
+    tzStr = storedTz;
+  }
+
+  parseTZ();
 }
 
 //  LOAD ALL SETTINGS FROM NVS
@@ -496,6 +523,9 @@ void loadAdminSettings()
   String storedDeviceName;
   String storedPrimaryAdminId;
   String storedPrimaryAdminPass;
+  bool loadedRestartScheduleEnabled = false;
+  int loadedRestartScheduleMinute = -1;
+  uint8_t loadedRestartScheduleDayMask = 0;
   uint8_t loadedPriority[AUTOMATION_SOURCE_COUNT];
   prefs.begin("admin", true);
   ntpSrv = prefs.getString("ntp", "pool.ntp.org");
@@ -505,6 +535,9 @@ void loadAdminSettings()
   storedDeviceName = prefs.getString("devname", "");
   storedPrimaryAdminId = prefs.getString("puid", String(PRIMARY_ADMIN_ID));
   storedPrimaryAdminPass = prefs.getString("ppass", String(PRIMARY_ADMIN_PASS));
+  loadedRestartScheduleEnabled = prefs.getBool("rsEn", false);
+  loadedRestartScheduleMinute = prefs.getInt("rsMin", -1);
+  loadedRestartScheduleDayMask = (uint8_t)prefs.getUInt("rsMask", 0);
   for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++)
   {
     loadedPriority[i] = (uint8_t)prefs.getInt(("pr" + String(i)).c_str(), i);
@@ -571,6 +604,23 @@ void loadAdminSettings()
     }
     prefs.end();
   }
+
+  if (loadedRestartScheduleEnabled &&
+      loadedRestartScheduleMinute >= 0 &&
+      loadedRestartScheduleMinute <= 1439 &&
+      loadedRestartScheduleDayMask != 0)
+  {
+    restartScheduleEnabled = true;
+    restartScheduleMinute = loadedRestartScheduleMinute;
+    restartScheduleDayMask = loadedRestartScheduleDayMask;
+  }
+  else
+  {
+    restartScheduleEnabled = false;
+    restartScheduleMinute = -1;
+    restartScheduleDayMask = 0;
+  }
+  lastRestartScheduleStamp = -1;
 
   locOk = (geoLat != 0.0 || geoLon != 0.0);
   parseTZ();
@@ -1055,6 +1105,8 @@ bool syncTime()
 {
   if (WiFi.status() != WL_CONNECTED)
     return false;
+
+  loadTimeSettingsFromAdminStorage();
   configTime(gmtOff, 0, ntpSrv.c_str());
   struct tm ti;
   for (int i = 0; i < 10; i++)
@@ -1118,6 +1170,35 @@ int parseClockMinutes(const String &timeText)
     return -1;
 
   return hours * 60 + mins;
+}
+
+String formatClockFromMinutes(int totalMinutes)
+{
+  if (totalMinutes < 0 || totalMinutes > 1439)
+    return "";
+
+  char buf[6];
+  sprintf(buf, "%02d:%02d", totalMinutes / 60, totalMinutes % 60);
+  return String(buf);
+}
+
+int weekdayIndexFromText(String dayText)
+{
+  dayText.trim();
+  dayText.toLowerCase();
+  if (dayText.length() >= 3)
+  {
+    dayText = dayText.substring(0, 3);
+  }
+
+  const char *days[] = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
+  for (int i = 0; i < 7; i++)
+  {
+    if (dayText == days[i])
+      return i;
+  }
+
+  return -1;
 }
 
 String getScheduleActionValue(JsonObject obj, const char *defaultValue = "on")
@@ -1462,6 +1543,35 @@ void checkSchedules()
     }
     prefs.end();
   }
+}
+
+void checkRestartSchedule()
+{
+  if (!restartScheduleEnabled || restartScheduleMinute < 0 || restartScheduleMinute > 1439 || restartScheduleDayMask == 0)
+    return;
+  if (!timeSynced)
+    return;
+
+  struct tm ti;
+  if (!getLocalTime(&ti))
+    return;
+  if (ti.tm_wday < 0 || ti.tm_wday > 6)
+    return;
+  if ((restartScheduleDayMask & (1 << ti.tm_wday)) == 0)
+    return;
+
+  int curMin = ti.tm_hour * 60 + ti.tm_min;
+  if (curMin != restartScheduleMinute)
+    return;
+
+  long stamp = (long)(ti.tm_year + 1900) * 1000000L + (long)ti.tm_yday * 1440L + curMin;
+  if (stamp == lastRestartScheduleStamp)
+    return;
+
+  lastRestartScheduleStamp = stamp;
+  Serial.printf("[RESTART] Scheduled restart at %02d:%02d (wday=%d)\n", ti.tm_hour, ti.tm_min, ti.tm_wday);
+  restartFlag = true;
+  restartAt = millis() + 500;
 }
 
 //  SENSOR AUTOMATION CHECK (loop)
@@ -2894,10 +3004,26 @@ void setupWebServer()
 
     server.on("/api/admin/time/sync", HTTP_POST, [](AsyncWebServerRequest *req)
               {
-      if (syncTime())
-        req->send(200, "application/json", "{\"ok\":true}");
-      else
-        req->send(400, "application/json", "{\"error\":\"Time sync failed. Check WiFi and NTP server.\"}"); });
+      if (!syncTime()) {
+        req->send(400, "application/json", "{\"error\":\"Time sync failed. Check WiFi and NTP server.\"}");
+        return;
+      }
+
+      struct tm ti;
+      char buf[32] = "--:--:-- --/--/----";
+      if (getLocalTime(&ti)) {
+        sprintf(buf, "%02d:%02d:%02d %02d/%02d/%04d", ti.tm_hour, ti.tm_min, ti.tm_sec,
+                ti.tm_mday, ti.tm_mon + 1, ti.tm_year + 1900);
+      }
+
+      DynamicJsonDocument d(512);
+      d["ok"] = true;
+      d["time"] = String(buf);
+      d["ntp"] = ntpSrv;
+      d["tz"] = tzStr;
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r); });
 
     server.on("/api/admin/time/current", HTTP_GET, [](AsyncWebServerRequest *req)
               {
@@ -2938,6 +3064,115 @@ void setupWebServer()
       notifyStorage();
       calcSunriseSunset();
       req->send(200, "application/json", "{\"ok\":true}"); });
+
+    server.on("/api/admin/restart-schedule", HTTP_GET, [](AsyncWebServerRequest *req)
+              {
+      DynamicJsonDocument d(512);
+      d["enabled"] = restartScheduleEnabled;
+      d["time"] = restartScheduleEnabled ? formatClockFromMinutes(restartScheduleMinute) : "";
+      JsonArray days = d["days"].to<JsonArray>();
+      const char *dayKeys[] = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
+      for (int i = 0; i < 7; i++) {
+        if (restartScheduleDayMask & (1 << i)) {
+          days.add(dayKeys[i]);
+        }
+      }
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r); });
+
+    server.on("/api/admin/restart-schedule", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("data", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing data\"}");
+        return;
+      }
+      if (!requireAdminVerification(req)) {
+        return;
+      }
+
+      String raw = req->getParam("data", true)->value();
+      DynamicJsonDocument doc(1024);
+      if (deserializeJson(doc, raw)) {
+        req->send(400, "application/json", "{\"error\":\"Invalid restart schedule data\"}");
+        return;
+      }
+
+      JsonObject payload = doc.as<JsonObject>();
+      if (payload.isNull()) {
+        req->send(400, "application/json", "{\"error\":\"Restart schedule must be an object\"}");
+        return;
+      }
+
+      int scheduleMinute = parseClockMinutes(payload["time"].as<String>());
+      if (scheduleMinute < 0) {
+        req->send(400, "application/json", "{\"error\":\"Restart schedule time must be HH:MM\"}");
+        return;
+      }
+
+      JsonArray selectedDays = payload["days"].as<JsonArray>();
+      if (selectedDays.isNull() || selectedDays.size() == 0) {
+        req->send(400, "application/json", "{\"error\":\"Select at least one weekday\"}");
+        return;
+      }
+
+      uint8_t dayMask = 0;
+      for (JsonVariant day : selectedDays) {
+        int idx = weekdayIndexFromText(day.as<String>());
+        if (idx < 0) {
+          req->send(400, "application/json", "{\"error\":\"Restart schedule has invalid weekday\"}");
+          return;
+        }
+        dayMask |= (uint8_t)(1 << idx);
+      }
+
+      restartScheduleEnabled = true;
+      restartScheduleMinute = scheduleMinute;
+      restartScheduleDayMask = dayMask;
+      lastRestartScheduleStamp = -1;
+
+      prefs.begin("admin", false);
+      prefs.putBool("rsEn", restartScheduleEnabled);
+      prefs.putInt("rsMin", restartScheduleMinute);
+      prefs.putUInt("rsMask", restartScheduleDayMask);
+      prefs.end();
+
+      notifyStorage();
+
+      DynamicJsonDocument response(512);
+      response["ok"] = true;
+      response["enabled"] = true;
+      response["time"] = formatClockFromMinutes(restartScheduleMinute);
+      JsonArray outDays = response["days"].to<JsonArray>();
+      const char *dayKeys[] = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
+      for (int i = 0; i < 7; i++) {
+        if (restartScheduleDayMask & (1 << i)) {
+          outDays.add(dayKeys[i]);
+        }
+      }
+      String r;
+      serializeJson(response, r);
+      req->send(200, "application/json", r); });
+
+    server.on("/api/admin/restart-schedule/cancel", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!requireAdminVerification(req)) {
+        return;
+      }
+
+      restartScheduleEnabled = false;
+      restartScheduleMinute = -1;
+      restartScheduleDayMask = 0;
+      lastRestartScheduleStamp = -1;
+
+      prefs.begin("admin", false);
+      prefs.remove("rsEn");
+      prefs.remove("rsMin");
+      prefs.remove("rsMask");
+      prefs.end();
+
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Restart schedule cancelled\"}"); });
 
     server.on("/api/admin/restart", HTTP_POST, [](AsyncWebServerRequest *req)
               {
@@ -3205,6 +3440,7 @@ void loop()
     lastSchedCheck = now;
     checkSchedules();
     calcSunriseSunset();
+    checkRestartSchedule();
   }
 
   // Sensor checks (every 30s)

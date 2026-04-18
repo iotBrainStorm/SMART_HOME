@@ -236,6 +236,35 @@
         border-bottom: 1px solid rgba(255, 255, 255, 0.06);
       }
 
+      .panel-title.with-action {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .cfg-icon-btn {
+        width: 32px;
+        height: 32px;
+        border: 1px solid rgba(37, 99, 235, 0.35);
+        border-radius: 9px;
+        background: rgba(37, 99, 235, 0.14);
+        color: #60a5fa;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+
+      .cfg-icon-btn svg {
+        width: 16px;
+        height: 16px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+      }
+
       /* ── Setting Row ── */
       .setting-row {
         background: rgba(255, 255, 255, 0.04);
@@ -460,6 +489,33 @@
       .cfg-btn-danger {
         background: rgba(239, 68, 68, 0.15);
         color: #f87171;
+      }
+
+      .restart-progress-wrap {
+        display: none;
+        margin-bottom: 12px;
+      }
+
+      .restart-progress-track {
+        width: 100%;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .restart-progress-bar {
+        width: 0%;
+        height: 100%;
+        background: linear-gradient(90deg, #2563eb, #60a5fa);
+        transition: width 1s linear;
+      }
+
+      .restart-progress-label {
+        margin-top: 8px;
+        font-size: 0.78rem;
+        color: #93c5fd;
       }
 
       /* ── Action Row ── */
@@ -2840,7 +2896,24 @@
 
         <!-- Schedule Priority -->
         <div class="panel" id="panel-admin-schedule-priority">
-          <div class="panel-title">Schedule Priority</div>
+          <div class="panel-title with-action">
+            <span>Schedule Priority</span>
+            <button
+              class="cfg-icon-btn"
+              type="button"
+              onclick="restoreDefaultSchedulePriority()"
+              title="Restore default priority order"
+              aria-label="Restore default priority order"
+            >
+              <svg viewBox="0 0 24 24">
+                <path d="M1 4v6h6" />
+                <path d="M23 20v-6h-6" />
+                <path
+                  d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"
+                />
+              </svg>
+            </button>
+          </div>
           <div class="info-box">
             Set the automation priority order used when two or more automations
             conflict on the same GPIO at the same time. Saving requires admin
@@ -3057,6 +3130,26 @@
             class="setting-row"
             style="flex-direction: column; align-items: flex-start; gap: 10px"
           >
+            <div class="setting-label">Current Device Time</div>
+            <div
+              id="currentDeviceTime"
+              style="
+                font-size: 1.1rem;
+                color: #60a5fa;
+                font-family: monospace;
+                padding: 12px 16px;
+                background: rgba(255, 255, 255, 0.04);
+                border-radius: 10px;
+                width: fit-content;
+              "
+            >
+              --:--:-- --/--/----
+            </div>
+          </div>
+          <div
+            class="setting-row"
+            style="flex-direction: column; align-items: flex-start; gap: 10px"
+          >
             <div class="setting-label">NTP Server</div>
             <input
               class="cfg-input"
@@ -3120,26 +3213,6 @@
               <option value="+11:00">(UTC+11:00) Solomon Islands</option>
               <option value="+12:00">(UTC+12:00) Auckland, Fiji</option>
             </select>
-          </div>
-          <div
-            class="setting-row"
-            style="flex-direction: column; align-items: flex-start; gap: 10px"
-          >
-            <div class="setting-label">Current Device Time</div>
-            <div
-              id="currentDeviceTime"
-              style="
-                font-size: 1.1rem;
-                color: #60a5fa;
-                font-family: monospace;
-                padding: 12px 16px;
-                background: rgba(255, 255, 255, 0.04);
-                border-radius: 10px;
-                width: fit-content;
-              "
-            >
-              --:--:-- --/--/----
-            </div>
           </div>
           <div style="margin-top: 16px; text-align: right">
             <button
@@ -3219,30 +3292,6 @@
             "
           >
             <button
-              class="cfg-btn cfg-btn-secondary"
-              onclick="autoDetectLocation()"
-              style="display: inline-flex; align-items: center; gap: 6px"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                style="
-                  width: 16px;
-                  height: 16px;
-                  fill: none;
-                  stroke: currentColor;
-                  stroke-width: 2;
-                "
-              >
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="2" x2="12" y2="6" />
-                <line x1="12" y1="18" x2="12" y2="22" />
-                <line x1="2" y1="12" x2="6" y2="12" />
-                <line x1="18" y1="12" x2="22" y2="12" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-              Auto-Detect Location
-            </button>
-            <button
               class="cfg-btn cfg-btn-primary"
               onclick="saveLocationSettings()"
             >
@@ -3295,6 +3344,74 @@
                 Restart Device
               </span>
             </button>
+          </div>
+          <div id="restartProgressWrap" class="restart-progress-wrap">
+            <div class="restart-progress-track">
+              <div id="restartProgressBar" class="restart-progress-bar"></div>
+            </div>
+            <div id="restartProgressLabel" class="restart-progress-label">
+              Restarting device...
+            </div>
+          </div>
+          <div
+            class="setting-row"
+            style="flex-direction: column; align-items: flex-start; gap: 12px"
+          >
+            <div class="setting-info">
+              <div class="setting-label">Automatic Restart</div>
+              <div class="setting-sub">
+                Configure weekly automatic restart time and selected weekdays.
+              </div>
+            </div>
+            <div
+              style="
+                width: 100%;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+              "
+            >
+              <div class="setting-label">Time</div>
+              <input
+                class="cfg-input"
+                type="time"
+                id="restartScheduleTime"
+                style="max-width: 180px; font-family: monospace"
+              />
+              <div class="setting-label">Week Days</div>
+              <div class="day-pills" id="restartScheduleDays">
+                <span class="day-pill" data-day="sun">Sun</span>
+                <span class="day-pill" data-day="mon">Mon</span>
+                <span class="day-pill" data-day="tue">Tue</span>
+                <span class="day-pill" data-day="wed">Wed</span>
+                <span class="day-pill" data-day="thu">Thu</span>
+                <span class="day-pill" data-day="fri">Fri</span>
+                <span class="day-pill" data-day="sat">Sat</span>
+              </div>
+            </div>
+            <div
+              style="
+                width: 100%;
+                display: flex;
+                gap: 10px;
+                justify-content: flex-end;
+                flex-wrap: wrap;
+              "
+            >
+              <button
+                class="cfg-btn cfg-btn-primary"
+                onclick="saveRestartSchedule()"
+              >
+                Restart Schedule
+              </button>
+              <button
+                class="cfg-btn cfg-btn-danger"
+                onclick="cancelRestartSchedule()"
+              >
+                Cancel
+              </button>
+            </div>
+            <div id="restartScheduleStatus" class="setting-sub"></div>
           </div>
         </div>
       </div>
@@ -5961,6 +6078,14 @@
           .catch(function () {});
       }
 
+      function restoreDefaultSchedulePriority() {
+        setPriorityOrderInUi(DEFAULT_AUTOMATION_PRIORITY_ORDER);
+        setPriorityValidationMessage(
+          "Default order restored. Click Save Priority Order to apply.",
+          false,
+        );
+      }
+
       function saveSchedulePrioritySettings() {
         var order = getPriorityOrderFromUi();
         if (!order) {
@@ -6370,26 +6495,19 @@
       /* ══════════════════════════════════════════════════════════════
          TIME SETUP
       ══════════════════════════════════════════════════════════════ */
-      function updateDeviceTime() {
-        var now = new Date();
-        var timeStr = now.toLocaleTimeString("en-US", { hour12: false });
-        var dateStr = now.toLocaleDateString("en-GB");
+      function setCurrentDeviceTimeDisplay(timeText) {
         var display = document.getElementById("currentDeviceTime");
         if (display) {
-          display.textContent = timeStr + " " + dateStr;
+          display.textContent = timeText || "--:--:-- --/--/----";
         }
       }
-
-      // Update device time every second
-      setInterval(updateDeviceTime, 1000);
-      updateDeviceTime();
 
       function syncTimeNow() {
         apiPost("/api/admin/time/sync", "")
           .then(function (d) {
             if (d.ok) {
+              setCurrentDeviceTimeDisplay(d.time);
               alert("Time synchronized successfully!");
-              fetchDeviceTime();
             } else {
               alert(d.error || "Time sync failed");
             }
@@ -6424,54 +6542,6 @@
       /* ══════════════════════════════════════════════════════════════
          LOCATION SETUP
       ══════════════════════════════════════════════════════════════ */
-      function autoDetectLocation() {
-        var statusDiv = document.getElementById("locationStatus");
-        statusDiv.innerHTML =
-          '<div class="info-box" style="background: rgba(37, 99, 235, 0.15);">Detecting location... Please wait.</div>';
-
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            function (position) {
-              var lat = position.coords.latitude.toFixed(6);
-              var lon = position.coords.longitude.toFixed(6);
-
-              document.getElementById("locationLat").value = lat;
-              document.getElementById("locationLon").value = lon;
-
-              statusDiv.innerHTML =
-                '<div class="schedule-success">Location detected successfully!</div>';
-              updateLocationDisplay(lat, lon);
-            },
-            function (error) {
-              var errorMsg = "Unable to detect location: ";
-              switch (error.code) {
-                case error.PERMISSION_DENIED:
-                  errorMsg += "Location permission denied by user.";
-                  break;
-                case error.POSITION_UNAVAILABLE:
-                  errorMsg += "Location information unavailable.";
-                  break;
-                case error.TIMEOUT:
-                  errorMsg += "Location request timed out.";
-                  break;
-                default:
-                  errorMsg += "Unknown error occurred.";
-              }
-              statusDiv.innerHTML =
-                '<div class="schedule-error">' + errorMsg + "</div>";
-            },
-            {
-              enableHighAccuracy: true,
-              timeout: 10000,
-              maximumAge: 0,
-            },
-          );
-        } else {
-          statusDiv.innerHTML =
-            '<div class="schedule-error">Geolocation is not supported by this browser.</div>';
-        }
-      }
-
       function updateLocationDisplay(lat, lon) {
         var display = document.getElementById("currentLocationDisplay");
         if (lat && lon) {
@@ -6700,6 +6770,170 @@
       /* ══════════════════════════════════════════════════════════════
          RESTART DEVICE
       ══════════════════════════════════════════════════════════════ */
+      var restartProgressTimer = null;
+      var RESTART_SCHEDULE_DAYS = [
+        "sun",
+        "mon",
+        "tue",
+        "wed",
+        "thu",
+        "fri",
+        "sat",
+      ];
+
+      function setRestartScheduleStatus(message, type) {
+        var el = document.getElementById("restartScheduleStatus");
+        if (!el) return;
+        el.textContent = message || "";
+        if (type === "error") {
+          el.style.color = "#f87171";
+        } else if (type === "success") {
+          el.style.color = "#86efac";
+        } else {
+          el.style.color = "#94a3b8";
+        }
+      }
+
+      function setRestartScheduleUi(schedule) {
+        var timeInput = document.getElementById("restartScheduleTime");
+        if (timeInput) {
+          timeInput.value = schedule && schedule.time ? schedule.time : "";
+        }
+
+        var daySet = {};
+        if (schedule && Array.isArray(schedule.days)) {
+          schedule.days.forEach(function (day) {
+            daySet[
+              String(day || "")
+                .trim()
+                .toLowerCase()
+            ] = true;
+          });
+        }
+
+        document
+          .querySelectorAll("#restartScheduleDays .day-pill")
+          .forEach(function (pill) {
+            var day = String(pill.getAttribute("data-day") || "")
+              .trim()
+              .toLowerCase();
+            pill.classList.toggle("active", !!daySet[day]);
+          });
+      }
+
+      function getRestartScheduleFromUi() {
+        var timeInput = document.getElementById("restartScheduleTime");
+        var timeValue = timeInput ? String(timeInput.value || "").trim() : "";
+        if (!timeValue) {
+          setRestartScheduleStatus("Please select restart time.", "error");
+          return null;
+        }
+
+        var selectedDays = [];
+        document
+          .querySelectorAll("#restartScheduleDays .day-pill.active")
+          .forEach(function (pill) {
+            var day = String(pill.getAttribute("data-day") || "")
+              .trim()
+              .toLowerCase();
+            if (RESTART_SCHEDULE_DAYS.indexOf(day) >= 0) {
+              selectedDays.push(day);
+            }
+          });
+
+        if (!selectedDays.length) {
+          setRestartScheduleStatus(
+            "Select at least one week day for restart schedule.",
+            "error",
+          );
+          return null;
+        }
+
+        return {
+          time: timeValue,
+          days: selectedDays,
+        };
+      }
+
+      function loadRestartScheduleSettings() {
+        apiGet("/api/admin/restart-schedule")
+          .then(function (d) {
+            if (d && d.enabled) {
+              setRestartScheduleUi(d);
+              var daysText = Array.isArray(d.days)
+                ? d.days
+                    .map(function (day) {
+                      var key = String(day || "")
+                        .trim()
+                        .toLowerCase();
+                      return key.charAt(0).toUpperCase() + key.slice(1, 3);
+                    })
+                    .join(", ")
+                : "";
+              setRestartScheduleStatus(
+                "Active: " + (d.time || "--:--") + " on " + daysText,
+                "success",
+              );
+            } else {
+              setRestartScheduleUi(null);
+              setRestartScheduleStatus(
+                "No automatic restart schedule configured.",
+                "info",
+              );
+            }
+          })
+          .catch(function () {
+            setRestartScheduleStatus(
+              "Unable to load restart schedule settings.",
+              "error",
+            );
+          });
+      }
+
+      function startRestartProgress(seconds) {
+        var wrap = document.getElementById("restartProgressWrap");
+        var bar = document.getElementById("restartProgressBar");
+        var label = document.getElementById("restartProgressLabel");
+        if (!wrap || !bar || !label) {
+          window.setTimeout(function () {
+            window.location.reload();
+          }, 45000);
+          return;
+        }
+
+        if (restartProgressTimer) {
+          clearInterval(restartProgressTimer);
+          restartProgressTimer = null;
+        }
+
+        var total = Math.max(1, parseInt(seconds, 10) || 45);
+        var remaining = total;
+        wrap.style.display = "block";
+
+        function renderProgress() {
+          var elapsed = total - remaining;
+          var percent = Math.min(100, Math.max(0, (elapsed / total) * 100));
+          bar.style.width = percent + "%";
+          label.textContent =
+            remaining > 0
+              ? "Restart in progress... " + remaining + "s remaining"
+              : "Reloading page...";
+        }
+
+        renderProgress();
+        restartProgressTimer = setInterval(function () {
+          remaining -= 1;
+          if (remaining <= 0) {
+            renderProgress();
+            clearInterval(restartProgressTimer);
+            restartProgressTimer = null;
+            window.location.reload();
+            return;
+          }
+          renderProgress();
+        }, 1000);
+      }
+
       function confirmRestart() {
         if (
           confirm(
@@ -6718,10 +6952,7 @@
               )
                 .then(function (d) {
                   if (d.ok) {
-                    alert(
-                      d.msg ||
-                        "Restarting device... Please wait and refresh the page.",
-                    );
+                    startRestartProgress(45);
                   } else {
                     alert(d.error || "Restart failed");
                   }
@@ -6734,16 +6965,72 @@
         }
       }
 
-      /* ══════════════════════════════════════════════════════════════
-         FETCH DEVICE TIME FROM ESP32
-      ══════════════════════════════════════════════════════════════ */
-      function fetchDeviceTime() {
-        apiGet("/api/admin/time/current")
-          .then(function (d) {
-            var display = document.getElementById("currentDeviceTime");
-            if (display && d.time) display.textContent = d.time;
-          })
-          .catch(function () {});
+      function saveRestartSchedule() {
+        var schedule = getRestartScheduleFromUi();
+        if (!schedule) {
+          return;
+        }
+
+        showPasswordModal(
+          "Enter admin credentials to save restart schedule",
+          function (data, adminUser, adminPass) {
+            apiPost(
+              "/api/admin/restart-schedule",
+              appendAdminCredentials(
+                "data=" + encodeURIComponent(JSON.stringify(schedule)),
+                adminUser,
+                adminPass,
+              ),
+            )
+              .then(function (d) {
+                if (d.ok) {
+                  setRestartScheduleUi(d);
+                  setRestartScheduleStatus(
+                    "Restart schedule saved successfully!",
+                    "success",
+                  );
+                } else {
+                  setRestartScheduleStatus(
+                    d.error || "Failed to save restart schedule",
+                    "error",
+                  );
+                }
+              })
+              .catch(function () {
+                setRestartScheduleStatus("Connection error", "error");
+              });
+          },
+        );
+      }
+
+      function cancelRestartSchedule() {
+        if (!confirm("Cancel the automatic restart schedule?")) {
+          return;
+        }
+
+        showPasswordModal(
+          "Enter admin credentials to cancel restart schedule",
+          function (data, adminUser, adminPass) {
+            apiPost(
+              "/api/admin/restart-schedule/cancel",
+              appendAdminCredentials("cancel=1", adminUser, adminPass),
+            )
+              .then(function (d) {
+                if (d.ok) {
+                  setRestartScheduleUi(null);
+                  setRestartScheduleStatus("Restart schedule removed.", "info");
+                } else {
+                  setRestartScheduleStatus(
+                    d.error || "Failed to cancel restart schedule",
+                    "error",
+                  );
+                }
+              })
+              .catch(function () {
+                setRestartScheduleStatus("Connection error", "error");
+              });
+          },
+        );
       }
 
       function renderFirebaseAuthUsers(users) {
@@ -7455,10 +7742,7 @@
         /* Load Admin device name + priority settings */
         loadDeviceNameSettings();
         loadSchedulePrioritySettings();
-
-        /* Fetch device time from ESP32 */
-        fetchDeviceTime();
-        setInterval(fetchDeviceTime, 10000);
+        loadRestartScheduleSettings();
 
         /* Load initial schedules */
         loadSchedulesForSwitch();
