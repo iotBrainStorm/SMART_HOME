@@ -969,12 +969,13 @@ bool requireBootHoldResetGesture(AsyncWebServerRequest *req)
   return false;
 }
 
-void addResetStep(JsonArray steps, const char *key, const char *label)
+void addResetStep(JsonArray steps, const char *key, const char *label, uint16_t durationMs = 420)
 {
   JsonObject item = steps.createNestedObject();
   item["key"] = key;
   item["label"] = label;
   item["ok"] = true;
+  item["ms"] = durationMs;
 }
 
 void updateBootButtonHoldState()
@@ -3511,28 +3512,28 @@ void setupWebServer()
       JsonArray steps = response["steps"].to<JsonArray>();
 
       resetSwitchNamesToDefault();
-      addResetStep(steps, "switch-names", "Switch names set to DEVICE-1, DEVICE-2, DEVICE-3, DEVICE-4");
+      addResetStep(steps, "switch-names", "Switch names set to DEVICE-1, DEVICE-2, DEVICE-3, DEVICE-4", 420);
 
       resetSwitchIconsToDefault();
-      addResetStep(steps, "switch-icons", "Switch icons set to home for all switches");
+      addResetStep(steps, "switch-icons", "Switch icons set to home for all switches", 360);
 
       clearRecurringSchedulesStorage();
-      addResetStep(steps, "schedules", "All recurring schedules cleared");
+      addResetStep(steps, "schedules", "All recurring schedules cleared", 760);
 
       clearFutureSchedulesStorage();
-      addResetStep(steps, "future-schedules", "All future schedules cleared");
+      addResetStep(steps, "future-schedules", "All future schedules cleared", 720);
 
       clearSensorControlStorage();
-      addResetStep(steps, "sensor-control", "All sensor control settings cleared");
+      addResetStep(steps, "sensor-control", "All sensor control settings cleared", 680);
 
       clearStaticIpConfiguration();
-      addResetStep(steps, "static-ip", "Static IP configuration cleared and DHCP restored");
+      addResetStep(steps, "static-ip", "Static IP configuration cleared and DHCP restored", 520);
 
       resetSchedulePriorityToDefault();
-      addResetStep(steps, "schedule-priority", "Schedule priority restored to default order");
+      addResetStep(steps, "schedule-priority", "Schedule priority restored to default order", 540);
 
       resetLocationToDefault();
-      addResetStep(steps, "location", "Latitude and longitude reset to London defaults");
+      addResetStep(steps, "location", "Latitude and longitude reset to London defaults", 600);
 
       notifyStorage();
 
@@ -3560,19 +3561,19 @@ void setupWebServer()
       JsonArray steps = response["steps"].to<JsonArray>();
 
       resetRelayStatesToDefault();
-      addResetStep(steps, "relay-states", "Relay startup state restored to Output OFF for all switches");
+      addResetStep(steps, "relay-states", "Relay startup state restored to Output OFF for all switches", 640);
 
       disableFirebaseOnly();
-      addResetStep(steps, "firebase-toggle", "Firebase disabled");
+      addResetStep(steps, "firebase-toggle", "Firebase disabled", 380);
 
       resetDeviceNameToDefault();
-      addResetStep(steps, "device-name", "Device name reset to MAC-based default");
+      addResetStep(steps, "device-name", "Device name reset to MAC-based default", 450);
 
       resetNtpServerToDefault();
-      addResetStep(steps, "ntp", "NTP server reset to pool.ntp.org");
+      addResetStep(steps, "ntp", "NTP server reset to pool.ntp.org", 430);
 
       resetTimezoneToDefault();
-      addResetStep(steps, "timezone", "Time zone reset to +00:00 (London)");
+      addResetStep(steps, "timezone", "Time zone reset to +00:00 (London)", 520);
 
       notifyStorage();
 
@@ -3607,30 +3608,30 @@ void setupWebServer()
       clearStaticIpConfiguration();
       resetSchedulePriorityToDefault();
       resetLocationToDefault();
-      addResetStep(steps, "reset-storage", "Reset Storage applied");
+      addResetStep(steps, "reset-storage", "Reset Storage applied", 980);
 
       resetRelayStatesToDefault();
       disableFirebaseOnly();
       resetDeviceNameToDefault();
       resetNtpServerToDefault();
       resetTimezoneToDefault();
-      addResetStep(steps, "reset-settings", "Reset Settings applied");
+      addResetStep(steps, "reset-settings", "Reset Settings applied", 760);
 
       clearWifiCredentialsOnly();
-      addResetStep(steps, "wifi-credentials", "WiFi credentials cleared");
+      addResetStep(steps, "wifi-credentials", "WiFi credentials cleared", 520);
 
       clearFirebaseCredentialsOnly();
-      addResetStep(steps, "firebase-credentials", "Firebase credentials cleared");
+      addResetStep(steps, "firebase-credentials", "Firebase credentials cleared", 560);
 
       resetFirebaseRulesToDefault();
-      addResetStep(steps, "firebase-rules", "Database rules reset to default template");
+      addResetStep(steps, "firebase-rules", "Database rules reset to default template", 620);
 
       clearFirebaseUsersOnly();
-      addResetStep(steps, "firebase-users", "Firebase users cleared");
+      addResetStep(steps, "firebase-users", "Firebase users cleared", 700);
 
       resetUsersToSingleDefaultAdmin();
-      addResetStep(steps, "default-admin", "Default admin user restored to esp / 456456");
-      addResetStep(steps, "normal-users", "All normal users cleared");
+      addResetStep(steps, "default-admin", "Default admin user restored to esp / 456456", 650);
+      addResetStep(steps, "normal-users", "All normal users cleared", 580);
 
       WiFi.disconnect(true, true);
       notifyStorage();

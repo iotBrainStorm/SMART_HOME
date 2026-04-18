@@ -6299,6 +6299,35 @@
       ══════════════════════════════════════════════════════════════ */
       var resetBootHoldCountdownTimer = null;
       var resetBootHoldRequestTimer = null;
+      var RESET_STEP_MS_FALLBACK = {
+        storage: {
+          "switch-names": 420,
+          "switch-icons": 360,
+          schedules: 760,
+          "future-schedules": 720,
+          "sensor-control": 680,
+          "static-ip": 520,
+          "schedule-priority": 540,
+          location: 600,
+        },
+        settings: {
+          "relay-states": 640,
+          "firebase-toggle": 380,
+          "device-name": 450,
+          ntp: 430,
+          timezone: 520,
+        },
+        factory: {
+          "reset-storage": 980,
+          "reset-settings": 760,
+          "wifi-credentials": 520,
+          "firebase-credentials": 560,
+          "firebase-rules": 620,
+          "firebase-users": 700,
+          "default-admin": 650,
+          "normal-users": 580,
+        },
+      };
       var RESET_ACTION_CONFIG = {
         storage: {
           title: "Reset Storage",
@@ -6332,6 +6361,25 @@
           return null;
         }
         return document.getElementById(config.runtimeId);
+      }
+
+      function getResetStepDurationMs(actionType, step) {
+        var stepObj = step || {};
+        var fromPayload = parseInt(stepObj.ms, 10);
+        if (isFinite(fromPayload) && fromPayload >= 180) {
+          return fromPayload;
+        }
+
+        var key = String(stepObj.key || "")
+          .trim()
+          .toLowerCase();
+        var actionMap = RESET_STEP_MS_FALLBACK[actionType] || {};
+        var fromMap = parseInt(actionMap[key], 10);
+        if (isFinite(fromMap) && fromMap >= 180) {
+          return fromMap;
+        }
+
+        return 420;
       }
 
       function clearResetBootHoldTimers() {
@@ -6395,8 +6443,10 @@
         var itemEls = [];
 
         normalizedSteps.forEach(function (step) {
+          var stepDelayMs = getResetStepDurationMs(actionType, step);
           var item = document.createElement("li");
           item.className = "reset-check-item pending";
+          item.setAttribute("data-delay-ms", String(stepDelayMs));
 
           var icon = document.createElement("span");
           icon.className = "reset-check-icon";
@@ -6408,7 +6458,7 @@
 
           var status = document.createElement("span");
           status.className = "reset-check-status";
-          status.textContent = "Pending";
+          status.textContent = stepDelayMs + " ms";
 
           item.appendChild(icon);
           item.appendChild(label);
@@ -6438,15 +6488,26 @@
           }
 
           var item = view.items[idx];
-          item.classList.remove("pending");
-          item.classList.add("done");
-          var status = item.querySelector(".reset-check-status");
-          if (status) {
-            status.textContent = "Cleared";
+          var delayMs = parseInt(item.getAttribute("data-delay-ms"), 10);
+          if (!isFinite(delayMs) || delayMs < 180) {
+            delayMs = 420;
           }
 
-          idx += 1;
-          window.setTimeout(markNext, 380);
+          var status = item.querySelector(".reset-check-status");
+          if (status) {
+            status.textContent = "Clearing... " + delayMs + " ms";
+          }
+
+          window.setTimeout(function () {
+            item.classList.remove("pending");
+            item.classList.add("done");
+            if (status) {
+              status.textContent = "Cleared (" + delayMs + " ms)";
+            }
+
+            idx += 1;
+            markNext();
+          }, delayMs);
         }
 
         markNext();
