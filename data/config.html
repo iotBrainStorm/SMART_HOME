@@ -6447,7 +6447,7 @@
 
           var status = document.createElement("span");
           status.className = "reset-check-status";
-          status.textContent = stepDelayMs + " ms";
+          status.textContent = "Pending...";
 
           item.appendChild(icon);
           item.appendChild(label);
@@ -6484,14 +6484,14 @@
 
           var status = item.querySelector(".reset-check-status");
           if (status) {
-            status.textContent = "Clearing... " + delayMs + " ms";
+            status.textContent = "Clearing...";
           }
 
           window.setTimeout(function () {
             item.classList.remove("pending");
             item.classList.add("done");
             if (status) {
-              status.textContent = "Cleared (" + delayMs + " ms)";
+              status.textContent = "Cleared!";
             }
 
             idx += 1;
@@ -6574,7 +6574,7 @@
 
               var onChecklistComplete = function () {
                 if (view && view.messageEl) {
-                  view.messageEl.textContent = "all done";
+                  view.messageEl.textContent = "Cleared!";
                   view.messageEl.style.color = "#86efac";
                 }
 
@@ -6591,31 +6591,7 @@
                 }, finalGapMs);
               };
 
-              if (
-                actionType === "factory" &&
-                view &&
-                Array.isArray(view.items) &&
-                view.items.length
-              ) {
-                view.items.forEach(function (item) {
-                  item.classList.remove("pending");
-                  item.classList.add("done");
-                  var status = item.querySelector(".reset-check-status");
-                  var delayMs = parseInt(
-                    item.getAttribute("data-delay-ms"),
-                    10,
-                  );
-                  if (!isFinite(delayMs) || delayMs < 180) {
-                    delayMs = stepGapMs;
-                  }
-                  if (status) {
-                    status.textContent = "Cleared (" + delayMs + " ms)";
-                  }
-                });
-                onChecklistComplete();
-              } else {
-                animateResetChecklist(view, onChecklistComplete);
-              }
+              animateResetChecklist(view, onChecklistComplete);
             })
             .catch(function () {
               showResetRuntimeMessage(actionType, "Connection error", "error");

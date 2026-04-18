@@ -167,7 +167,8 @@ const unsigned long BOOT_HOLD_READY_WINDOW_MS = 15000;
 const unsigned long RESET_CHECKPOINT_GAP_MS = 700;
 const unsigned long RESET_ALL_DONE_GAP_MS = 2000;
 const unsigned long RESET_RESTART_BUFFER_MS = 300;
-const unsigned long FACTORY_RESET_WIFI_CLEAR_DELAY_MS = 3500;
+const unsigned long FACTORY_RESET_WIFI_CLEAR_DELAY_MS = 8300;
+const unsigned long FACTORY_RESET_RESTART_DELAY_MS = 9300;
 
 unsigned long bootButtonPressedAt = 0;
 unsigned long bootHoldSatisfiedAt = 0;
@@ -3657,7 +3658,7 @@ void setupWebServer()
       factoryResetWifiClearAt = millis() + FACTORY_RESET_WIFI_CLEAR_DELAY_MS;
 
       restartFlag = true;
-      restartAt = millis() + (8UL * RESET_CHECKPOINT_GAP_MS) + RESET_ALL_DONE_GAP_MS + RESET_RESTART_BUFFER_MS; });
+      restartAt = millis() + FACTORY_RESET_RESTART_DELAY_MS; });
   }
 
   server.onNotFound([](AsyncWebServerRequest *req)
