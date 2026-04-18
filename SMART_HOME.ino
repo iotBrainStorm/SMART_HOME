@@ -162,6 +162,9 @@ const unsigned long WIFI_CONNECT_RETRY_MS = 2000;
 const unsigned long WIFI_PORTAL_RECOVERY_RESTART_MS = 200;
 const unsigned long BOOT_HOLD_RESET_MS = 5000;
 const unsigned long BOOT_HOLD_READY_WINDOW_MS = 15000;
+const unsigned long RESET_CHECKPOINT_GAP_MS = 700;
+const unsigned long RESET_ALL_DONE_GAP_MS = 2000;
+const unsigned long RESET_RESTART_BUFFER_MS = 300;
 
 unsigned long bootButtonPressedAt = 0;
 unsigned long bootHoldSatisfiedAt = 0;
@@ -971,11 +974,12 @@ bool requireBootHoldResetGesture(AsyncWebServerRequest *req)
 
 void addResetStep(JsonArray steps, const char *key, const char *label, uint16_t durationMs = 420)
 {
+  (void)durationMs;
   JsonObject item = steps.createNestedObject();
   item["key"] = key;
   item["label"] = label;
   item["ok"] = true;
-  item["ms"] = durationMs;
+  item["ms"] = RESET_CHECKPOINT_GAP_MS;
 }
 
 void updateBootButtonHoldState()
@@ -3509,6 +3513,8 @@ void setupWebServer()
       response["type"] = "storage";
       response["msg"] = "Reset Storage complete. Device restarting...";
       response["restartIn"] = 45;
+      response["stepGapMs"] = RESET_CHECKPOINT_GAP_MS;
+      response["finalGapMs"] = RESET_ALL_DONE_GAP_MS;
       JsonArray steps = response["steps"].to<JsonArray>();
 
       resetSwitchNamesToDefault();
@@ -3542,7 +3548,7 @@ void setupWebServer()
       req->send(200, "application/json", r);
 
       restartFlag = true;
-      restartAt = millis() + 1000; });
+      restartAt = millis() + (8UL * RESET_CHECKPOINT_GAP_MS) + RESET_ALL_DONE_GAP_MS + RESET_RESTART_BUFFER_MS; });
 
     server.on("/api/admin/reset/settings", HTTP_POST, [](AsyncWebServerRequest *req)
               {
@@ -3558,6 +3564,8 @@ void setupWebServer()
       response["type"] = "settings";
       response["msg"] = "Reset Settings complete. Device restarting...";
       response["restartIn"] = 45;
+      response["stepGapMs"] = RESET_CHECKPOINT_GAP_MS;
+      response["finalGapMs"] = RESET_ALL_DONE_GAP_MS;
       JsonArray steps = response["steps"].to<JsonArray>();
 
       resetRelayStatesToDefault();
@@ -3582,7 +3590,7 @@ void setupWebServer()
       req->send(200, "application/json", r);
 
       restartFlag = true;
-      restartAt = millis() + 1000; });
+      restartAt = millis() + (5UL * RESET_CHECKPOINT_GAP_MS) + RESET_ALL_DONE_GAP_MS + RESET_RESTART_BUFFER_MS; });
 
     server.on("/api/admin/reset/factory", HTTP_POST, [](AsyncWebServerRequest *req)
               {
@@ -3598,6 +3606,8 @@ void setupWebServer()
       response["type"] = "factory";
       response["msg"] = "Factory Reset complete. Device restarting...";
       response["restartIn"] = 45;
+      response["stepGapMs"] = RESET_CHECKPOINT_GAP_MS;
+      response["finalGapMs"] = RESET_ALL_DONE_GAP_MS;
       JsonArray steps = response["steps"].to<JsonArray>();
 
       resetSwitchNamesToDefault();
@@ -3641,7 +3651,7 @@ void setupWebServer()
       req->send(200, "application/json", r);
 
       restartFlag = true;
-      restartAt = millis() + 1000; });
+      restartAt = millis() + (8UL * RESET_CHECKPOINT_GAP_MS) + RESET_ALL_DONE_GAP_MS + RESET_RESTART_BUFFER_MS; });
   }
 
   server.onNotFound([](AsyncWebServerRequest *req)

@@ -1021,6 +1021,18 @@
           brightness(108%) contrast(92%);
       }
 
+      #restartScheduleTime {
+        color-scheme: dark;
+      }
+
+      @media (min-width: 900px) {
+        #restartScheduleTime::-webkit-calendar-picker-indicator {
+          opacity: 1;
+          filter: invert(90%) sepia(12%) saturate(420%) hue-rotate(176deg)
+            brightness(130%) contrast(100%);
+        }
+      }
+
       .schedule-slot-header {
         display: flex;
         justify-content: space-between;
@@ -6299,35 +6311,8 @@
       ══════════════════════════════════════════════════════════════ */
       var resetBootHoldCountdownTimer = null;
       var resetBootHoldRequestTimer = null;
-      var RESET_STEP_MS_FALLBACK = {
-        storage: {
-          "switch-names": 420,
-          "switch-icons": 360,
-          schedules: 760,
-          "future-schedules": 720,
-          "sensor-control": 680,
-          "static-ip": 520,
-          "schedule-priority": 540,
-          location: 600,
-        },
-        settings: {
-          "relay-states": 640,
-          "firebase-toggle": 380,
-          "device-name": 450,
-          ntp: 430,
-          timezone: 520,
-        },
-        factory: {
-          "reset-storage": 980,
-          "reset-settings": 760,
-          "wifi-credentials": 520,
-          "firebase-credentials": 560,
-          "firebase-rules": 620,
-          "firebase-users": 700,
-          "default-admin": 650,
-          "normal-users": 580,
-        },
-      };
+      var RESET_CHECKPOINT_GAP_MS = 700;
+      var RESET_ALL_DONE_GAP_MS = 2000;
       var RESET_ACTION_CONFIG = {
         storage: {
           title: "Reset Storage",
@@ -6361,25 +6346,6 @@
           return null;
         }
         return document.getElementById(config.runtimeId);
-      }
-
-      function getResetStepDurationMs(actionType, step) {
-        var stepObj = step || {};
-        var fromPayload = parseInt(stepObj.ms, 10);
-        if (isFinite(fromPayload) && fromPayload >= 180) {
-          return fromPayload;
-        }
-
-        var key = String(stepObj.key || "")
-          .trim()
-          .toLowerCase();
-        var actionMap = RESET_STEP_MS_FALLBACK[actionType] || {};
-        var fromMap = parseInt(actionMap[key], 10);
-        if (isFinite(fromMap) && fromMap >= 180) {
-          return fromMap;
-        }
-
-        return 420;
       }
 
       function clearResetBootHoldTimers() {
@@ -6417,7 +6383,7 @@
         container.appendChild(msg);
       }
 
-      function renderResetChecklist(actionType, steps) {
+      function renderResetChecklist(actionType, steps, stepGapMs) {
         var container = getResetRuntimeContainer(actionType);
         var config = RESET_ACTION_CONFIG[actionType];
         if (!container || !config) {
@@ -6441,9 +6407,13 @@
         var list = document.createElement("ul");
         list.className = "reset-checklist";
         var itemEls = [];
+        var perStepDelay = parseInt(stepGapMs, 10);
+        if (!isFinite(perStepDelay) || perStepDelay < 180) {
+          perStepDelay = RESET_CHECKPOINT_GAP_MS;
+        }
 
         normalizedSteps.forEach(function (step) {
-          var stepDelayMs = getResetStepDurationMs(actionType, step);
+          var stepDelayMs = perStepDelay;
           var item = document.createElement("li");
           item.className = "reset-check-item pending";
           item.setAttribute("data-delay-ms", String(stepDelayMs));
@@ -6490,7 +6460,7 @@
           var item = view.items[idx];
           var delayMs = parseInt(item.getAttribute("data-delay-ms"), 10);
           if (!isFinite(delayMs) || delayMs < 180) {
-            delayMs = 420;
+            delayMs = RESET_CHECKPOINT_GAP_MS;
           }
 
           var status = item.querySelector(".reset-check-status");
@@ -6569,16 +6539,23 @@
                 return;
               }
 
-              var view = renderResetChecklist(actionType, d.steps);
+              var stepGapMs = RESET_CHECKPOINT_GAP_MS;
+              var finalGapMs = RESET_ALL_DONE_GAP_MS;
+              var view = renderResetChecklist(actionType, d.steps, stepGapMs);
               var restartSeconds = parseInt(d.restartIn, 10) || 45;
 
               animateResetChecklist(view, function () {
                 if (view && view.messageEl) {
-                  view.messageEl.textContent =
-                    d.msg || "Reset complete. Device restarting...";
+                  view.messageEl.textContent = "all done";
                   view.messageEl.style.color = "#86efac";
                 }
-                startRestartProgress(restartSeconds);
+
+                window.setTimeout(function () {
+                  if (view && view.messageEl) {
+                    view.messageEl.textContent = d.msg || "Restarting ESP32...";
+                  }
+                  startRestartProgress(restartSeconds);
+                }, finalGapMs);
               });
             })
             .catch(function () {

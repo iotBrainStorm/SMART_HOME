@@ -969,8 +969,59 @@
         "Nov",
         "Dec",
       ];
-      function updateClock() {
+
+      var deviceTimezoneOffsetMinutes = null;
+      var deviceTimezoneLabel = "";
+
+      function parseTimezoneOffsetMinutes(tzText) {
+        var cleaned = String(tzText || "").trim();
+        var match = cleaned.match(/^([+-])(\d{2}):(\d{2})$/);
+        if (!match) {
+          return null;
+        }
+
+        var sign = match[1] === "-" ? -1 : 1;
+        var hh = parseInt(match[2], 10);
+        var mm = parseInt(match[3], 10);
+        if (!isFinite(hh) || !isFinite(mm) || hh > 14 || mm > 59) {
+          return null;
+        }
+
+        return sign * (hh * 60 + mm);
+      }
+
+      function getDeviceTimezoneDate() {
         var now = new Date();
+        if (
+          deviceTimezoneOffsetMinutes === null ||
+          !isFinite(deviceTimezoneOffsetMinutes)
+        ) {
+          return now;
+        }
+
+        var utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
+        return new Date(utcMs + deviceTimezoneOffsetMinutes * 60000);
+      }
+
+      function loadDeviceTimezone() {
+        return fetch("/api/admin/time", { cache: "no-store" })
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function (d) {
+            var tzValue = d && d.tz ? String(d.tz).trim() : "";
+            var parsedOffset = parseTimezoneOffsetMinutes(tzValue);
+            if (parsedOffset !== null) {
+              deviceTimezoneOffsetMinutes = parsedOffset;
+              deviceTimezoneLabel = tzValue;
+            }
+            updateClock();
+          })
+          .catch(function () {});
+      }
+
+      function updateClock() {
+        var now = getDeviceTimezoneDate();
         var h = String(now.getHours()).padStart(2, "0");
         var m = String(now.getMinutes()).padStart(2, "0");
         var s = String(now.getSeconds()).padStart(2, "0");
@@ -978,7 +1029,18 @@
         var mon = months[now.getMonth()];
         var y = now.getFullYear();
         document.getElementById("datetime").textContent =
-          h + ":" + m + ":" + s + "  " + d + " " + mon + " " + y;
+          h +
+          ":" +
+          m +
+          ":" +
+          s +
+          "  " +
+          d +
+          " " +
+          mon +
+          " " +
+          y +
+          (deviceTimezoneLabel ? "  " + deviceTimezoneLabel : "");
       }
 
       function normalizeIconName(iconName) {
@@ -1171,6 +1233,7 @@
               loginScreen.classList.add("hidden");
               dashboard.classList.remove("hidden");
               loginError.textContent = "";
+              loadDeviceTimezone();
               updateClock();
               loadSwitches();
             } else {
@@ -1231,6 +1294,7 @@
           }
           loginScreen.classList.add("hidden");
           dashboard.classList.remove("hidden");
+          loadDeviceTimezone();
           updateClock();
           loadSwitches();
         }
