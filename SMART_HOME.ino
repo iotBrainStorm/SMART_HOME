@@ -44,6 +44,20 @@ enum AutomationSourceType : uint8_t
 
 const int outPin[NUM_SWITCHES] = {OUTPUT_SWITCH_1, OUTPUT_SWITCH_2, OUTPUT_SWITCH_3, OUTPUT_SWITCH_4};
 const int inPin[NUM_SWITCHES] = {INPUT_SWITCH_1, INPUT_SWITCH_2, INPUT_SWITCH_3, INPUT_SWITCH_4};
+const char *DEFAULT_NTP_SERVER = "pool.ntp.org";
+const char *DEFAULT_TIME_ZONE = "+00:00";
+const float DEFAULT_LATITUDE = 51.5074f;
+const float DEFAULT_LONGITUDE = -0.1278f;
+const char *DEFAULT_SWITCH_NAMES[NUM_SWITCHES] = {
+    "DEVICE-1",
+    "DEVICE-2",
+    "DEVICE-3",
+    "DEVICE-4"};
+const char *DEFAULT_SWITCH_ICONS[NUM_SWITCHES] = {
+    "home",
+    "home",
+    "home",
+    "home"};
 
 //  GLOBAL OBJECTS
 AsyncWebServer server(80);
@@ -53,8 +67,8 @@ Adafruit_AHT10 aht;
 //  STATE VARIABLES
 // Switch state
 bool swState[NUM_SWITCHES] = {false, false, false, false};
-String swName[NUM_SWITCHES] = {"Living Room", "Bedroom", "Kitchen", "Bathroom"};
-String swIcon[NUM_SWITCHES] = {"home", "bedroom", "kitchen", "bathroom"};
+String swName[NUM_SWITCHES] = {"DEVICE-1", "DEVICE-2", "DEVICE-3", "DEVICE-4"};
+String swIcon[NUM_SWITCHES] = {"home", "home", "home", "home"};
 String relayMode[NUM_SWITCHES] = {"off", "off", "off", "off"};
 
 // Timers Ã¢â‚¬â€ volatile (RAM only, lost on power cut)
@@ -92,14 +106,14 @@ const char *DEFAULT_FIREBASE_RULES_JSON = R"RULES({
 })RULES";
 
 // Admin / Time
-String ntpSrv = "pool.ntp.org";
-String tzStr = "+05:30";
-long gmtOff = 19800;
-float geoLat = 0.0, geoLon = 0.0;
+String ntpSrv = DEFAULT_NTP_SERVER;
+String tzStr = DEFAULT_TIME_ZONE;
+long gmtOff = 0;
+float geoLat = DEFAULT_LATITUDE, geoLon = DEFAULT_LONGITUDE;
 String deviceName = "";
 bool timeSynced = false;
 bool ahtOk = false;
-bool locOk = false;
+bool locOk = true;
 
 uint8_t automationPriorityOrder[AUTOMATION_SOURCE_COUNT] = {
     AUTOMATION_TIMER,
@@ -154,6 +168,7 @@ unsigned long bootHoldSatisfiedAt = 0;
 bool bootHoldSatisfied = false;
 
 void setSwitch(int i, bool st);
+void calcSunriseSunset();
 
 //  BEEP + LED ON NVS CHANGE
 void notifyStorage()
@@ -165,14 +180,14 @@ void notifyStorage()
   digitalWrite(LED_PIN, LOW);
 }
 
-//  TIMEZONE PARSING  "+05:30" Ã¢â€ â€™ seconds
+//  TIMEZONE PARSING  "+00:00" -> seconds
 void parseTZ()
 {
   int sign = 1;
   if (tzStr.startsWith("-"))
     sign = -1;
   int c = tzStr.indexOf(':');
-  int h = 5, m = 30;
+  int h = 0, m = 0;
   if (c > 0)
   {
     h = tzStr.substring(1, c).toInt();
@@ -530,10 +545,10 @@ void loadAdminSettings()
   uint8_t loadedRestartScheduleDayMask = 0;
   uint8_t loadedPriority[AUTOMATION_SOURCE_COUNT];
   prefs.begin("admin", true);
-  ntpSrv = prefs.getString("ntp", "pool.ntp.org");
-  tzStr = prefs.getString("tz", "+05:30");
-  geoLat = prefs.getFloat("lat", 0.0);
-  geoLon = prefs.getFloat("lon", 0.0);
+  ntpSrv = prefs.getString("ntp", DEFAULT_NTP_SERVER);
+  tzStr = prefs.getString("tz", DEFAULT_TIME_ZONE);
+  geoLat = prefs.getFloat("lat", DEFAULT_LATITUDE);
+  geoLon = prefs.getFloat("lon", DEFAULT_LONGITUDE);
   storedDeviceName = prefs.getString("devname", "");
   storedPrimaryAdminId = prefs.getString("puid", String(PRIMARY_ADMIN_ID));
   storedPrimaryAdminPass = prefs.getString("ppass", String(PRIMARY_ADMIN_PASS));
@@ -627,7 +642,7 @@ void loadAdminSettings()
   restartScheduleLastRunKey = loadedRestartScheduleLastRunKey;
   lastRestartScheduleStamp = -1;
 
-  locOk = (geoLat != 0.0 || geoLon != 0.0);
+  locOk = (geoLat >= -90.0f && geoLat <= 90.0f && geoLon >= -180.0f && geoLon <= 180.0f);
   parseTZ();
 }
 
@@ -758,6 +773,208 @@ void resetAdminToFactoryDefault()
   persistConfiguredPrimaryAdmin(String(PRIMARY_ADMIN_ID), String(PRIMARY_ADMIN_PASS));
   replaceUsersWithSingleAdmin(configuredPrimaryAdminId, configuredPrimaryAdminPass);
   notifyStorage();
+}
+
+void resetSwitchNamesToDefault()
+{
+  prefs.begin("sw", false);
+  for (int i = 0; i < NUM_SWITCHES; i++)
+  {
+    swName[i] = DEFAULT_SWITCH_NAMES[i];
+    prefs.putString(("n" + String(i)).c_str(), swName[i]);
+  }
+  prefs.end();
+}
+
+void resetSwitchIconsToDefault()
+{
+  prefs.begin("sw", false);
+  for (int i = 0; i < NUM_SWITCHES; i++)
+  {
+    swIcon[i] = DEFAULT_SWITCH_ICONS[i];
+    prefs.putString(("i" + String(i)).c_str(), swIcon[i]);
+  }
+  prefs.end();
+}
+
+void clearRecurringSchedulesStorage()
+{
+  prefs.begin("sched", false);
+  prefs.clear();
+  prefs.end();
+  for (int i = 0; i < NUM_SWITCHES; i++)
+  {
+    swTimers[i].active = false;
+    swTimers[i].endMs = 0;
+  }
+}
+
+void clearFutureSchedulesStorage()
+{
+  prefs.begin("fsched", false);
+  prefs.clear();
+  prefs.end();
+}
+
+void clearSensorControlStorage()
+{
+  prefs.begin("sensor", false);
+  prefs.clear();
+  prefs.end();
+}
+
+void clearStaticIpConfiguration()
+{
+  dhcpOn = true;
+  sIp = "";
+  sMask = "255.255.255.0";
+  sGw = "";
+  sDns = "8.8.8.8";
+
+  prefs.begin("wfcfg", false);
+  prefs.putBool("dhcp", true);
+  prefs.remove("sip");
+  prefs.remove("mask");
+  prefs.remove("gw");
+  prefs.remove("dns");
+  prefs.end();
+}
+
+void resetSchedulePriorityToDefault()
+{
+  setDefaultAutomationPriorityOrder();
+  prefs.begin("admin", false);
+  for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++)
+  {
+    prefs.putInt(("pr" + String(i)).c_str(), automationPriorityOrder[i]);
+  }
+  prefs.end();
+}
+
+void resetLocationToDefault()
+{
+  geoLat = DEFAULT_LATITUDE;
+  geoLon = DEFAULT_LONGITUDE;
+  locOk = true;
+  lastCalcDay = -1;
+
+  prefs.begin("admin", false);
+  prefs.putFloat("lat", geoLat);
+  prefs.putFloat("lon", geoLon);
+  prefs.end();
+
+  calcSunriseSunset();
+}
+
+void resetRelayStatesToDefault()
+{
+  prefs.begin("sw", false);
+  for (int i = 0; i < NUM_SWITCHES; i++)
+  {
+    relayMode[i] = "off";
+    swState[i] = false;
+    digitalWrite(outPin[i], LOW);
+    prefs.putString(("r" + String(i)).c_str(), "off");
+    prefs.remove(("l" + String(i)).c_str());
+  }
+  prefs.end();
+}
+
+void disableFirebaseOnly()
+{
+  fbOn = false;
+  prefs.begin("fb", false);
+  prefs.putBool("en", false);
+  prefs.end();
+}
+
+void resetDeviceNameToDefault()
+{
+  deviceName = getDefaultDeviceName();
+  prefs.begin("admin", false);
+  prefs.putString("devname", deviceName);
+  prefs.end();
+  WiFi.setHostname(deviceName.c_str());
+}
+
+void resetNtpServerToDefault()
+{
+  ntpSrv = DEFAULT_NTP_SERVER;
+  prefs.begin("admin", false);
+  prefs.putString("ntp", ntpSrv);
+  prefs.end();
+}
+
+void resetTimezoneToDefault()
+{
+  tzStr = DEFAULT_TIME_ZONE;
+  parseTZ();
+  prefs.begin("admin", false);
+  prefs.putString("tz", tzStr);
+  prefs.end();
+}
+
+void clearWifiCredentialsOnly()
+{
+  prefs.begin("wfcfg", false);
+  prefs.remove("ssid");
+  prefs.remove("pass");
+  prefs.end();
+}
+
+void clearFirebaseCredentialsOnly()
+{
+  fbOn = false;
+  fbUrl = "";
+  fbToken = "";
+  prefs.begin("fb", false);
+  prefs.putBool("en", false);
+  prefs.remove("url");
+  prefs.remove("tok");
+  prefs.end();
+}
+
+void resetFirebaseRulesToDefault()
+{
+  prefs.begin("fb", false);
+  prefs.putString("rules", DEFAULT_FIREBASE_RULES_JSON);
+  prefs.end();
+}
+
+void clearFirebaseUsersOnly()
+{
+  prefs.begin("fb", false);
+  prefs.putString("authUsers", "[]");
+  prefs.end();
+}
+
+void resetUsersToSingleDefaultAdmin()
+{
+  prefs.begin("users", false);
+  prefs.clear();
+  prefs.end();
+
+  persistConfiguredPrimaryAdmin(String(PRIMARY_ADMIN_ID), String(PRIMARY_ADMIN_PASS));
+  replaceUsersWithSingleAdmin(configuredPrimaryAdminId, configuredPrimaryAdminPass);
+}
+
+bool requireBootHoldResetGesture(AsyncWebServerRequest *req)
+{
+  if (consumeBootButtonHoldForReset())
+  {
+    return true;
+  }
+
+  req->send(400, "application/json", "{\"ok\":false,\"bootRequired\":true,\"error\":\"Press and hold BOOT for 5 seconds, then retry reset.\"}");
+  return false;
+}
+
+void addResetStep(JsonArray steps, const char *key, const char *label)
+{
+  JsonObject item = steps.createNestedObject();
+  item["key"] = key;
+  item["label"] = label;
+  item["ok"] = true;
 }
 
 void updateBootButtonHoldState()
@@ -1110,17 +1327,16 @@ bool readCurrentLocalTime(struct tm *ti)
   if (!ti)
     return false;
 
-  if (getLocalTime(ti))
-    return true;
-
   time_t nowEpoch = time(nullptr);
-  if (nowEpoch > 100000)
-  {
-    localtime_r(&nowEpoch, ti);
-    return true;
-  }
+  if (nowEpoch <= 0)
+    return false;
 
-  return false;
+  localtime_r(&nowEpoch, ti);
+  int year = ti->tm_year + 1900;
+  if (year < 2020)
+    return false;
+
+  return true;
 }
 
 //  TIME SYNC
@@ -1130,9 +1346,36 @@ bool syncTime(struct tm *syncedTime = nullptr)
     return false;
 
   loadTimeSettingsFromAdminStorage();
-  configTime(gmtOff, 0, ntpSrv.c_str());
+
+  ntpSrv.trim();
+  if (ntpSrv.isEmpty())
+  {
+    ntpSrv = "pool.ntp.org";
+  }
+
+  IPAddress resolved;
+  if (!WiFi.hostByName(ntpSrv.c_str(), resolved))
+  {
+    Serial.printf("[TIME] DNS failed for NTP '%s' (DNS=%s)\n", ntpSrv.c_str(), WiFi.dnsIP().toString().c_str());
+    if (ntpSrv != "pool.ntp.org")
+    {
+      ntpSrv = "pool.ntp.org";
+    }
+    if (!WiFi.hostByName(ntpSrv.c_str(), resolved))
+    {
+      Serial.printf("[TIME] DNS failed for fallback NTP '%s' (DNS=%s)\n", ntpSrv.c_str(), WiFi.dnsIP().toString().c_str());
+      return false;
+    }
+  }
+
+  configTime(gmtOff, 0, ntpSrv.c_str(), "pool.ntp.org", "time.nist.gov");
+
+  const unsigned long timeoutMs = 20000;
+  const unsigned long pollDelayMs = 250;
+  unsigned long startedAt = millis();
   struct tm ti;
-  for (int i = 0; i < 10; i++)
+
+  while ((millis() - startedAt) < timeoutMs)
   {
     if (readCurrentLocalTime(&ti))
     {
@@ -1145,8 +1388,9 @@ bool syncTime(struct tm *syncedTime = nullptr)
                     ti.tm_hour, ti.tm_min, ti.tm_sec, ti.tm_mday, ti.tm_mon + 1, ti.tm_year + 1900);
       return true;
     }
-    delay(500);
+    delay(pollDelayMs);
   }
+
   return false;
 }
 
@@ -1835,12 +2079,17 @@ void checkPhysicalSwitches()
 void sendWebFile(AsyncWebServerRequest *request, const char *path, const char *contentType)
 {
   String gzPath = String(path) + ".gz";
+  bool noStore = String(contentType) == "text/html";
 
   if (SPIFFS.exists(gzPath))
   {
     Serial.printf("[HTTP] %s -> %s\n", request->url().c_str(), gzPath.c_str());
     AsyncWebServerResponse *response = request->beginResponse(SPIFFS, gzPath, contentType);
     response->addHeader("Content-Encoding", "gzip");
+    if (noStore)
+    {
+      response->addHeader("Cache-Control", "no-store");
+    }
     request->send(response);
     return;
   }
@@ -1848,7 +2097,12 @@ void sendWebFile(AsyncWebServerRequest *request, const char *path, const char *c
   if (SPIFFS.exists(path))
   {
     Serial.printf("[HTTP] %s -> %s\n", request->url().c_str(), path);
-    request->send(SPIFFS, path, contentType);
+    AsyncWebServerResponse *response = request->beginResponse(SPIFFS, path, contentType);
+    if (noStore)
+    {
+      response->addHeader("Cache-Control", "no-store");
+    }
+    request->send(response);
     return;
   }
 
@@ -3043,7 +3297,15 @@ void setupWebServer()
               {
       struct tm syncedTm;
       if (!syncTime(&syncedTm)) {
-        req->send(400, "application/json", "{\"error\":\"Time sync failed. Check WiFi and NTP server.\"}");
+        String err = String("Time sync failed. ") +
+                     String("WiFi=") + (WiFi.status() == WL_CONNECTED ? "connected" : "disconnected") +
+                     String(", IP=") + WiFi.localIP().toString() +
+                     String(", DNS=") + WiFi.dnsIP().toString() +
+                     String(", NTP=") + ntpSrv +
+                     String(", TZ=") + tzStr;
+        AsyncWebServerResponse *res = req->beginResponse(400, "application/json", "{\"error\":\"" + err + "\"}");
+        res->addHeader("Cache-Control", "no-store");
+        req->send(res);
         return;
       }
 
@@ -3051,26 +3313,13 @@ void setupWebServer()
       sprintf(buf, "%02d:%02d:%02d %02d/%02d/%04d", syncedTm.tm_hour, syncedTm.tm_min, syncedTm.tm_sec,
               syncedTm.tm_mday, syncedTm.tm_mon + 1, syncedTm.tm_year + 1900);
 
-      DynamicJsonDocument d(512);
-      d["ok"] = true;
-      d["time"] = String(buf);
-      d["ntp"] = ntpSrv;
-      d["tz"] = tzStr;
-      String r;
-      serializeJson(d, r);
-      req->send(200, "application/json", r); });
-
-    server.on("/api/admin/time/current", HTTP_GET, [](AsyncWebServerRequest *req)
-              {
-      struct tm ti;
-          if (readCurrentLocalTime(&ti)) {
-        char buf[32];
-        sprintf(buf, "%02d:%02d:%02d %02d/%02d/%04d", ti.tm_hour, ti.tm_min, ti.tm_sec,
-                ti.tm_mday, ti.tm_mon + 1, ti.tm_year + 1900);
-        req->send(200, "application/json", "{\"time\":\"" + String(buf) + "\",\"synced\":" + (timeSynced ? "true" : "false") + "}");
-      } else {
-        req->send(200, "application/json", "{\"time\":\"--:--:-- --/--/----\",\"synced\":false}");
-      } });
+            String r = String("{\"ok\":true,\"time\":\"") + String(buf) +
+           String("\",\"ntp\":\"") + ntpSrv +
+           String("\",\"tz\":\"") + tzStr +
+           String("\"}");
+            AsyncWebServerResponse *res = req->beginResponse(200, "application/json", r);
+      res->addHeader("Cache-Control", "no-store");
+      req->send(res); });
 
     server.on("/api/admin/location", HTTP_GET, [](AsyncWebServerRequest *req)
               {
@@ -3247,66 +3496,151 @@ void setupWebServer()
 
     server.on("/api/admin/reset/storage", HTTP_POST, [](AsyncWebServerRequest *req)
               {
-      if (!req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
-        req->send(400, "application/json", "{\"error\":\"Admin credentials required\"}");
+      if (!requireAdminVerification(req)) {
         return;
       }
-      if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
-        req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+      if (!requireBootHoldResetGesture(req)) {
         return;
       }
-      // Clear all NVS namespaces
-      const char *ns[] = { "sw", "bt", "wfcfg", "fb", "admin", "users", "sched", "fsched", "sensor" };
-      for (int i = 0; i < 9; i++) {
-        prefs.begin(ns[i], false);
-        prefs.clear();
-        prefs.end();
-      }
+
+      DynamicJsonDocument response(4096);
+      response["ok"] = true;
+      response["type"] = "storage";
+      response["msg"] = "Reset Storage complete. Device restarting...";
+      response["restartIn"] = 45;
+      JsonArray steps = response["steps"].to<JsonArray>();
+
+      resetSwitchNamesToDefault();
+      addResetStep(steps, "switch-names", "Switch names set to DEVICE-1, DEVICE-2, DEVICE-3, DEVICE-4");
+
+      resetSwitchIconsToDefault();
+      addResetStep(steps, "switch-icons", "Switch icons set to home for all switches");
+
+      clearRecurringSchedulesStorage();
+      addResetStep(steps, "schedules", "All recurring schedules cleared");
+
+      clearFutureSchedulesStorage();
+      addResetStep(steps, "future-schedules", "All future schedules cleared");
+
+      clearSensorControlStorage();
+      addResetStep(steps, "sensor-control", "All sensor control settings cleared");
+
+      clearStaticIpConfiguration();
+      addResetStep(steps, "static-ip", "Static IP configuration cleared and DHCP restored");
+
+      resetSchedulePriorityToDefault();
+      addResetStep(steps, "schedule-priority", "Schedule priority restored to default order");
+
+      resetLocationToDefault();
+      addResetStep(steps, "location", "Latitude and longitude reset to London defaults");
+
       notifyStorage();
-      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"All storage cleared. Restart recommended.\"}"); });
+
+      String r;
+      serializeJson(response, r);
+      req->send(200, "application/json", r);
+
+      restartFlag = true;
+      restartAt = millis() + 1000; });
 
     server.on("/api/admin/reset/settings", HTTP_POST, [](AsyncWebServerRequest *req)
               {
-      if (!req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
-        req->send(400, "application/json", "{\"error\":\"Admin credentials required\"}");
+      if (!requireAdminVerification(req)) {
         return;
       }
-      if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
-        req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+      if (!requireBootHoldResetGesture(req)) {
         return;
       }
-      // Clear settings but keep users
-      const char *ns[] = { "sw", "bt", "wfcfg", "fb", "admin", "sched", "fsched", "sensor" };
-      for (int i = 0; i < 8; i++) {
-        prefs.begin(ns[i], false);
-        prefs.clear();
-        prefs.end();
-      }
+
+      DynamicJsonDocument response(3072);
+      response["ok"] = true;
+      response["type"] = "settings";
+      response["msg"] = "Reset Settings complete. Device restarting...";
+      response["restartIn"] = 45;
+      JsonArray steps = response["steps"].to<JsonArray>();
+
+      resetRelayStatesToDefault();
+      addResetStep(steps, "relay-states", "Relay startup state restored to Output OFF for all switches");
+
+      disableFirebaseOnly();
+      addResetStep(steps, "firebase-toggle", "Firebase disabled");
+
+      resetDeviceNameToDefault();
+      addResetStep(steps, "device-name", "Device name reset to MAC-based default");
+
+      resetNtpServerToDefault();
+      addResetStep(steps, "ntp", "NTP server reset to pool.ntp.org");
+
+      resetTimezoneToDefault();
+      addResetStep(steps, "timezone", "Time zone reset to +00:00 (London)");
+
       notifyStorage();
-      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Settings cleared (users preserved). Restart recommended.\"}"); });
+
+      String r;
+      serializeJson(response, r);
+      req->send(200, "application/json", r);
+
+      restartFlag = true;
+      restartAt = millis() + 1000; });
 
     server.on("/api/admin/reset/factory", HTTP_POST, [](AsyncWebServerRequest *req)
               {
-      if (!req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
-        req->send(400, "application/json", "{\"error\":\"Admin credentials required\"}");
+      if (!requireAdminVerification(req)) {
         return;
       }
-      if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
-        req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+      if (!requireBootHoldResetGesture(req)) {
         return;
       }
-      // Full factory reset
-      const char *ns[] = { "sw", "bt", "wfcfg", "fb", "admin", "users", "sched", "fsched", "sensor" };
-      for (int i = 0; i < 9; i++) {
-        prefs.begin(ns[i], false);
-        prefs.clear();
-        prefs.end();
-      }
+
+      DynamicJsonDocument response(6144);
+      response["ok"] = true;
+      response["type"] = "factory";
+      response["msg"] = "Factory Reset complete. Device restarting...";
+      response["restartIn"] = 45;
+      JsonArray steps = response["steps"].to<JsonArray>();
+
+      resetSwitchNamesToDefault();
+      resetSwitchIconsToDefault();
+      clearRecurringSchedulesStorage();
+      clearFutureSchedulesStorage();
+      clearSensorControlStorage();
+      clearStaticIpConfiguration();
+      resetSchedulePriorityToDefault();
+      resetLocationToDefault();
+      addResetStep(steps, "reset-storage", "Reset Storage applied");
+
+      resetRelayStatesToDefault();
+      disableFirebaseOnly();
+      resetDeviceNameToDefault();
+      resetNtpServerToDefault();
+      resetTimezoneToDefault();
+      addResetStep(steps, "reset-settings", "Reset Settings applied");
+
+      clearWifiCredentialsOnly();
+      addResetStep(steps, "wifi-credentials", "WiFi credentials cleared");
+
+      clearFirebaseCredentialsOnly();
+      addResetStep(steps, "firebase-credentials", "Firebase credentials cleared");
+
+      resetFirebaseRulesToDefault();
+      addResetStep(steps, "firebase-rules", "Database rules reset to default template");
+
+      clearFirebaseUsersOnly();
+      addResetStep(steps, "firebase-users", "Firebase users cleared");
+
+      resetUsersToSingleDefaultAdmin();
+      addResetStep(steps, "default-admin", "Default admin user restored to esp / 456456");
+      addResetStep(steps, "normal-users", "All normal users cleared");
+
       WiFi.disconnect(true, true);
       notifyStorage();
-      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Factory reset complete. Restarting...\"}");
+
+      String r;
+      serializeJson(response, r);
+      req->send(200, "application/json", r);
+
       restartFlag = true;
-      restartAt = millis() + 500; });
+      restartAt = millis() + 1000; });
   }
 
   server.onNotFound([](AsyncWebServerRequest *req)

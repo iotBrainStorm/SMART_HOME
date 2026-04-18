@@ -620,6 +620,103 @@
         color: #60a5fa;
       }
 
+      .reset-param-list {
+        margin: 8px 0 0 18px;
+        padding: 0;
+      }
+
+      .reset-param-list li {
+        margin: 4px 0;
+        color: #cbd5e1;
+      }
+
+      .reset-runtime {
+        width: 100%;
+        margin-top: 6px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(2, 6, 23, 0.5);
+        display: none;
+      }
+
+      .reset-runtime.active {
+        display: block;
+      }
+
+      .reset-runtime-title {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #bfdbfe;
+        letter-spacing: 0.3px;
+      }
+
+      .reset-runtime-msg {
+        margin-top: 6px;
+        font-size: 0.78rem;
+        color: #94a3b8;
+      }
+
+      .reset-checklist {
+        list-style: none;
+        margin: 10px 0 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .reset-check-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 0.78rem;
+        color: #cbd5e1;
+      }
+
+      .reset-check-icon {
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.5);
+        background: rgba(148, 163, 184, 0.12);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.68rem;
+        color: #94a3b8;
+        flex-shrink: 0;
+      }
+
+      .reset-check-item.pending .reset-check-icon::before {
+        content: "...";
+      }
+
+      .reset-check-item.done .reset-check-icon {
+        border-color: rgba(34, 197, 94, 0.75);
+        background: rgba(34, 197, 94, 0.2);
+        color: #86efac;
+      }
+
+      .reset-check-item.done .reset-check-icon::before {
+        content: "\2713";
+        font-size: 0.7rem;
+        font-weight: 700;
+      }
+
+      .reset-check-label {
+        flex: 1;
+      }
+
+      .reset-check-status {
+        font-size: 0.72rem;
+        color: #94a3b8;
+      }
+
+      .reset-check-item.done .reset-check-status {
+        color: #86efac;
+      }
+
       /* ── User Table ── */
       .user-list {
         width: 100%;
@@ -1299,49 +1396,49 @@
           <div class="setting-row">
             <div class="setting-info">
               <div class="setting-label">Switch 1</div>
-              <div class="setting-sub">Living Room</div>
+              <div class="setting-sub">DEVICE-1</div>
             </div>
             <input
               class="cfg-input"
               type="text"
               placeholder="Enter name"
-              value="Living Room"
+              value="DEVICE-1"
             />
           </div>
           <div class="setting-row">
             <div class="setting-info">
               <div class="setting-label">Switch 2</div>
-              <div class="setting-sub">Bedroom</div>
+              <div class="setting-sub">DEVICE-2</div>
             </div>
             <input
               class="cfg-input"
               type="text"
               placeholder="Enter name"
-              value="Bedroom"
+              value="DEVICE-2"
             />
           </div>
           <div class="setting-row">
             <div class="setting-info">
               <div class="setting-label">Switch 3</div>
-              <div class="setting-sub">Kitchen</div>
+              <div class="setting-sub">DEVICE-3</div>
             </div>
             <input
               class="cfg-input"
               type="text"
               placeholder="Enter name"
-              value="Kitchen"
+              value="DEVICE-3"
             />
           </div>
           <div class="setting-row">
             <div class="setting-info">
               <div class="setting-label">Switch 4</div>
-              <div class="setting-sub">Bathroom</div>
+              <div class="setting-sub">DEVICE-4</div>
             </div>
             <input
               class="cfg-input"
               type="text"
               placeholder="Enter name"
-              value="Bathroom"
+              value="DEVICE-4"
             />
           </div>
           <div style="margin-top: 16px; text-align: right">
@@ -1355,7 +1452,7 @@
           <div class="setting-row" data-switch-index="0">
             <div class="setting-info">
               <div class="setting-label switch-icon-label">
-                Switch 1 — Living Room
+                Switch 1 — DEVICE-1
               </div>
               <div class="setting-sub switch-icon-sub">Current: Home icon</div>
             </div>
@@ -1369,11 +1466,9 @@
           <div class="setting-row" data-switch-index="1">
             <div class="setting-info">
               <div class="setting-label switch-icon-label">
-                Switch 2 — Bedroom
+                Switch 2 — DEVICE-2
               </div>
-              <div class="setting-sub switch-icon-sub">
-                Current: Bedroom icon
-              </div>
+              <div class="setting-sub switch-icon-sub">Current: Home icon</div>
             </div>
             <button
               class="cfg-btn cfg-btn-secondary"
@@ -1385,11 +1480,9 @@
           <div class="setting-row" data-switch-index="2">
             <div class="setting-info">
               <div class="setting-label switch-icon-label">
-                Switch 3 — Kitchen
+                Switch 3 — DEVICE-3
               </div>
-              <div class="setting-sub switch-icon-sub">
-                Current: Kitchen icon
-              </div>
+              <div class="setting-sub switch-icon-sub">Current: Home icon</div>
             </div>
             <button
               class="cfg-btn cfg-btn-secondary"
@@ -1401,11 +1494,9 @@
           <div class="setting-row" data-switch-index="3">
             <div class="setting-info">
               <div class="setting-label switch-icon-label">
-                Switch 4 — Bathroom
+                Switch 4 — DEVICE-4
               </div>
-              <div class="setting-sub switch-icon-sub">
-                Current: Bathroom icon
-              </div>
+              <div class="setting-sub switch-icon-sub">Current: Home icon</div>
             </div>
             <button
               class="cfg-btn cfg-btn-secondary"
@@ -3050,9 +3141,19 @@
         <div class="panel" id="panel-admin-storage">
           <div class="panel-title">Reset Storage</div>
           <div class="info-box">
-            <strong>Warning:</strong> This will clear all stored data including
-            schedules, timers, and custom settings. User accounts and WiFi
-            credentials will be preserved.
+            <strong>Parameters that will be cleared:</strong>
+            <ul class="reset-param-list">
+              <li>
+                Switch names (default: DEVICE-1, DEVICE-2, DEVICE-3, DEVICE-4)
+              </li>
+              <li>Switch icons (default: home for all switches)</li>
+              <li>All schedules</li>
+              <li>All future schedules</li>
+              <li>All sensor control settings</li>
+              <li>Static IP configuration (if set)</li>
+              <li>Schedule priority (default order)</li>
+              <li>Latitude and longitude (default: London)</li>
+            </ul>
           </div>
           <div
             class="setting-row"
@@ -3061,7 +3162,7 @@
             <div class="setting-info">
               <div class="setting-label">Clear Application Storage</div>
               <div class="setting-sub">
-                Removes schedules, automation settings, and cached data
+                Admin verification and BOOT hold (5 seconds) are required
               </div>
             </div>
             <button
@@ -3070,6 +3171,7 @@
             >
               Reset Storage
             </button>
+            <div id="resetStorageRuntime" class="reset-runtime"></div>
           </div>
         </div>
 
@@ -3077,9 +3179,16 @@
         <div class="panel" id="panel-admin-settings">
           <div class="panel-title">Reset Settings</div>
           <div class="info-box">
-            <strong>Warning:</strong> This will reset all configuration settings
-            to their default values. Switch names, icons, and relay states will
-            be restored to defaults.
+            <strong>Parameters that will be cleared:</strong>
+            <ul class="reset-param-list">
+              <li>
+                Relay states (default: Output OFF at startup for all switches)
+              </li>
+              <li>Firebase On/Off state (default: OFF)</li>
+              <li>Device name (default: MAC-based name)</li>
+              <li>NTP server (default: pool.ntp.org)</li>
+              <li>Time zone (default: +00:00 London)</li>
+            </ul>
           </div>
           <div
             class="setting-row"
@@ -3088,7 +3197,7 @@
             <div class="setting-info">
               <div class="setting-label">Reset All Settings</div>
               <div class="setting-sub">
-                Restores switch names, icons, and other settings to defaults
+                Admin verification and BOOT hold (5 seconds) are required
               </div>
             </div>
             <button
@@ -3097,6 +3206,7 @@
             >
               Reset Settings
             </button>
+            <div id="resetSettingsRuntime" class="reset-runtime"></div>
           </div>
         </div>
 
@@ -3110,10 +3220,17 @@
               border-color: rgba(239, 68, 68, 0.2);
             "
           >
-            <strong style="color: #f87171">⚠ Danger Zone:</strong><br />
-            This will completely erase ALL data including user accounts, WiFi
-            credentials, Firebase settings, and restore the device to its
-            original factory state. This action cannot be undone!
+            <strong style="color: #f87171">Danger Zone:</strong>
+            <ul class="reset-param-list" style="margin-top: 8px">
+              <li>Reset Storage</li>
+              <li>Reset Settings</li>
+              <li>WiFi credentials</li>
+              <li>Firebase credentials</li>
+              <li>Database rules (default template)</li>
+              <li>Firebase users</li>
+              <li>Default admin user set to esp / 456456</li>
+              <li>All normal users</li>
+            </ul>
           </div>
           <div
             class="setting-row"
@@ -3124,16 +3241,17 @@
                 Factory Reset Device
               </div>
               <div class="setting-sub">
-                Erases everything and restores device to factory defaults
+                Admin verification and BOOT hold (5 seconds) are required
               </div>
             </div>
             <button
               class="cfg-btn cfg-btn-danger"
               style="background: rgba(239, 68, 68, 0.3)"
-              onclick="confirmFactoryReset()"
+              onclick="confirmAdminAction('factory')"
             >
               Factory Reset
             </button>
+            <div id="resetFactoryRuntime" class="reset-runtime"></div>
           </div>
         </div>
 
@@ -3146,7 +3264,7 @@
           </div>
           <div class="setting-row">
             <div class="setting-info">
-              <div class="setting-label">Synced Time</div>
+              <div class="setting-label">Sync Time</div>
               <div class="setting-sub">Sync device time with NTP server</div>
             </div>
             <button
@@ -3175,28 +3293,8 @@
                   d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"
                 />
               </svg>
-              Sync Now
+              Sync Time
             </button>
-          </div>
-          <div
-            class="setting-row"
-            style="flex-direction: column; align-items: flex-start; gap: 10px"
-          >
-            <div class="setting-label">Current Device Time</div>
-            <div
-              id="currentDeviceTime"
-              style="
-                font-size: 1.1rem;
-                color: #60a5fa;
-                font-family: monospace;
-                padding: 12px 16px;
-                background: rgba(255, 255, 255, 0.04);
-                border-radius: 10px;
-                width: fit-content;
-              "
-            >
-              --:--:-- --/--/----
-            </div>
           </div>
           <div
             class="setting-row"
@@ -3244,7 +3342,9 @@
               <option value="-03:00">(UTC-03:00) Buenos Aires, Brasilia</option>
               <option value="-02:00">(UTC-02:00) Mid-Atlantic</option>
               <option value="-01:00">(UTC-01:00) Azores</option>
-              <option value="+00:00">(UTC+00:00) London, Dublin, Lisbon</option>
+              <option value="+00:00" selected>
+                (UTC+00:00) London, Dublin, Lisbon
+              </option>
               <option value="+01:00">(UTC+01:00) Paris, Berlin, Rome</option>
               <option value="+02:00">
                 (UTC+02:00) Cairo, Athens, Helsinki
@@ -3254,9 +3354,7 @@
               </option>
               <option value="+04:00">(UTC+04:00) Dubai, Baku</option>
               <option value="+05:00">(UTC+05:00) Karachi, Tashkent</option>
-              <option value="+05:30" selected>
-                (UTC+05:30) India Standard Time
-              </option>
+              <option value="+05:30">(UTC+05:30) India Standard Time</option>
               <option value="+06:00">(UTC+06:00) Dhaka, Almaty</option>
               <option value="+07:00">(UTC+07:00) Bangkok, Jakarta</option>
               <option value="+08:00">(UTC+08:00) Singapore, Hong Kong</option>
@@ -3795,6 +3893,7 @@
       function apiPost(url, body) {
         return fetch(url, {
           method: "POST",
+          cache: "no-store",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: body,
         }).then(function (r) {
@@ -3802,7 +3901,7 @@
         });
       }
       function apiGet(url) {
-        return fetch(url).then(function (r) {
+        return fetch(url, { cache: "no-store" }).then(function (r) {
           return r.json();
         });
       }
@@ -4003,8 +4102,8 @@
       /* ══════════════════════════════════════════════════════════════
          ICON PICKER MODAL
       ══════════════════════════════════════════════════════════════ */
-      var switchNamesState = ["Living Room", "Bedroom", "Kitchen", "Bathroom"];
-      var switchIconsState = ["home", "bedroom", "kitchen", "bathroom"];
+      var switchNamesState = ["DEVICE-1", "DEVICE-2", "DEVICE-3", "DEVICE-4"];
+      var switchIconsState = ["home", "home", "home", "home"];
       var relayModesState = ["off", "off", "off", "off"];
       var iconPickerModal = document.getElementById("iconPickerModal");
       var currentIconSwitch = 0;
@@ -6198,69 +6297,252 @@
       /* ══════════════════════════════════════════════════════════════
          ADMINISTRATOR ACTIONS
       ══════════════════════════════════════════════════════════════ */
-      function confirmAdminAction(actionType) {
-        var message = "";
-        var endpoint = "";
-        if (actionType === "storage") {
-          message = "Enter admin credentials to reset storage";
-          endpoint = "/api/admin/reset/storage";
-        } else if (actionType === "settings") {
-          message = "Enter admin credentials to reset settings";
-          endpoint = "/api/admin/reset/settings";
+      var resetBootHoldCountdownTimer = null;
+      var resetBootHoldRequestTimer = null;
+      var RESET_ACTION_CONFIG = {
+        storage: {
+          title: "Reset Storage",
+          prompt: "Enter admin credentials to reset storage",
+          endpoint: "/api/admin/reset/storage",
+          runtimeId: "resetStorageRuntime",
+          confirmText:
+            "Reset Storage will clear the listed storage parameters. Continue?",
+        },
+        settings: {
+          title: "Reset Settings",
+          prompt: "Enter admin credentials to reset settings",
+          endpoint: "/api/admin/reset/settings",
+          runtimeId: "resetSettingsRuntime",
+          confirmText:
+            "Reset Settings will restore listed settings to defaults. Continue?",
+        },
+        factory: {
+          title: "Factory Reset",
+          prompt: "Enter admin credentials to confirm factory reset",
+          endpoint: "/api/admin/reset/factory",
+          runtimeId: "resetFactoryRuntime",
+          confirmText:
+            "Factory Reset will erase all listed data and cannot be undone. Continue?",
+        },
+      };
+
+      function getResetRuntimeContainer(actionType) {
+        var config = RESET_ACTION_CONFIG[actionType];
+        if (!config || !config.runtimeId) {
+          return null;
         }
-        showPasswordModal(message, function (data, adminUser, adminPass) {
+        return document.getElementById(config.runtimeId);
+      }
+
+      function clearResetBootHoldTimers() {
+        if (resetBootHoldCountdownTimer) {
+          clearInterval(resetBootHoldCountdownTimer);
+          resetBootHoldCountdownTimer = null;
+        }
+        if (resetBootHoldRequestTimer) {
+          clearTimeout(resetBootHoldRequestTimer);
+          resetBootHoldRequestTimer = null;
+        }
+      }
+
+      function showResetRuntimeMessage(actionType, message, type) {
+        var container = getResetRuntimeContainer(actionType);
+        var config = RESET_ACTION_CONFIG[actionType];
+        if (!container || !config) return;
+
+        container.classList.add("active");
+        container.innerHTML = "";
+
+        var title = document.createElement("div");
+        title.className = "reset-runtime-title";
+        title.textContent = config.title + " Progress";
+        container.appendChild(title);
+
+        var msg = document.createElement("div");
+        msg.className = "reset-runtime-msg";
+        msg.textContent = message || "";
+        if (type === "error") {
+          msg.style.color = "#fda4af";
+        } else if (type === "success") {
+          msg.style.color = "#86efac";
+        }
+        container.appendChild(msg);
+      }
+
+      function renderResetChecklist(actionType, steps) {
+        var container = getResetRuntimeContainer(actionType);
+        var config = RESET_ACTION_CONFIG[actionType];
+        if (!container || !config) {
+          return null;
+        }
+
+        var normalizedSteps = Array.isArray(steps) ? steps : [];
+        container.classList.add("active");
+        container.innerHTML = "";
+
+        var title = document.createElement("div");
+        title.className = "reset-runtime-title";
+        title.textContent = config.title + " Checklist";
+        container.appendChild(title);
+
+        var msg = document.createElement("div");
+        msg.className = "reset-runtime-msg";
+        msg.textContent = "Clearing parameters in progress...";
+        container.appendChild(msg);
+
+        var list = document.createElement("ul");
+        list.className = "reset-checklist";
+        var itemEls = [];
+
+        normalizedSteps.forEach(function (step) {
+          var item = document.createElement("li");
+          item.className = "reset-check-item pending";
+
+          var icon = document.createElement("span");
+          icon.className = "reset-check-icon";
+
+          var label = document.createElement("span");
+          label.className = "reset-check-label";
+          label.textContent =
+            step && step.label ? String(step.label) : "Clearing parameter";
+
+          var status = document.createElement("span");
+          status.className = "reset-check-status";
+          status.textContent = "Pending";
+
+          item.appendChild(icon);
+          item.appendChild(label);
+          item.appendChild(status);
+          list.appendChild(item);
+          itemEls.push(item);
+        });
+
+        container.appendChild(list);
+        return {
+          messageEl: msg,
+          items: itemEls,
+        };
+      }
+
+      function animateResetChecklist(view, onDone) {
+        if (!view || !Array.isArray(view.items) || !view.items.length) {
+          if (onDone) onDone();
+          return;
+        }
+
+        var idx = 0;
+        function markNext() {
+          if (idx >= view.items.length) {
+            if (onDone) onDone();
+            return;
+          }
+
+          var item = view.items[idx];
+          item.classList.remove("pending");
+          item.classList.add("done");
+          var status = item.querySelector(".reset-check-status");
+          if (status) {
+            status.textContent = "Cleared";
+          }
+
+          idx += 1;
+          window.setTimeout(markNext, 380);
+        }
+
+        markNext();
+      }
+
+      function executeResetAction(actionType, adminUser, adminPass) {
+        var config = RESET_ACTION_CONFIG[actionType];
+        if (!config) {
+          return;
+        }
+
+        clearResetBootHoldTimers();
+
+        var holdSeconds = 5;
+        showResetRuntimeMessage(
+          actionType,
+          "Admin verified. Press and hold BOOT now for " +
+            holdSeconds +
+            " seconds...",
+          "info",
+        );
+
+        resetBootHoldCountdownTimer = window.setInterval(function () {
+          holdSeconds -= 1;
+          if (holdSeconds > 0) {
+            showResetRuntimeMessage(
+              actionType,
+              "Admin verified. Press and hold BOOT now for " +
+                holdSeconds +
+                " seconds...",
+              "info",
+            );
+          }
+        }, 1000);
+
+        resetBootHoldRequestTimer = window.setTimeout(function () {
+          clearResetBootHoldTimers();
+          showResetRuntimeMessage(
+            actionType,
+            "Verifying BOOT hold and starting clear sequence...",
+            "info",
+          );
+
           apiPost(
-            endpoint,
+            config.endpoint,
             "adminUser=" +
               encodeURIComponent(adminUser) +
               "&adminPass=" +
               encodeURIComponent(adminPass),
           )
             .then(function (d) {
-              if (d.ok) {
-                alert(d.msg || "Reset completed successfully!");
-              } else {
-                alert(d.error || "Reset failed");
+              if (!d || !d.ok) {
+                showResetRuntimeMessage(
+                  actionType,
+                  (d && d.error) ||
+                    "Reset failed. Hold BOOT for 5 seconds and try again.",
+                  "error",
+                );
+                return;
               }
+
+              var view = renderResetChecklist(actionType, d.steps);
+              var restartSeconds = parseInt(d.restartIn, 10) || 45;
+
+              animateResetChecklist(view, function () {
+                if (view && view.messageEl) {
+                  view.messageEl.textContent =
+                    d.msg || "Reset complete. Device restarting...";
+                  view.messageEl.style.color = "#86efac";
+                }
+                startRestartProgress(restartSeconds);
+              });
             })
             .catch(function () {
-              alert("Connection error");
+              showResetRuntimeMessage(actionType, "Connection error", "error");
             });
+        }, 5200);
+      }
+
+      function confirmAdminAction(actionType) {
+        var config = RESET_ACTION_CONFIG[actionType];
+        if (!config) {
+          return;
+        }
+
+        if (config.confirmText && !confirm(config.confirmText)) {
+          return;
+        }
+
+        showPasswordModal(config.prompt, function (data, adminUser, adminPass) {
+          executeResetAction(actionType, adminUser, adminPass);
         });
       }
 
       function confirmFactoryReset() {
-        if (
-          confirm(
-            "⚠ WARNING: This will erase ALL data and restore factory defaults. This action cannot be undone!\n\nAre you sure you want to continue?",
-          )
-        ) {
-          showPasswordModal(
-            "Enter admin credentials to confirm factory reset",
-            function (data, adminUser, adminPass) {
-              apiPost(
-                "/api/admin/reset/factory",
-                "adminUser=" +
-                  encodeURIComponent(adminUser) +
-                  "&adminPass=" +
-                  encodeURIComponent(adminPass),
-              )
-                .then(function (d) {
-                  if (d.ok) {
-                    alert(
-                      d.msg ||
-                        "Factory reset initiated. Device will restart...",
-                    );
-                  } else {
-                    alert(d.error || "Factory reset failed");
-                  }
-                })
-                .catch(function () {
-                  alert("Connection error");
-                });
-            },
-          );
-        }
+        confirmAdminAction("factory");
       }
 
       /* ══════════════════════════════════════════════════════════════
@@ -6567,59 +6849,10 @@
       /* ══════════════════════════════════════════════════════════════
          TIME SETUP
       ══════════════════════════════════════════════════════════════ */
-      function setCurrentDeviceTimeDisplay(timeText) {
-        var display = document.getElementById("currentDeviceTime");
-        var normalized = String(timeText || "").trim();
-        if (display && normalized) {
-          display.textContent = normalized;
-        }
-      }
-
-      function fetchCurrentDeviceTimeOnce(retryCount) {
-        var remaining =
-          typeof retryCount === "number" && retryCount >= 0 ? retryCount : 4;
-        return apiGet("/api/admin/time/current")
-          .then(function (d) {
-            var timeText = d && d.time ? String(d.time).trim() : "";
-            if (timeText && timeText !== "--:--:-- --/--/----") {
-              setCurrentDeviceTimeDisplay(timeText);
-              return true;
-            }
-
-            if (remaining > 0) {
-              return new Promise(function (resolve) {
-                setTimeout(resolve, 350);
-              }).then(function () {
-                return fetchCurrentDeviceTimeOnce(remaining - 1);
-              });
-            }
-
-            if (timeText) {
-              setCurrentDeviceTimeDisplay(timeText);
-            }
-
-            return false;
-          })
-          .catch(function () {
-            if (remaining > 0) {
-              return new Promise(function (resolve) {
-                setTimeout(resolve, 350);
-              }).then(function () {
-                return fetchCurrentDeviceTimeOnce(remaining - 1);
-              });
-            }
-            return false;
-          });
-      }
-
       function syncTimeNow() {
         apiPost("/api/admin/time/sync", "")
           .then(function (d) {
             if (d.ok) {
-              if (d.time) {
-                setCurrentDeviceTimeDisplay(d.time);
-              }
-              fetchCurrentDeviceTimeOnce(4);
               alert("Time synchronized successfully!");
             } else {
               alert(d.error || "Time sync failed");
