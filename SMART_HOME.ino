@@ -152,6 +152,8 @@ int restartScheduleMinute = -1;
 uint8_t restartScheduleDayMask = 0;
 long lastRestartScheduleStamp = -1;
 String restartScheduleLastRunKey = "";
+bool factoryResetWifiClearPending = false;
+unsigned long factoryResetWifiClearAt = 0;
 bool forgetWifiFlag = false;
 unsigned long forgetWifiAt = 0;
 bool coreRoutesOnly = false;
@@ -165,6 +167,7 @@ const unsigned long BOOT_HOLD_READY_WINDOW_MS = 15000;
 const unsigned long RESET_CHECKPOINT_GAP_MS = 700;
 const unsigned long RESET_ALL_DONE_GAP_MS = 2000;
 const unsigned long RESET_RESTART_BUFFER_MS = 300;
+const unsigned long FACTORY_RESET_WIFI_CLEAR_DELAY_MS = 3500;
 
 unsigned long bootButtonPressedAt = 0;
 unsigned long bootHoldSatisfiedAt = 0;
@@ -974,12 +977,16 @@ bool requireBootHoldResetGesture(AsyncWebServerRequest *req)
 
 void addResetStep(JsonArray steps, const char *key, const char *label, uint16_t durationMs = 420)
 {
-  (void)durationMs;
+  uint16_t normalizedDuration = durationMs;
+  if (normalizedDuration < 180)
+  {
+    normalizedDuration = (uint16_t)RESET_CHECKPOINT_GAP_MS;
+  }
   JsonObject item = steps.createNestedObject();
   item["key"] = key;
   item["label"] = label;
   item["ok"] = true;
-  item["ms"] = RESET_CHECKPOINT_GAP_MS;
+  item["ms"] = normalizedDuration;
 }
 
 void updateBootButtonHoldState()
@@ -3627,9 +3634,6 @@ void setupWebServer()
       resetTimezoneToDefault();
       addResetStep(steps, "reset-settings", "Reset Settings applied", 760);
 
-      clearWifiCredentialsOnly();
-      addResetStep(steps, "wifi-credentials", "WiFi credentials cleared", 520);
-
       clearFirebaseCredentialsOnly();
       addResetStep(steps, "firebase-credentials", "Firebase credentials cleared", 560);
 
@@ -3642,13 +3646,15 @@ void setupWebServer()
       resetUsersToSingleDefaultAdmin();
       addResetStep(steps, "default-admin", "Default admin user restored to esp / 456456", 650);
       addResetStep(steps, "normal-users", "All normal users cleared", 580);
-
-      WiFi.disconnect(true, true);
+      addResetStep(steps, "wifi-credentials", "WiFi credentials cleared", 520);
       notifyStorage();
 
       String r;
       serializeJson(response, r);
       req->send(200, "application/json", r);
+
+      factoryResetWifiClearPending = true;
+      factoryResetWifiClearAt = millis() + FACTORY_RESET_WIFI_CLEAR_DELAY_MS;
 
       restartFlag = true;
       restartAt = millis() + (8UL * RESET_CHECKPOINT_GAP_MS) + RESET_ALL_DONE_GAP_MS + RESET_RESTART_BUFFER_MS; });
@@ -3872,6 +3878,13 @@ void loop()
     forgetWifiFlag = false;
     WiFi.disconnect(true, true);
     ESP.restart();
+  }
+
+  if (factoryResetWifiClearPending && millis() >= factoryResetWifiClearAt)
+  {
+    factoryResetWifiClearPending = false;
+    clearWifiCredentialsOnly();
+    WiFi.disconnect(true, true);
   }
 
   // Restart request

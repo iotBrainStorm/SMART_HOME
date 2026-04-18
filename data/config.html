@@ -860,6 +860,8 @@
         position: fixed;
         inset: 0;
         background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(7px);
+        -webkit-backdrop-filter: blur(7px);
         z-index: 500;
         display: flex;
         align-items: center;
@@ -869,6 +871,19 @@
 
       .modal-overlay.hidden {
         display: none;
+      }
+
+      body.wifi-scan-open {
+        overflow: hidden;
+      }
+
+      body.wifi-scan-open .topbar,
+      body.wifi-scan-open .tabs,
+      body.wifi-scan-open .config-body,
+      body.wifi-scan-open .footer {
+        filter: blur(4px);
+        pointer-events: none;
+        user-select: none;
       }
 
       .modal-box {
@@ -1021,16 +1036,21 @@
           brightness(108%) contrast(92%);
       }
 
-      #restartScheduleTime {
+      /* .cfg-input.future-from {
         color-scheme: dark;
+      } */
+
+      .cfg-input.future-from::-webkit-calendar-picker-indicator {
+        opacity: 0.92;
+        filter: invert(88%) sepia(8%) saturate(318%) hue-rotate(177deg)
+          brightness(108%) contrast(92%);
       }
 
-      @media (min-width: 900px) {
-        #restartScheduleTime::-webkit-calendar-picker-indicator {
-          opacity: 1;
-          filter: invert(90%) sepia(12%) saturate(420%) hue-rotate(176deg)
-            brightness(130%) contrast(100%);
-        }
+      #restartScheduleTime::-webkit-calendar-picker-indicator {
+        opacity: 1;
+        filter: invert(98%) sepia(8%) saturate(610%) hue-rotate(177deg)
+          brightness(165%) contrast(112%)
+          drop-shadow(0 0 2px rgba(191, 219, 254, 0.7));
       }
 
       .schedule-slot-header {
@@ -3531,10 +3551,10 @@
             >
               <div class="setting-label">Time</div>
               <input
-                class="cfg-input"
+                class="cfg-input future-from"
                 type="time"
                 id="restartScheduleTime"
-                style="max-width: 180px; font-family: monospace"
+                style="max-width: 140px"
               />
               <div class="setting-label">Week Days</div>
               <div class="day-pills" id="restartScheduleDays">
@@ -6409,7 +6429,10 @@
         }
 
         normalizedSteps.forEach(function (step) {
-          var stepDelayMs = perStepDelay;
+          var stepDelayMs = parseInt(step && step.ms, 10);
+          if (!isFinite(stepDelayMs) || stepDelayMs < 180) {
+            stepDelayMs = perStepDelay;
+          }
           var item = document.createElement("li");
           item.className = "reset-check-item pending";
           item.setAttribute("data-delay-ms", String(stepDelayMs));
@@ -6537,22 +6560,62 @@
 
               var stepGapMs = RESET_CHECKPOINT_GAP_MS;
               var finalGapMs = RESET_ALL_DONE_GAP_MS;
+              if (d && isFinite(parseInt(d.stepGapMs, 10))) {
+                stepGapMs = parseInt(d.stepGapMs, 10);
+              }
+              if (d && isFinite(parseInt(d.finalGapMs, 10))) {
+                finalGapMs = parseInt(d.finalGapMs, 10);
+              }
+              if (actionType === "factory") {
+                finalGapMs = 2000;
+              }
               var view = renderResetChecklist(actionType, d.steps, stepGapMs);
               var restartSeconds = parseInt(d.restartIn, 10) || 45;
 
-              animateResetChecklist(view, function () {
+              var onChecklistComplete = function () {
                 if (view && view.messageEl) {
                   view.messageEl.textContent = "all done";
                   view.messageEl.style.color = "#86efac";
                 }
 
                 window.setTimeout(function () {
+                  if (actionType === "factory") {
+                    showWifiScanModal();
+                    return;
+                  }
+
                   if (view && view.messageEl) {
                     view.messageEl.textContent = d.msg || "Restarting ESP32...";
                   }
                   startRestartProgress(restartSeconds);
                 }, finalGapMs);
-              });
+              };
+
+              if (
+                actionType === "factory" &&
+                view &&
+                Array.isArray(view.items) &&
+                view.items.length
+              ) {
+                view.items.forEach(function (item) {
+                  item.classList.remove("pending");
+                  item.classList.add("done");
+                  var status = item.querySelector(".reset-check-status");
+                  var delayMs = parseInt(
+                    item.getAttribute("data-delay-ms"),
+                    10,
+                  );
+                  if (!isFinite(delayMs) || delayMs < 180) {
+                    delayMs = stepGapMs;
+                  }
+                  if (status) {
+                    status.textContent = "Cleared (" + delayMs + " ms)";
+                  }
+                });
+                onChecklistComplete();
+              } else {
+                animateResetChecklist(view, onChecklistComplete);
+              }
             })
             .catch(function () {
               showResetRuntimeMessage(actionType, "Connection error", "error");
@@ -6585,10 +6648,12 @@
       var wifiScanModal = document.getElementById("wifiScanModal");
 
       function showWifiScanModal() {
+        document.body.classList.add("wifi-scan-open");
         wifiScanModal.classList.remove("hidden");
       }
 
       function closeWifiScanModal() {
+        document.body.classList.remove("wifi-scan-open");
         wifiScanModal.classList.add("hidden");
       }
 

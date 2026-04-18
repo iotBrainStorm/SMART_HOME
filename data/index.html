@@ -329,6 +329,7 @@
         height: 28px;
         border-radius: 8px;
         background: rgba(255, 255, 255, 0.04);
+        border: 1px solid transparent;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -348,6 +349,16 @@
 
       .feat-icon:active svg {
         stroke: #60a5fa;
+      }
+
+      .feat-icon.active {
+        background: rgba(59, 130, 246, 0.18);
+        border-color: rgba(96, 165, 250, 0.35);
+        box-shadow: 0 0 8px rgba(96, 165, 250, 0.2);
+      }
+
+      .feat-icon.active svg {
+        stroke: #93c5fd;
       }
 
       /* ── Toggle Switch (3D pill) ── */
@@ -700,7 +711,7 @@
             <div class="card-status">Off</div>
           </div>
           <div class="card-features">
-            <div class="feat-icon" title="Timer">
+            <div class="feat-icon" data-feature="timer" title="Timer">
               <svg viewBox="0 0 24 24">
                 <circle cx="12" cy="13" r="8" />
                 <path d="M12 9v4l2 2" />
@@ -708,7 +719,7 @@
                 <path d="M22 6l-3-3" />
               </svg>
             </div>
-            <div class="feat-icon" title="Schedule">
+            <div class="feat-icon" data-feature="schedule" title="Schedule">
               <svg viewBox="0 0 24 24">
                 <rect x="3" y="4" width="18" height="18" rx="2" />
                 <path d="M16 2v4" />
@@ -716,11 +727,26 @@
                 <path d="M3 10h18" />
               </svg>
             </div>
-            <div class="feat-icon" title="Future Schedule">
+            <div
+              class="feat-icon"
+              data-feature="future"
+              title="Future Schedule"
+            >
               <svg viewBox="0 0 24 24">
                 <path d="M12 8v4l3 3" />
                 <circle cx="12" cy="12" r="10" />
                 <path d="M17 17l2 2" />
+              </svg>
+            </div>
+            <div
+              class="feat-icon"
+              data-feature="sensor"
+              title="Sensor Automation"
+            >
+              <svg viewBox="0 0 24 24">
+                <path d="M10 14a4 4 0 1 1 4 0v3a2 2 0 1 1-4 0z" />
+                <line x1="12" y1="4" x2="12" y2="13" />
+                <line x1="9" y1="21" x2="15" y2="21" />
               </svg>
             </div>
           </div>
@@ -745,7 +771,7 @@
             <div class="card-status">Off</div>
           </div>
           <div class="card-features">
-            <div class="feat-icon" title="Timer">
+            <div class="feat-icon" data-feature="timer" title="Timer">
               <svg viewBox="0 0 24 24">
                 <circle cx="12" cy="13" r="8" />
                 <path d="M12 9v4l2 2" />
@@ -753,7 +779,7 @@
                 <path d="M22 6l-3-3" />
               </svg>
             </div>
-            <div class="feat-icon" title="Schedule">
+            <div class="feat-icon" data-feature="schedule" title="Schedule">
               <svg viewBox="0 0 24 24">
                 <rect x="3" y="4" width="18" height="18" rx="2" />
                 <path d="M16 2v4" />
@@ -761,11 +787,26 @@
                 <path d="M3 10h18" />
               </svg>
             </div>
-            <div class="feat-icon" title="Future Schedule">
+            <div
+              class="feat-icon"
+              data-feature="future"
+              title="Future Schedule"
+            >
               <svg viewBox="0 0 24 24">
                 <path d="M12 8v4l3 3" />
                 <circle cx="12" cy="12" r="10" />
                 <path d="M17 17l2 2" />
+              </svg>
+            </div>
+            <div
+              class="feat-icon"
+              data-feature="sensor"
+              title="Sensor Automation"
+            >
+              <svg viewBox="0 0 24 24">
+                <path d="M10 14a4 4 0 1 1 4 0v3a2 2 0 1 1-4 0z" />
+                <line x1="12" y1="4" x2="12" y2="13" />
+                <line x1="9" y1="21" x2="15" y2="21" />
               </svg>
             </div>
           </div>
@@ -793,7 +834,7 @@
             <div class="card-status">Off</div>
           </div>
           <div class="card-features">
-            <div class="feat-icon" title="Timer">
+            <div class="feat-icon" data-feature="timer" title="Timer">
               <svg viewBox="0 0 24 24">
                 <circle cx="12" cy="13" r="8" />
                 <path d="M12 9v4l2 2" />
@@ -801,7 +842,7 @@
                 <path d="M22 6l-3-3" />
               </svg>
             </div>
-            <div class="feat-icon" title="Schedule">
+            <div class="feat-icon" data-feature="schedule" title="Schedule">
               <svg viewBox="0 0 24 24">
                 <rect x="3" y="4" width="18" height="18" rx="2" />
                 <path d="M16 2v4" />
@@ -809,11 +850,26 @@
                 <path d="M3 10h18" />
               </svg>
             </div>
-            <div class="feat-icon" title="Future Schedule">
+            <div
+              class="feat-icon"
+              data-feature="future"
+              title="Future Schedule"
+            >
               <svg viewBox="0 0 24 24">
                 <path d="M12 8v4l3 3" />
                 <circle cx="12" cy="12" r="10" />
                 <path d="M17 17l2 2" />
+              </svg>
+            </div>
+            <div
+              class="feat-icon"
+              data-feature="sensor"
+              title="Sensor Automation"
+            >
+              <svg viewBox="0 0 24 24">
+                <path d="M10 14a4 4 0 1 1 4 0v3a2 2 0 1 1-4 0z" />
+                <line x1="12" y1="4" x2="12" y2="13" />
+                <line x1="9" y1="21" x2="15" y2="21" />
               </svg>
             </div>
           </div>
@@ -842,7 +898,7 @@
             <div class="card-status">Off</div>
           </div>
           <div class="card-features">
-            <div class="feat-icon" title="Timer">
+            <div class="feat-icon" data-feature="timer" title="Timer">
               <svg viewBox="0 0 24 24">
                 <circle cx="12" cy="13" r="8" />
                 <path d="M12 9v4l2 2" />
@@ -850,7 +906,7 @@
                 <path d="M22 6l-3-3" />
               </svg>
             </div>
-            <div class="feat-icon" title="Schedule">
+            <div class="feat-icon" data-feature="schedule" title="Schedule">
               <svg viewBox="0 0 24 24">
                 <rect x="3" y="4" width="18" height="18" rx="2" />
                 <path d="M16 2v4" />
@@ -858,11 +914,26 @@
                 <path d="M3 10h18" />
               </svg>
             </div>
-            <div class="feat-icon" title="Future Schedule">
+            <div
+              class="feat-icon"
+              data-feature="future"
+              title="Future Schedule"
+            >
               <svg viewBox="0 0 24 24">
                 <path d="M12 8v4l3 3" />
                 <circle cx="12" cy="12" r="10" />
                 <path d="M17 17l2 2" />
+              </svg>
+            </div>
+            <div
+              class="feat-icon"
+              data-feature="sensor"
+              title="Sensor Automation"
+            >
+              <svg viewBox="0 0 24 24">
+                <path d="M10 14a4 4 0 1 1 4 0v3a2 2 0 1 1-4 0z" />
+                <line x1="12" y1="4" x2="12" y2="13" />
+                <line x1="9" y1="21" x2="15" y2="21" />
               </svg>
             </div>
           </div>
@@ -1124,6 +1195,147 @@
           });
       }
 
+      function hasSavedSensorAutomation(record) {
+        if (!record || typeof record !== "object" || Array.isArray(record)) {
+          return false;
+        }
+        return [
+          "condition",
+          "action",
+          "value",
+          "min",
+          "max",
+          "offset",
+          "offsetMinutes",
+          "enabled",
+        ].some(function (key) {
+          return (
+            record[key] !== undefined &&
+            record[key] !== null &&
+            record[key] !== ""
+          );
+        });
+      }
+
+      function setFeatureIconState(cardIndex, featureKey, active) {
+        var card = cards[cardIndex];
+        if (!card) return;
+        var icon = card.querySelector(
+          '.feat-icon[data-feature="' + featureKey + '"]',
+        );
+        if (!icon) return;
+        icon.classList.toggle("active", !!active);
+      }
+
+      function loadAutomationFeatureIndicators() {
+        var scheduleRequests = [];
+        var futureRequests = [];
+        var sensorRequests = [];
+        var sensorTypes = ["temp", "humid", "sun"];
+
+        for (var sw = 0; sw < cards.length; sw++) {
+          scheduleRequests.push(
+            (function (switchIndex) {
+              return fetch("/api/schedules?sw=" + switchIndex, {
+                cache: "no-store",
+              })
+                .then(function (r) {
+                  if (!r.ok) return [];
+                  return r.json();
+                })
+                .catch(function () {
+                  return [];
+                });
+            })(sw),
+          );
+
+          futureRequests.push(
+            (function (switchIndex) {
+              return fetch("/api/fschedules?sw=" + switchIndex, {
+                cache: "no-store",
+              })
+                .then(function (r) {
+                  if (!r.ok) return [];
+                  return r.json();
+                })
+                .catch(function () {
+                  return [];
+                });
+            })(sw),
+          );
+
+          sensorTypes.forEach(function (sensorType) {
+            sensorRequests.push(
+              (function (switchIndex, type) {
+                return fetch("/api/sensor/" + type + "?sw=" + switchIndex, {
+                  cache: "no-store",
+                })
+                  .then(function (r) {
+                    if (!r.ok) return {};
+                    return r.json();
+                  })
+                  .then(function (data) {
+                    return { sw: switchIndex, data: data || {} };
+                  })
+                  .catch(function () {
+                    return { sw: switchIndex, data: {} };
+                  });
+              })(sw, sensorType),
+            );
+          });
+        }
+
+        return Promise.all([
+          Promise.all(scheduleRequests),
+          Promise.all(futureRequests),
+          Promise.all(sensorRequests),
+        ])
+          .then(function (results) {
+            var schedulesBySwitch = results[0] || [];
+            var futureBySwitch = results[1] || [];
+            var sensorEntries = results[2] || [];
+            var sensorActiveBySwitch = [];
+
+            for (var i = 0; i < cards.length; i++) {
+              sensorActiveBySwitch.push(false);
+            }
+
+            sensorEntries.forEach(function (entry) {
+              var switchIndex = parseInt(entry.sw, 10);
+              if (
+                switchIndex >= 0 &&
+                switchIndex < cards.length &&
+                hasSavedSensorAutomation(entry.data)
+              ) {
+                sensorActiveBySwitch[switchIndex] = true;
+              }
+            });
+
+            for (var swIndex = 0; swIndex < cards.length; swIndex++) {
+              setFeatureIconState(
+                swIndex,
+                "schedule",
+                Array.isArray(schedulesBySwitch[swIndex]) &&
+                  schedulesBySwitch[swIndex].length > 0,
+              );
+              setFeatureIconState(
+                swIndex,
+                "future",
+                Array.isArray(futureBySwitch[swIndex]) &&
+                  futureBySwitch[swIndex].length > 0,
+              );
+              setFeatureIconState(
+                swIndex,
+                "sensor",
+                !!sensorActiveBySwitch[swIndex],
+              );
+            }
+          })
+          .catch(function (err) {
+            console.log("Automation indicator load error:", err);
+          });
+      }
+
       /* ── Toggle Switch via API ── */
       toggles.forEach(function (t) {
         t.addEventListener("change", function () {
@@ -1236,6 +1448,7 @@
               loadDeviceTimezone();
               updateClock();
               loadSwitches();
+              loadAutomationFeatureIndicators();
             } else {
               loginError.textContent = res.data.error || "Invalid credentials";
               loginPassInput.value = "";
@@ -1297,6 +1510,7 @@
           loadDeviceTimezone();
           updateClock();
           loadSwitches();
+          loadAutomationFeatureIndicators();
         }
       }
 
@@ -1308,6 +1522,14 @@
           loadSwitches();
         }
       }, 5000);
+
+      setInterval(function () {
+        if (
+          !document.getElementById("dashboard").classList.contains("hidden")
+        ) {
+          loadAutomationFeatureIndicators();
+        }
+      }, 20000);
 
       /* ── Initialize ── */
       initSession();
