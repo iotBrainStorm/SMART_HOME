@@ -2206,17 +2206,11 @@ void setupWebServer()
   server.on("/config.html", HTTP_GET, [](AsyncWebServerRequest *req)
             { sendWebFile(req, "/config.html", "text/html"); });
 
-  server.on("/firebase.html", HTTP_GET, [](AsyncWebServerRequest *req)
-            { sendWebFile(req, "/firebase.html", "text/html"); });
-
   server.on("/index.svg", HTTP_GET, [](AsyncWebServerRequest *req)
             { sendWebFile(req, "/index.svg", "image/svg+xml"); });
 
   server.on("/settings.svg", HTTP_GET, [](AsyncWebServerRequest *req)
             { sendWebFile(req, "/settings.svg", "image/svg+xml"); });
-
-  server.on("/firebase.svg", HTTP_GET, [](AsyncWebServerRequest *req)
-            { sendWebFile(req, "/firebase.svg", "image/svg+xml"); });
 
   // ──── STATUS ────
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *req)

@@ -1,5 +1,11 @@
 # SMART_HOME
 
+![ESP32](https://img.shields.io/badge/ESP32-Controller-ff6f00?style=for-the-badge&logo=espressif&logoColor=white)
+![Web Dashboard](https://img.shields.io/badge/Web-Dashboard-0288d1?style=for-the-badge&logo=googlechrome&logoColor=white)
+![Automation](https://img.shields.io/badge/Automation-Timer%20%7C%20Schedule%20%7C%20Sensor-2e7d32?style=for-the-badge)
+![Firebase Ready](https://img.shields.io/badge/Firebase-Ready-f57c00?style=for-the-badge&logo=firebase&logoColor=white)
+![License](https://img.shields.io/badge/License-Custom-d81b60?style=for-the-badge)
+
 A modern ESP32 Smart Home controller with a full web dashboard, rich automation engine, user/admin management, WiFi networking tools, and Firebase integration.
 
 ![Dashboard](screenshots/controlDashboard.png)
@@ -180,14 +186,16 @@ Note: If your relay board is active-low, adjust wiring logic or relay module set
 
 ### Required Libraries
 
-- WiFiManager
-- ESPAsyncWebServer
-- AsyncTCP (dependency)
-- ArduinoJson
-- Preferences (built-in with ESP32 core)
-- Adafruit AHT10
-- Dusk2Dawn
-- FirebaseClient (Mobizt)
+| Library                      | Download Link                                                                    | Notes                           |
+| ---------------------------- | -------------------------------------------------------------------------------- | ------------------------------- |
+| WiFiManager                  | https://github.com/tzapu/WiFiManager                                             | WiFi provisioning portal        |
+| ESPAsyncWebServer            | https://github.com/ESP32Async/ESPAsyncWebServer                                  | Async web server for ESP32      |
+| AsyncTCP                     | https://github.com/ESP32Async/AsyncTCP                                           | Required by ESPAsyncWebServer   |
+| ArduinoJson                  | https://github.com/bblanchon/ArduinoJson                                         | JSON parsing and serialization  |
+| Preferences (ESP32 Core)     | https://docs.espressif.com/projects/arduino-esp32/en/latest/api/preferences.html | Built into ESP32 Arduino core   |
+| Adafruit AHTX0 (AHT10/AHT20) | https://github.com/adafruit/Adafruit_AHTX0                                       | Sensor support for AHT10        |
+| Dusk2Dawn                    | https://github.com/dmkishi/Dusk2Dawn                                             | Sunrise and sunset calculations |
+| FirebaseClient (Mobizt)      | https://github.com/mobizt/FirebaseClient                                         | Firebase integration            |
 
 ### Build and Flash Steps
 
@@ -195,7 +203,7 @@ Note: If your relay board is active-low, adjust wiring logic or relay module set
 2. Select board: ESP32 Dev Module (or your exact ESP32 board).
 3. Confirm correct COM port.
 4. Compile and upload firmware.
-5. Upload web assets from data folder (index.html, config.html, firebase.html, icons) to SPIFFS/LittleFS.
+5. Upload web assets from data folder (index.html, config.html, icons, svg assets) to SPIFFS/LittleFS.
 6. Restart device.
 7. Connect to the same network and open the device IP in browser.
 
@@ -214,10 +222,8 @@ SMART_HOME/
 |- data/
 |  |- index.html          # Dashboard/login
 |  |- config.html         # Full settings UI
-|  |- firebase.html       # Firebase helper page
 |  |- index.svg
 |  |- settings.svg
-|  |- firebase.svg
 |- screenshots/           # README screenshots
 |- README.md
 |- LICENSE
