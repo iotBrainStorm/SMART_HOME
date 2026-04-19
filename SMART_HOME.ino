@@ -1892,12 +1892,15 @@ void checkRestartSchedule()
 //  SENSOR AUTOMATION CHECK (loop)
 void checkSensors()
 {
-  if (!ahtOk)
-    return;
-  sensors_event_t hev, tev;
-  aht.getEvent(&hev, &tev);
-  float cTemp = tev.temperature;
-  float cHum = hev.relative_humidity;
+  float cTemp = 0.0f;
+  float cHum = 0.0f;
+  if (ahtOk)
+  {
+    sensors_event_t hev, tev;
+    aht.getEvent(&hev, &tev);
+    cTemp = tev.temperature;
+    cHum = hev.relative_humidity;
+  }
 
   for (int sw = 0; sw < NUM_SWITCHES; sw++)
   {
@@ -1908,7 +1911,7 @@ void checkSensors()
     prefs.end();
 
     // Temperature
-    if (!tj.isEmpty())
+    if (ahtOk && !tj.isEmpty())
     {
       DynamicJsonDocument d(1024);
       if (!deserializeJson(d, tj) && d["enabled"].as<bool>())
@@ -1928,7 +1931,7 @@ void checkSensors()
       }
     }
     // Humidity
-    if (!hj.isEmpty())
+    if (ahtOk && !hj.isEmpty())
     {
       DynamicJsonDocument d(1024);
       if (!deserializeJson(d, hj) && d["enabled"].as<bool>())
@@ -2471,6 +2474,7 @@ void setupWebServer()
         timer["sw"] = i;
         timer["action"] = swTimers[i].targetState ? "on" : "off";
         timer["remainingMs"] = remainingMs;
+        timer["remainingSec"] = (remainingMs + 999) / 1000;
       }
 
       String r;
@@ -2634,10 +2638,6 @@ void setupWebServer()
         req->send(400, "application/json", "{\"error\":\"Missing data\"}");
         return;
       }
-      if (!ahtOk) {
-        req->send(400, "application/json", "{\"error\":\"AHT10 sensor not initialized\"}");
-        return;
-      }
       if (!locOk) {
         req->send(400, "application/json", "{\"error\":\"Latitude/Longitude not configured\"}");
         return;
@@ -2762,6 +2762,9 @@ void setupWebServer()
               {
       if (!req->hasParam("dhcp", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing\"}");
+        return;
+      }
+      if (!requireAdminVerification(req)) {
         return;
       }
       dhcpOn = req->getParam("dhcp", true)->value() == "true";
@@ -3390,6 +3393,13 @@ void setupWebServer()
       d["lat"] = geoLat;
       d["lon"] = geoLon;
       d["configured"] = locOk;
+      bool sunReady = locOk && timeSynced;
+      if (sunReady) {
+        calcSunriseSunset();
+      }
+      d["sunReady"] = sunReady;
+      d["sunrise"] = sunReady ? formatClockFromMinutes(srMin) : "";
+      d["sunset"] = sunReady ? formatClockFromMinutes(ssMin) : "";
       String r;
       serializeJson(d, r);
       req->send(200, "application/json", r); });
@@ -3410,7 +3420,18 @@ void setupWebServer()
       prefs.end();
       notifyStorage();
       calcSunriseSunset();
-      req->send(200, "application/json", "{\"ok\":true}"); });
+
+      DynamicJsonDocument d(512);
+      d["ok"] = true;
+      d["lat"] = geoLat;
+      d["lon"] = geoLon;
+      bool sunReady = locOk && timeSynced;
+      d["sunReady"] = sunReady;
+      d["sunrise"] = sunReady ? formatClockFromMinutes(srMin) : "";
+      d["sunset"] = sunReady ? formatClockFromMinutes(ssMin) : "";
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r); });
 
     server.on("/api/admin/restart-schedule", HTTP_GET, [](AsyncWebServerRequest *req)
               {
@@ -3573,14 +3594,8 @@ void setupWebServer()
       clearSensorControlStorage();
       addResetStep(steps, "sensor-control", "All sensor control settings cleared", 680);
 
-      clearStaticIpConfiguration();
-      addResetStep(steps, "static-ip", "Static IP configuration cleared and DHCP restored", 520);
-
       resetSchedulePriorityToDefault();
       addResetStep(steps, "schedule-priority", "Schedule priority restored to default order", 540);
-
-      resetLocationToDefault();
-      addResetStep(steps, "location", "Latitude and longitude reset to London defaults", 600);
 
       notifyStorage();
 
@@ -3589,7 +3604,7 @@ void setupWebServer()
       req->send(200, "application/json", r);
 
       restartFlag = true;
-      restartAt = millis() + (8UL * RESET_CHECKPOINT_GAP_MS) + RESET_ALL_DONE_GAP_MS + RESET_RESTART_BUFFER_MS; });
+      restartAt = millis() + (6UL * RESET_CHECKPOINT_GAP_MS) + RESET_ALL_DONE_GAP_MS + RESET_RESTART_BUFFER_MS; });
 
     server.on("/api/admin/reset/settings", HTTP_POST, [](AsyncWebServerRequest *req)
               {
@@ -3633,6 +3648,12 @@ void setupWebServer()
       resetTimezoneToDefault();
       addResetStep(steps, "timezone", "Time zone reset to +00:00 (London)", 520);
 
+      clearStaticIpConfiguration();
+      addResetStep(steps, "static-ip", "Static IP configuration cleared and DHCP restored", 520);
+
+      resetLocationToDefault();
+      addResetStep(steps, "location", "Latitude and longitude reset to London defaults", 600);
+
       clearRestartScheduleOnly();
       addResetStep(steps, "restart-schedule", "Automatic restart schedule cleared", 460);
 
@@ -3643,7 +3664,7 @@ void setupWebServer()
       req->send(200, "application/json", r);
 
       restartFlag = true;
-      restartAt = millis() + (6UL * RESET_CHECKPOINT_GAP_MS) + RESET_ALL_DONE_GAP_MS + RESET_RESTART_BUFFER_MS; });
+      restartAt = millis() + (8UL * RESET_CHECKPOINT_GAP_MS) + RESET_ALL_DONE_GAP_MS + RESET_RESTART_BUFFER_MS; });
 
     server.on("/api/admin/reset/factory", HTTP_POST, [](AsyncWebServerRequest *req)
               {

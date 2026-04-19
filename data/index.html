@@ -1240,12 +1240,28 @@
       }
 
       function loadAutomationFeatureIndicators() {
+        var timerRequests = [];
         var scheduleRequests = [];
         var futureRequests = [];
         var sensorRequests = [];
         var sensorTypes = ["temp", "humid", "sun"];
 
         for (var sw = 0; sw < cards.length; sw++) {
+          timerRequests.push(
+            (function (switchIndex) {
+              return fetch("/api/timers?sw=" + switchIndex, {
+                cache: "no-store",
+              })
+                .then(function (r) {
+                  if (!r.ok) return [];
+                  return r.json();
+                })
+                .catch(function () {
+                  return [];
+                });
+            })(sw),
+          );
+
           scheduleRequests.push(
             (function (switchIndex) {
               return fetch("/api/schedules?sw=" + switchIndex, {
@@ -1298,14 +1314,16 @@
         }
 
         return Promise.all([
+          Promise.all(timerRequests),
           Promise.all(scheduleRequests),
           Promise.all(futureRequests),
           Promise.all(sensorRequests),
         ])
           .then(function (results) {
-            var schedulesBySwitch = results[0] || [];
-            var futureBySwitch = results[1] || [];
-            var sensorEntries = results[2] || [];
+            var timersBySwitch = results[0] || [];
+            var schedulesBySwitch = results[1] || [];
+            var futureBySwitch = results[2] || [];
+            var sensorEntries = results[3] || [];
             var sensorActiveBySwitch = [];
 
             for (var i = 0; i < cards.length; i++) {
@@ -1324,6 +1342,12 @@
             });
 
             for (var swIndex = 0; swIndex < cards.length; swIndex++) {
+              setFeatureIconState(
+                swIndex,
+                "timer",
+                Array.isArray(timersBySwitch[swIndex]) &&
+                  timersBySwitch[swIndex].length > 0,
+              );
               setFeatureIconState(
                 swIndex,
                 "schedule",
