@@ -4073,6 +4073,10 @@
           loadFirebaseAuthUsers();
         }
 
+        if (panelId === "panel-admin-location") {
+          loadAdminLocationSettings();
+        }
+
         var sideItems = sidebar.querySelectorAll(".sidebar-item");
         sideItems.forEach(function (s) {
           s.classList.toggle(
@@ -7273,12 +7277,25 @@
         if (sunriseText && sunsetText) {
           display.textContent =
             "Sunrise: " + sunriseText + " | Sunset: " + sunsetText;
-        } else if (ready) {
-          display.textContent = "Sunrise: --:-- | Sunset: --:--";
         } else {
-          display.textContent =
-            "Sunrise/Sunset unavailable (set location and restart device if needed).";
+          display.textContent = ready
+            ? "Calculating sunrise/sunset..."
+            : "Sunrise/Sunset unavailable (set location and wait for time sync).";
         }
+      }
+
+      function loadAdminLocationSettings() {
+        return apiGet("/api/admin/location")
+          .then(function (d) {
+            if (d && d.lat !== undefined)
+              document.getElementById("locationLat").value = d.lat;
+            if (d && d.lon !== undefined)
+              document.getElementById("locationLon").value = d.lon;
+            if (d && d.lat !== undefined && d.lon !== undefined)
+              updateLocationDisplay(d.lat, d.lon);
+            setSunTimesDisplay(d && d.sunrise, d && d.sunset, d && d.sunReady);
+          })
+          .catch(function () {});
       }
 
       function saveLocationSettings() {
@@ -8490,17 +8507,7 @@
           .catch(function () {});
 
         /* Load Admin location */
-        apiGet("/api/admin/location")
-          .then(function (d) {
-            if (d && d.lat !== undefined)
-              document.getElementById("locationLat").value = d.lat;
-            if (d && d.lon !== undefined)
-              document.getElementById("locationLon").value = d.lon;
-            if (d && d.lat !== undefined && d.lon !== undefined)
-              updateLocationDisplay(d.lat, d.lon);
-            setSunTimesDisplay(d && d.sunrise, d && d.sunset, d && d.sunReady);
-          })
-          .catch(function () {});
+        loadAdminLocationSettings();
 
         /* Load Admin device name + priority settings */
         loadDeviceNameSettings();

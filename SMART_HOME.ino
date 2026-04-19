@@ -1444,18 +1444,42 @@ void calcSunriseSunset()
 {
   if (!locOk || !timeSynced)
     return;
+
   struct tm ti;
-  if (!getLocalTime(&ti))
+  if (!readCurrentLocalTime(&ti))
     return;
+
   int day = ti.tm_mday;
-  if (day == lastCalcDay)
+  if (
+      day == lastCalcDay &&
+      srMin >= 0 && srMin <= 1439 &&
+      ssMin >= 0 && ssMin <= 1439)
     return;
 
   int tzH = gmtOff / 3600;
   int tzM = (abs(gmtOff) % 3600) / 60;
   Dusk2Dawn loc(geoLat, geoLon, tzH);
-  srMin = loc.sunrise(ti.tm_year + 1900, ti.tm_mon + 1, day, false) + tzM;
-  ssMin = loc.sunset(ti.tm_year + 1900, ti.tm_mon + 1, day, false) + tzM;
+
+  int sunriseMinute = loc.sunrise(ti.tm_year + 1900, ti.tm_mon + 1, day, false);
+  int sunsetMinute = loc.sunset(ti.tm_year + 1900, ti.tm_mon + 1, day, false);
+
+  if (sunriseMinute < 0 || sunsetMinute < 0)
+    return;
+
+  sunriseMinute += tzM;
+  sunsetMinute += tzM;
+
+  while (sunriseMinute < 0)
+    sunriseMinute += 1440;
+  while (sunriseMinute > 1439)
+    sunriseMinute -= 1440;
+  while (sunsetMinute < 0)
+    sunsetMinute += 1440;
+  while (sunsetMinute > 1439)
+    sunsetMinute -= 1440;
+
+  srMin = sunriseMinute;
+  ssMin = sunsetMinute;
   lastCalcDay = day;
   Serial.printf("[SUN] Rise=%02d:%02d  Set=%02d:%02d\n", srMin / 60, srMin % 60, ssMin / 60, ssMin % 60);
 }
@@ -3544,7 +3568,7 @@ void setupWebServer()
         srMin >= 0 && srMin <= 1439 &&
         ssMin >= 0 && ssMin <= 1439;
 
-      d["sunReady"] = sunReady;
+      d["sunReady"] = hasSunValues;
       d["sunrise"] = hasSunValues ? formatClockFromMinutes(srMin) : "";
       d["sunset"] = hasSunValues ? formatClockFromMinutes(ssMin) : "";
       String r;
@@ -3587,7 +3611,7 @@ void setupWebServer()
         srMin >= 0 && srMin <= 1439 &&
         ssMin >= 0 && ssMin <= 1439;
 
-      d["sunReady"] = sunReady;
+      d["sunReady"] = hasSunValues;
       d["sunrise"] = hasSunValues ? formatClockFromMinutes(srMin) : "";
       d["sunset"] = hasSunValues ? formatClockFromMinutes(ssMin) : "";
       String r;
