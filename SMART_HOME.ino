@@ -3520,68 +3520,33 @@ void setupWebServer()
       notifyStorage();
       req->send(200, "application/json", "{\"ok\":true}"); });
 
-    server.on("/api/admin/time/sync", HTTP_POST, [](AsyncWebServerRequest *req)
-              {
-      String traceId = "";
-      if (req->hasParam("traceId", true)) {
-        traceId = req->getParam("traceId", true)->value();
-      } else if (req->hasParam("traceId")) {
-        traceId = req->getParam("traceId")->value();
-      }
-
-      if (traceId.isEmpty()) {
-        traceId = String(millis());
-      }
-
-      Serial.printf("[SYNC_TRACE] request traceId=%s\n", traceId.c_str());
-      Serial.println("[API] Manual time sync requested");
-      Serial.flush();
-      struct tm syncedTm;
-      if (!syncTime(&syncedTm)) {
-        Serial.printf("[SYNC_TRACE] failed traceId=%s\n", traceId.c_str());
-        Serial.println("[API] Manual time sync failed");
-        Serial.flush();
-        String err = String("Time sync failed. ") +
-                     String("WiFi=") + (WiFi.status() == WL_CONNECTED ? "connected" : "disconnected") +
-                     String(", IP=") + WiFi.localIP().toString() +
-                     String(", DNS=") + WiFi.dnsIP().toString() +
-                     String(", NTP=") + ntpSrv +
-                     String(", TZ=") + tzStr;
-        AsyncWebServerResponse *res = req->beginResponse(400, "application/json", "{\"error\":\"" + err + "\"}");
-        res->addHeader("Cache-Control", "no-store");
-        req->send(res);
-        return;
-      }
-
-      char buf[32];
-      sprintf(buf, "%02d:%02d:%02d %02d/%02d/%04d", syncedTm.tm_hour, syncedTm.tm_min, syncedTm.tm_sec,
-              syncedTm.tm_mday, syncedTm.tm_mon + 1, syncedTm.tm_year + 1900);
-      Serial.printf("[API] Manual time sync completed: %s\n", buf);
-      Serial.printf("[SYNC_TRACE] success traceId=%s time=%s\n", traceId.c_str(), buf);
-      Serial.flush();
-
-        String r = String("{\"ok\":true,\"backendSyncInvoked\":true,\"traceId\":\"") + traceId +
-           String("\",\"time\":\"") + String(buf) +
-           String("\",\"ntp\":\"") + ntpSrv +
-           String("\",\"tz\":\"") + tzStr +
-           String("\"}");
-            AsyncWebServerResponse *res = req->beginResponse(200, "application/json", r);
-      res->addHeader("Cache-Control", "no-store");
-      req->send(res); });
-
     server.on("/api/admin/location", HTTP_GET, [](AsyncWebServerRequest *req)
               {
       DynamicJsonDocument d(1024);
       d["lat"] = geoLat;
       d["lon"] = geoLon;
       d["configured"] = locOk;
+
+      if (!timeSynced) {
+        struct tm currentTm;
+        if (readCurrentLocalTime(&currentTm)) {
+          timeSynced = true;
+        }
+      }
+
       bool sunReady = locOk && timeSynced;
       if (sunReady) {
         calcSunriseSunset();
       }
+
+      bool hasSunValues =
+        lastCalcDay >= 0 &&
+        srMin >= 0 && srMin <= 1439 &&
+        ssMin >= 0 && ssMin <= 1439;
+
       d["sunReady"] = sunReady;
-      d["sunrise"] = sunReady ? formatClockFromMinutes(srMin) : "";
-      d["sunset"] = sunReady ? formatClockFromMinutes(ssMin) : "";
+      d["sunrise"] = hasSunValues ? formatClockFromMinutes(srMin) : "";
+      d["sunset"] = hasSunValues ? formatClockFromMinutes(ssMin) : "";
       String r;
       serializeJson(d, r);
       req->send(200, "application/json", r); });
@@ -3601,6 +3566,14 @@ void setupWebServer()
       prefs.putFloat("lon", geoLon);
       prefs.end();
       notifyStorage();
+
+      if (!timeSynced) {
+        struct tm currentTm;
+        if (readCurrentLocalTime(&currentTm)) {
+          timeSynced = true;
+        }
+      }
+
       calcSunriseSunset();
 
       DynamicJsonDocument d(512);
@@ -3608,9 +3581,15 @@ void setupWebServer()
       d["lat"] = geoLat;
       d["lon"] = geoLon;
       bool sunReady = locOk && timeSynced;
+
+      bool hasSunValues =
+        lastCalcDay >= 0 &&
+        srMin >= 0 && srMin <= 1439 &&
+        ssMin >= 0 && ssMin <= 1439;
+
       d["sunReady"] = sunReady;
-      d["sunrise"] = sunReady ? formatClockFromMinutes(srMin) : "";
-      d["sunset"] = sunReady ? formatClockFromMinutes(ssMin) : "";
+      d["sunrise"] = hasSunValues ? formatClockFromMinutes(srMin) : "";
+      d["sunset"] = hasSunValues ? formatClockFromMinutes(ssMin) : "";
       String r;
       serializeJson(d, r);
       req->send(200, "application/json", r); });

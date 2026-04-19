@@ -3288,42 +3288,8 @@
         <div class="panel" id="panel-admin-time">
           <div class="panel-title">Time Setup</div>
           <div class="info-box">
-            Configure time synchronization and timezone settings for accurate
-            scheduling and automation.
-          </div>
-          <div class="setting-row">
-            <div class="setting-info">
-              <div class="setting-label">Sync Time</div>
-              <div class="setting-sub">Sync device time with NTP server</div>
-            </div>
-            <button
-              class="cfg-btn cfg-btn-secondary"
-              onclick="syncTimeNow()"
-              style="
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-                padding: 8px 14px;
-              "
-            >
-              <svg
-                viewBox="0 0 24 24"
-                style="
-                  width: 16px;
-                  height: 16px;
-                  fill: none;
-                  stroke: currentColor;
-                  stroke-width: 2;
-                "
-              >
-                <path d="M1 4v6h6" />
-                <path d="M23 20v-6h-6" />
-                <path
-                  d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"
-                />
-              </svg>
-              Sync Time
-            </button>
+            Configure NTP server and timezone settings for accurate scheduling
+            and automation.
           </div>
           <div
             class="setting-row"
@@ -3465,7 +3431,7 @@
             class="setting-row"
             style="flex-direction: column; align-items: flex-start; gap: 10px"
           >
-            <!-- <div class="setting-label">Current Sun Time</div> -->
+            <div class="setting-label">Current Sun Time (from ESP32)</div>
             <div
               id="currentSunTimesDisplay"
               style="
@@ -3478,7 +3444,7 @@
                 width: 100%;
               "
             >
-              Sunrise: --:-- | Sunset: --:--
+              Sunrise/Sunset unavailable
             </div>
           </div>
           <div
@@ -7246,48 +7212,6 @@
       /* ══════════════════════════════════════════════════════════════
          TIME SETUP
       ══════════════════════════════════════════════════════════════ */
-      function syncTimeNow() {
-        var traceId = String(Date.now());
-        apiPost(
-          "/api/admin/time/sync?traceId=" + encodeURIComponent(traceId),
-          "traceId=" + encodeURIComponent(traceId),
-        )
-          .then(function (d) {
-            if (d.ok && d.backendSyncInvoked === true) {
-              var message = "Time synchronized successfully!";
-              if (d.time) {
-                message += "\nESP Time: " + d.time;
-              }
-              if (d.traceId) {
-                message +=
-                  "\nTrace ID: " +
-                  d.traceId +
-                  " (check Serial for [SYNC_TRACE])";
-              }
-              alert(message);
-
-              return apiGet("/api/admin/location")
-                .then(function (loc) {
-                  setSunTimesDisplay(
-                    loc && loc.sunrise,
-                    loc && loc.sunset,
-                    !!(loc && loc.sunReady),
-                  );
-                })
-                .catch(function () {});
-            } else if (d.ok) {
-              alert(
-                "Sync response missing backend trace marker. Please upload latest firmware and try again.",
-              );
-            } else {
-              alert(d.error || "Time sync failed");
-            }
-          })
-          .catch(function () {
-            alert("Connection error");
-          });
-      }
-
       function saveTimeSettings() {
         var ntpServer = document.getElementById("ntpServer").value;
         var timezone = document.getElementById("timezoneSelect").value;
@@ -7332,11 +7256,28 @@
       function setSunTimesDisplay(sunrise, sunset, sunReady) {
         var display = document.getElementById("currentSunTimesDisplay");
         if (!display) return;
-        if (sunReady && sunrise && sunset) {
-          display.textContent = "Sunrise: " + sunrise + " | Sunset: " + sunset;
+
+        var sunriseText =
+          sunrise === undefined || sunrise === null
+            ? ""
+            : String(sunrise).trim();
+        var sunsetText =
+          sunset === undefined || sunset === null ? "" : String(sunset).trim();
+
+        var ready =
+          sunReady === true ||
+          sunReady === "true" ||
+          sunReady === 1 ||
+          sunReady === "1";
+
+        if (sunriseText && sunsetText) {
+          display.textContent =
+            "Sunrise: " + sunriseText + " | Sunset: " + sunsetText;
+        } else if (ready) {
+          display.textContent = "Sunrise: --:-- | Sunset: --:--";
         } else {
           display.textContent =
-            "Sunrise: --:-- | Sunset: --:-- (Sync time to calculate)";
+            "Sunrise/Sunset unavailable (set location and restart device if needed).";
         }
       }
 
@@ -7378,7 +7319,7 @@
                 ? respLon.toFixed(6)
                 : lon.toFixed(6);
               updateLocationDisplay(latText, lonText);
-              setSunTimesDisplay(d.sunrise, d.sunset, !!d.sunReady);
+              setSunTimesDisplay(d.sunrise, d.sunset, d.sunReady);
               statusDiv.innerHTML =
                 '<div class="schedule-success">Location saved successfully!</div>';
             } else {
@@ -8557,11 +8498,7 @@
               document.getElementById("locationLon").value = d.lon;
             if (d && d.lat !== undefined && d.lon !== undefined)
               updateLocationDisplay(d.lat, d.lon);
-            setSunTimesDisplay(
-              d && d.sunrise,
-              d && d.sunset,
-              !!(d && d.sunReady),
-            );
+            setSunTimesDisplay(d && d.sunrise, d && d.sunset, d && d.sunReady);
           })
           .catch(function () {});
 
