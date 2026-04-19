@@ -4708,6 +4708,16 @@
         if (secondsInput) secondsInput.value = totalSeconds % 60;
       }
 
+      function getTimerRemainingSeconds(timer) {
+        var remainingSec = parseInt(timer.remainingSec, 10);
+        if (!isFinite(remainingSec)) {
+          remainingSec = Math.ceil(
+            Math.max(0, parseInt(timer.remainingMs, 10) || 0) / 1000,
+          );
+        }
+        return Math.max(0, remainingSec);
+      }
+
       function renderTimerList(items) {
         var list = document.getElementById("timerList");
         if (!list) return;
@@ -4718,46 +4728,96 @@
           return;
         }
 
-        var html = items
-          .map(function (timer) {
-            var switchIndex = parseInt(timer.sw, 10) || 0;
-            var actionText = timer.action === "on" ? "Turn ON" : "Turn OFF";
-            var remainingSec = parseInt(timer.remainingSec, 10);
-            if (!isFinite(remainingSec)) {
-              remainingSec = Math.ceil(
-                Math.max(0, parseInt(timer.remainingMs, 10) || 0) / 1000,
-              );
-            }
-            return (
-              '<div class="automation-list-item">' +
+        var existingItems = {};
+        list
+          .querySelectorAll(".automation-list-item[data-sw]")
+          .forEach(function (node) {
+            existingItems[node.getAttribute("data-sw")] = node;
+          });
+
+        var seenItems = {};
+
+        items.forEach(function (timer) {
+          var switchIndex = parseInt(timer.sw, 10) || 0;
+          var swKey = String(switchIndex);
+          seenItems[swKey] = true;
+
+          var item = existingItems[swKey];
+          if (!item) {
+            item = document.createElement("div");
+            item.className = "automation-list-item";
+            item.setAttribute("data-sw", swKey);
+            item.innerHTML =
               '<div class="automation-list-main">' +
-              '<div class="automation-list-title">' +
-              escapeHtml(getSwitchDisplayName(switchIndex)) +
-              "</div>" +
-              '<div class="automation-list-meta">Action: ' +
-              escapeHtml(actionText) +
-              "\nRemaining: " +
-              escapeHtml(String(Math.max(0, remainingSec))) +
-              "s" +
-              " (" +
-              escapeHtml(formatDurationFromMs(timer.remainingMs)) +
-              ")" +
-              "</div>" +
+              '<div class="automation-list-title"></div>' +
+              '<div class="automation-list-meta">Action: <span class="timer-meta-action"></span>' +
+              '\nStatus: <span class="timer-meta-status"></span>' +
+              '\nRemaining: <span class="timer-meta-remaining"></span></div>' +
               "</div>" +
               '<div class="automation-list-actions">' +
               '<button class="cfg-btn cfg-btn-secondary" style="padding: 6px 12px; font-size: 0.76rem" onclick="editTimer(' +
               switchIndex +
               ')">Edit</button>' +
+              '<button class="cfg-btn cfg-btn-secondary timer-toggle-btn" style="padding: 6px 12px; font-size: 0.76rem"></button>' +
               '<button class="cfg-btn cfg-btn-danger" style="padding: 6px 12px; font-size: 0.76rem" onclick="removeTimer(' +
               switchIndex +
               ')">Remove</button>' +
-              "</div>" +
-              "</div>"
-            );
-          })
-          .join("");
+              "</div>";
+            list.appendChild(item);
+          }
 
-        list.innerHTML = html;
+          var actionText = timer.action === "on" ? "Turn ON" : "Turn OFF";
+          var paused = !!timer.paused;
+          var remainingSec = getTimerRemainingSeconds(timer);
+
+          var titleEl = item.querySelector(".automation-list-title");
+          if (titleEl) {
+            titleEl.textContent = getSwitchDisplayName(switchIndex);
+          }
+
+          var actionEl = item.querySelector(".timer-meta-action");
+          if (actionEl) {
+            actionEl.textContent = actionText;
+          }
+
+          var statusEl = item.querySelector(".timer-meta-status");
+          if (statusEl) {
+            statusEl.textContent = paused ? "Paused" : "Running";
+          }
+
+          var remainingEl = item.querySelector(".timer-meta-remaining");
+          if (remainingEl) {
+            remainingEl.textContent = String(remainingSec) + "s";
+          }
+
+          var toggleBtn = item.querySelector(".timer-toggle-btn");
+          if (toggleBtn) {
+            if (paused) {
+              toggleBtn.textContent = "Resume";
+              toggleBtn.setAttribute(
+                "onclick",
+                "resumeTimer(" + switchIndex + ")",
+              );
+            } else {
+              toggleBtn.textContent = "Pause";
+              toggleBtn.setAttribute(
+                "onclick",
+                "pauseTimer(" + switchIndex + ")",
+              );
+            }
+          }
+        });
+
+        Object.keys(existingItems).forEach(function (swKey) {
+          if (!seenItems[swKey]) {
+            existingItems[swKey].remove();
+          }
+        });
+
+        if (!list.querySelector(".automation-list-item")) {
+          list.innerHTML =
+            '<div class="automation-empty">No active timers found.</div>';
+        }
       }
 
       function startTimerRealtimeFeed() {
@@ -4770,7 +4830,7 @@
         timerRealtimeInterval = window.setInterval(function () {
           var timerPanel = document.getElementById("panel-auto-timer");
           if (!timerPanel || !timerPanel.classList.contains("active")) return;
-          loadTimerList();
+          loadTimerList(true);
         }, 1000);
       }
 
@@ -4902,6 +4962,7 @@
           .map(function (entry) {
             var automation = entry.data || {};
             var enabledText = automation.enabled ? "Enabled" : "Disabled";
+            var typeLabel = getSensorAutomationTypeLabel(entry.type);
             return (
               '<div class="automation-list-item">' +
               '<div class="automation-list-main">' +
@@ -4909,7 +4970,7 @@
               escapeHtml(getSwitchDisplayName(entry.sw)) +
               "</div>" +
               '<div class="automation-list-meta">Type: ' +
-              escapeHtml(getSensorAutomationTypeLabel(entry.type)) +
+              escapeHtml(typeLabel) +
               "\nStatus: " +
               escapeHtml(enabledText) +
               "\nCondition: " +
@@ -4923,6 +4984,13 @@
                   : "Not set",
               ) +
               "</div>" +
+              "</div>" +
+              '<div class="automation-list-actions">' +
+              '<button class="cfg-btn cfg-btn-danger" style="padding: 6px 12px; font-size: 0.76rem" onclick="removeSensorAutomation(' +
+              entry.sw +
+              ", '" +
+              entry.type +
+              "')\">Remove</button>" +
               "</div>" +
               "</div>"
             );
@@ -5490,29 +5558,17 @@
       }
 
       function toggleTimerList(forceVisible) {
-        var list = document.getElementById("timerList");
-        if (!list) return;
-        var visible =
-          typeof forceVisible === "boolean"
-            ? forceVisible
-            : !list.classList.contains("active");
-        setAutomationListVisibility(
-          "timerList",
-          "showTimersBtn",
-          visible,
-          "Show Timers",
-          "Hide Timers",
-        );
-        if (visible) {
-          loadTimerList();
-        }
+        loadTimerList();
       }
 
       function loadTimerList() {
+        var silent = arguments.length > 0 ? !!arguments[0] : false;
         var list = document.getElementById("timerList");
         if (!list) return Promise.resolve();
-        list.innerHTML =
-          '<div class="automation-empty">Loading timers...</div>';
+        if (!silent && !list.querySelector(".automation-list-item")) {
+          list.innerHTML =
+            '<div class="automation-empty">Loading timers...</div>';
+        }
         return apiGet("/api/timers")
           .then(function (arr) {
             timerListCache = Array.isArray(arr) ? arr.slice() : [];
@@ -5522,8 +5578,10 @@
             renderTimerList(timerListCache);
           })
           .catch(function () {
-            list.innerHTML =
-              '<div class="automation-empty">Unable to load timers right now.</div>';
+            if (!silent) {
+              list.innerHTML =
+                '<div class="automation-empty">Unable to load timers right now.</div>';
+            }
           });
       }
 
@@ -5545,9 +5603,39 @@
           .then(function (d) {
             if (d.ok) {
               alert("Timer removed!");
-              loadTimerList();
+              loadTimerList(true);
             } else {
               alert(d.error || "Failed to remove timer");
+            }
+          })
+          .catch(function () {
+            alert("Connection error");
+          });
+      }
+
+      function pauseTimer(sw) {
+        var switchIndex = parseInt(sw, 10) || 0;
+        apiPost("/api/timer/pause", "sw=" + switchIndex)
+          .then(function (d) {
+            if (d.ok) {
+              loadTimerList(true);
+            } else {
+              alert(d.error || "Failed to pause timer");
+            }
+          })
+          .catch(function () {
+            alert("Connection error");
+          });
+      }
+
+      function resumeTimer(sw) {
+        var switchIndex = parseInt(sw, 10) || 0;
+        apiPost("/api/timer/resume", "sw=" + switchIndex)
+          .then(function (d) {
+            if (d.ok) {
+              loadTimerList(true);
+            } else {
+              alert(d.error || "Failed to resume timer");
             }
           })
           .catch(function () {
@@ -5829,6 +5917,44 @@
           .catch(function () {
             list.innerHTML =
               '<div class="automation-empty">Unable to load sensor automations right now.</div>';
+          });
+      }
+
+      function removeSensorAutomation(sw, type) {
+        var switchIndex = parseInt(sw, 10) || 0;
+        var sensorType = String(type || "").toLowerCase();
+        var sensorLabel = getSensorAutomationTypeLabel(sensorType);
+        var switchName = getSwitchDisplayName(switchIndex);
+
+        if (
+          !confirm(
+            "Remove " +
+              sensorLabel +
+              " automation for " +
+              switchName +
+              " from ESP storage?",
+          )
+        ) {
+          return;
+        }
+
+        apiPost(
+          "/api/sensor/clear",
+          "sw=" +
+            encodeURIComponent(String(switchIndex)) +
+            "&type=" +
+            encodeURIComponent(sensorType),
+        )
+          .then(function (d) {
+            if (d.ok) {
+              alert("Sensor automation removed!");
+              loadSensorAutomationList();
+            } else {
+              alert(d.error || "Failed to remove sensor automation");
+            }
+          })
+          .catch(function () {
+            alert("Connection error");
           });
       }
 
@@ -7112,7 +7238,21 @@
         apiPost("/api/admin/time/sync", "")
           .then(function (d) {
             if (d.ok) {
-              alert("Time synchronized successfully!");
+              var message = "Time synchronized successfully!";
+              if (d.time) {
+                message += "\nESP Time: " + d.time;
+              }
+              alert(message);
+
+              return apiGet("/api/admin/location")
+                .then(function (loc) {
+                  setSunTimesDisplay(
+                    loc && loc.sunrise,
+                    loc && loc.sunset,
+                    !!(loc && loc.sunReady),
+                  );
+                })
+                .catch(function () {});
             } else {
               alert(d.error || "Time sync failed");
             }

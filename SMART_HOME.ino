@@ -75,7 +75,9 @@ String relayMode[NUM_SWITCHES] = {"off", "off", "off", "off"};
 struct SwTimer
 {
   bool active = false;
+  bool paused = false;
   unsigned long endMs = 0;
+  unsigned long remainingMs = 0;
   bool targetState = false;
 };
 SwTimer swTimers[NUM_SWITCHES];
@@ -812,7 +814,9 @@ void clearRecurringSchedulesStorage()
   for (int i = 0; i < NUM_SWITCHES; i++)
   {
     swTimers[i].active = false;
+    swTimers[i].paused = false;
     swTimers[i].endMs = 0;
+    swTimers[i].remainingMs = 0;
   }
 }
 
@@ -1455,10 +1459,12 @@ void checkTimers()
   unsigned long now = millis();
   for (int i = 0; i < NUM_SWITCHES; i++)
   {
-    if (swTimers[i].active && now >= swTimers[i].endMs)
+    if (swTimers[i].active && !swTimers[i].paused && now >= swTimers[i].endMs)
     {
       queueAutomationAction(i, swTimers[i].targetState, AUTOMATION_TIMER);
       swTimers[i].active = false;
+      swTimers[i].paused = false;
+      swTimers[i].remainingMs = 0;
       Serial.printf("[TIMER] SW%d -> %s\n", i, swTimers[i].targetState ? "ON" : "OFF");
     }
   }
@@ -2448,25 +2454,50 @@ void setupWebServer()
         return;
       }
       swTimers[sw].active = true;
+      swTimers[sw].paused = false;
+      swTimers[sw].remainingMs = dur;
       swTimers[sw].endMs = millis() + dur;
       swTimers[sw].targetState = (act == "on");
       req->send(200, "application/json", "{\"ok\":true}"); });
 
     server.on("/api/timers", HTTP_GET, [](AsyncWebServerRequest *req)
               {
+      int filterSw = -1;
+      if (req->hasParam("sw")) {
+        filterSw = req->getParam("sw")->value().toInt();
+        if (filterSw < 0 || filterSw >= NUM_SWITCHES) {
+          req->send(400, "application/json", "{\"error\":\"Invalid switch\"}");
+          return;
+        }
+      }
+
       DynamicJsonDocument d(1024);
       JsonArray timers = d.to<JsonArray>();
       unsigned long nowMs = millis();
 
       for (int i = 0; i < NUM_SWITCHES; i++) {
+        if (filterSw >= 0 && i != filterSw) {
+          continue;
+        }
+
         if (!swTimers[i].active) {
           continue;
         }
 
-        unsigned long remainingMs =
-          swTimers[i].endMs > nowMs ? swTimers[i].endMs - nowMs : 0;
+        unsigned long remainingMs = 0;
+        if (swTimers[i].paused) {
+          remainingMs = swTimers[i].remainingMs;
+        } else {
+          remainingMs =
+            swTimers[i].endMs > nowMs ? swTimers[i].endMs - nowMs : 0;
+          swTimers[i].remainingMs = remainingMs;
+        }
 
         if (remainingMs == 0) {
+          swTimers[i].active = false;
+          swTimers[i].paused = false;
+          swTimers[i].endMs = 0;
+          swTimers[i].remainingMs = 0;
           continue;
         }
 
@@ -2475,8 +2506,90 @@ void setupWebServer()
         timer["action"] = swTimers[i].targetState ? "on" : "off";
         timer["remainingMs"] = remainingMs;
         timer["remainingSec"] = (remainingMs + 999) / 1000;
+        timer["paused"] = swTimers[i].paused;
       }
 
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r); });
+
+    server.on("/api/timer/pause", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("sw", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing sw\"}");
+        return;
+      }
+
+      int sw = req->getParam("sw", true)->value().toInt();
+      if (sw < 0 || sw >= NUM_SWITCHES) {
+        req->send(400, "application/json", "{\"error\":\"Invalid switch\"}");
+        return;
+      }
+
+      if (!swTimers[sw].active) {
+        req->send(404, "application/json", "{\"error\":\"Timer not found\"}");
+        return;
+      }
+
+      if (!swTimers[sw].paused) {
+        unsigned long nowMs = millis();
+        unsigned long remainingMs = swTimers[sw].endMs > nowMs ? swTimers[sw].endMs - nowMs : 0;
+        if (remainingMs == 0) {
+          swTimers[sw].active = false;
+          swTimers[sw].paused = false;
+          swTimers[sw].endMs = 0;
+          swTimers[sw].remainingMs = 0;
+          req->send(200, "application/json", "{\"ok\":true,\"active\":false,\"paused\":false,\"remainingSec\":0}");
+          return;
+        }
+        swTimers[sw].remainingMs = remainingMs;
+        swTimers[sw].paused = true;
+      }
+
+      DynamicJsonDocument d(256);
+      d["ok"] = true;
+      d["active"] = swTimers[sw].active;
+      d["paused"] = swTimers[sw].paused;
+      d["remainingSec"] = (swTimers[sw].remainingMs + 999) / 1000;
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r); });
+
+    server.on("/api/timer/resume", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("sw", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing sw\"}");
+        return;
+      }
+
+      int sw = req->getParam("sw", true)->value().toInt();
+      if (sw < 0 || sw >= NUM_SWITCHES) {
+        req->send(400, "application/json", "{\"error\":\"Invalid switch\"}");
+        return;
+      }
+
+      if (!swTimers[sw].active) {
+        req->send(404, "application/json", "{\"error\":\"Timer not found\"}");
+        return;
+      }
+
+      if (swTimers[sw].paused) {
+        if (swTimers[sw].remainingMs == 0) {
+          swTimers[sw].active = false;
+          swTimers[sw].paused = false;
+          swTimers[sw].endMs = 0;
+          req->send(200, "application/json", "{\"ok\":true,\"active\":false,\"paused\":false,\"remainingSec\":0}");
+          return;
+        }
+        swTimers[sw].endMs = millis() + swTimers[sw].remainingMs;
+        swTimers[sw].paused = false;
+      }
+
+      DynamicJsonDocument d(256);
+      d["ok"] = true;
+      d["active"] = swTimers[sw].active;
+      d["paused"] = swTimers[sw].paused;
+      d["remainingSec"] = (swTimers[sw].remainingMs + 999) / 1000;
       String r;
       serializeJson(d, r);
       req->send(200, "application/json", r); });
@@ -2485,7 +2598,12 @@ void setupWebServer()
               {
       if (req->hasParam("sw", true)) {
         int sw = req->getParam("sw", true)->value().toInt();
-        if (sw >= 0 && sw < NUM_SWITCHES) swTimers[sw].active = false;
+        if (sw >= 0 && sw < NUM_SWITCHES) {
+          swTimers[sw].active = false;
+          swTimers[sw].paused = false;
+          swTimers[sw].endMs = 0;
+          swTimers[sw].remainingMs = 0;
+        }
       }
       req->send(200, "application/json", "{\"ok\":true}"); });
 
@@ -2656,6 +2774,42 @@ void setupWebServer()
       prefs.begin("sensor", false);
       prefs.putString(("x" + String(sw)).c_str(), data);
       prefs.end();
+      notifyStorage();
+      req->send(200, "application/json", "{\"ok\":true}"); });
+
+    server.on("/api/sensor/clear", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!req->hasParam("sw", true) || !req->hasParam("type", true)) {
+        req->send(400, "application/json", "{\"error\":\"Missing params\"}");
+        return;
+      }
+
+      int sw = req->getParam("sw", true)->value().toInt();
+      if (sw < 0 || sw >= NUM_SWITCHES) {
+        req->send(400, "application/json", "{\"error\":\"Invalid switch\"}");
+        return;
+      }
+
+      String type = req->getParam("type", true)->value();
+      type.trim();
+      type.toLowerCase();
+
+      char prefix = 0;
+      if (type == "temp")
+        prefix = 't';
+      else if (type == "humid")
+        prefix = 'h';
+      else if (type == "sun")
+        prefix = 'x';
+      else {
+        req->send(400, "application/json", "{\"error\":\"Invalid sensor type\"}");
+        return;
+      }
+
+      prefs.begin("sensor", false);
+      prefs.remove((String(prefix) + String(sw)).c_str());
+      prefs.end();
+
       notifyStorage();
       req->send(200, "application/json", "{\"ok\":true}"); });
 
@@ -3361,8 +3515,10 @@ void setupWebServer()
 
     server.on("/api/admin/time/sync", HTTP_POST, [](AsyncWebServerRequest *req)
               {
+      Serial.println("[API] Manual time sync requested");
       struct tm syncedTm;
       if (!syncTime(&syncedTm)) {
+        Serial.println("[API] Manual time sync failed");
         String err = String("Time sync failed. ") +
                      String("WiFi=") + (WiFi.status() == WL_CONNECTED ? "connected" : "disconnected") +
                      String(", IP=") + WiFi.localIP().toString() +
@@ -3378,6 +3534,7 @@ void setupWebServer()
       char buf[32];
       sprintf(buf, "%02d:%02d:%02d %02d/%02d/%04d", syncedTm.tm_hour, syncedTm.tm_min, syncedTm.tm_sec,
               syncedTm.tm_mday, syncedTm.tm_mon + 1, syncedTm.tm_year + 1900);
+      Serial.printf("[API] Manual time sync completed: %s\n", buf);
 
             String r = String("{\"ok\":true,\"time\":\"") + String(buf) +
            String("\",\"ntp\":\"") + ntpSrv +
