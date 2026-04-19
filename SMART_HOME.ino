@@ -1380,8 +1380,13 @@ bool readCurrentLocalTime(struct tm *ti)
 //  TIME SYNC
 bool syncTime(struct tm *syncedTime = nullptr)
 {
+  Serial.printf("[TIME] syncTime() called. WiFi=%s\n", WiFi.status() == WL_CONNECTED ? "connected" : "disconnected");
+
   if (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.println("[TIME] syncTime() aborted: WiFi disconnected");
     return false;
+  }
 
   loadTimeSettingsFromAdminStorage();
 
@@ -1428,6 +1433,8 @@ bool syncTime(struct tm *syncedTime = nullptr)
     }
     delay(pollDelayMs);
   }
+
+  Serial.println("[TIME] syncTime() timeout waiting for valid local time");
 
   return false;
 }
@@ -3515,10 +3522,25 @@ void setupWebServer()
 
     server.on("/api/admin/time/sync", HTTP_POST, [](AsyncWebServerRequest *req)
               {
+      String traceId = "";
+      if (req->hasParam("traceId", true)) {
+        traceId = req->getParam("traceId", true)->value();
+      } else if (req->hasParam("traceId")) {
+        traceId = req->getParam("traceId")->value();
+      }
+
+      if (traceId.isEmpty()) {
+        traceId = String(millis());
+      }
+
+      Serial.printf("[SYNC_TRACE] request traceId=%s\n", traceId.c_str());
       Serial.println("[API] Manual time sync requested");
+      Serial.flush();
       struct tm syncedTm;
       if (!syncTime(&syncedTm)) {
+        Serial.printf("[SYNC_TRACE] failed traceId=%s\n", traceId.c_str());
         Serial.println("[API] Manual time sync failed");
+        Serial.flush();
         String err = String("Time sync failed. ") +
                      String("WiFi=") + (WiFi.status() == WL_CONNECTED ? "connected" : "disconnected") +
                      String(", IP=") + WiFi.localIP().toString() +
@@ -3535,8 +3557,11 @@ void setupWebServer()
       sprintf(buf, "%02d:%02d:%02d %02d/%02d/%04d", syncedTm.tm_hour, syncedTm.tm_min, syncedTm.tm_sec,
               syncedTm.tm_mday, syncedTm.tm_mon + 1, syncedTm.tm_year + 1900);
       Serial.printf("[API] Manual time sync completed: %s\n", buf);
+      Serial.printf("[SYNC_TRACE] success traceId=%s time=%s\n", traceId.c_str(), buf);
+      Serial.flush();
 
-            String r = String("{\"ok\":true,\"time\":\"") + String(buf) +
+        String r = String("{\"ok\":true,\"backendSyncInvoked\":true,\"traceId\":\"") + traceId +
+           String("\",\"time\":\"") + String(buf) +
            String("\",\"ntp\":\"") + ntpSrv +
            String("\",\"tz\":\"") + tzStr +
            String("\"}");

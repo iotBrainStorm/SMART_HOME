@@ -21,6 +21,11 @@
         color: #e0e0e0;
       }
 
+      body.app-init .login-overlay,
+      body.app-init #dashboard {
+        visibility: hidden;
+      }
+
       /* ── Login Screen ── */
       .login-overlay {
         position: fixed;
@@ -606,7 +611,7 @@
       }
     </style>
   </head>
-  <body>
+  <body class="app-init">
     <!-- ── Login Screen ── -->
     <div class="login-overlay" id="loginScreen">
       <div class="login-box">
@@ -1548,6 +1553,7 @@
           loadSwitches();
           loadAutomationFeatureIndicators();
         }
+        document.body.classList.remove("app-init");
       }
 
       /* ── Periodic switch state refresh ── */

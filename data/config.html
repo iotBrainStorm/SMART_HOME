@@ -4728,6 +4728,10 @@
           return;
         }
 
+        list.querySelectorAll(".automation-empty").forEach(function (node) {
+          node.remove();
+        });
+
         var existingItems = {};
         list
           .querySelectorAll(".automation-list-item[data-sw]")
@@ -4825,7 +4829,7 @@
         if (list) {
           list.classList.add("active");
         }
-        loadTimerList();
+        loadTimerList(true);
         if (timerRealtimeInterval) return;
         timerRealtimeInterval = window.setInterval(function () {
           var timerPanel = document.getElementById("panel-auto-timer");
@@ -5564,8 +5568,16 @@
       function loadTimerList() {
         var silent = arguments.length > 0 ? !!arguments[0] : false;
         var list = document.getElementById("timerList");
+        var timerPanel = document.getElementById("panel-auto-timer");
+        var timerPanelActive = !!(
+          timerPanel && timerPanel.classList.contains("active")
+        );
         if (!list) return Promise.resolve();
-        if (!silent && !list.querySelector(".automation-list-item")) {
+        if (
+          !silent &&
+          !timerPanelActive &&
+          !list.querySelector(".automation-list-item")
+        ) {
           list.innerHTML =
             '<div class="automation-empty">Loading timers...</div>';
         }
@@ -7235,12 +7247,22 @@
          TIME SETUP
       ══════════════════════════════════════════════════════════════ */
       function syncTimeNow() {
-        apiPost("/api/admin/time/sync", "")
+        var traceId = String(Date.now());
+        apiPost(
+          "/api/admin/time/sync?traceId=" + encodeURIComponent(traceId),
+          "traceId=" + encodeURIComponent(traceId),
+        )
           .then(function (d) {
-            if (d.ok) {
+            if (d.ok && d.backendSyncInvoked === true) {
               var message = "Time synchronized successfully!";
               if (d.time) {
                 message += "\nESP Time: " + d.time;
+              }
+              if (d.traceId) {
+                message +=
+                  "\nTrace ID: " +
+                  d.traceId +
+                  " (check Serial for [SYNC_TRACE])";
               }
               alert(message);
 
@@ -7253,6 +7275,10 @@
                   );
                 })
                 .catch(function () {});
+            } else if (d.ok) {
+              alert(
+                "Sync response missing backend trace marker. Please upload latest firmware and try again.",
+              );
             } else {
               alert(d.error || "Time sync failed");
             }
