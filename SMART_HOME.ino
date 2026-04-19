@@ -830,6 +830,27 @@ void clearSensorControlStorage()
   prefs.end();
 }
 
+void clearRestartScheduleOnly(bool notifyChange = false)
+{
+  restartScheduleEnabled = false;
+  restartScheduleMinute = -1;
+  restartScheduleDayMask = 0;
+  lastRestartScheduleStamp = -1;
+  restartScheduleLastRunKey = "";
+
+  prefs.begin("admin", false);
+  prefs.remove("rsEn");
+  prefs.remove("rsMin");
+  prefs.remove("rsMask");
+  prefs.remove("rsLast");
+  prefs.end();
+
+  if (notifyChange)
+  {
+    notifyStorage();
+  }
+}
+
 void clearStaticIpConfiguration()
 {
   dhcpOn = true;
@@ -2786,7 +2807,7 @@ void setupWebServer()
       DynamicJsonDocument d(1024);
       d["enabled"] = fbOn;
       d["url"] = fbUrl;
-      d["token"] = fbToken;
+      d["hasToken"] = !fbToken.isEmpty();
       prefs.begin("fb", true);
       String rules = prefs.getString("rules", DEFAULT_FIREBASE_RULES_JSON);
       prefs.end();
@@ -2832,6 +2853,35 @@ void setupWebServer()
       prefs.end();
       notifyStorage();
       req->send(200, "application/json", "{\"ok\":true}"); });
+
+    server.on("/api/fb/reveal-token", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!requireAdminVerification(req)) {
+        return;
+      }
+
+      DynamicJsonDocument d(256);
+      d["ok"] = true;
+      d["hasToken"] = !fbToken.isEmpty();
+      d["token"] = fbToken;
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r); });
+
+    // Backward-compatible alias for existing UI builds.
+    server.on("/api/fb/token/reveal", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+      if (!requireAdminVerification(req)) {
+        return;
+      }
+
+      DynamicJsonDocument d(256);
+      d["ok"] = true;
+      d["hasToken"] = !fbToken.isEmpty();
+      d["token"] = fbToken;
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r); });
 
     server.on("/api/fb/token", HTTP_POST, [](AsyncWebServerRequest *req)
               {
@@ -3385,20 +3435,7 @@ void setupWebServer()
           return;
         }
 
-        restartScheduleEnabled = false;
-        restartScheduleMinute = -1;
-        restartScheduleDayMask = 0;
-        lastRestartScheduleStamp = -1;
-        restartScheduleLastRunKey = "";
-
-        prefs.begin("admin", false);
-        prefs.remove("rsEn");
-        prefs.remove("rsMin");
-        prefs.remove("rsMask");
-        prefs.remove("rsLast");
-        prefs.end();
-
-        notifyStorage();
+        clearRestartScheduleOnly(true);
         req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Restart schedule cancelled\"}");
         return;
       }
@@ -3477,20 +3514,7 @@ void setupWebServer()
         return;
       }
 
-      restartScheduleEnabled = false;
-      restartScheduleMinute = -1;
-      restartScheduleDayMask = 0;
-      lastRestartScheduleStamp = -1;
-      restartScheduleLastRunKey = "";
-
-      prefs.begin("admin", false);
-      prefs.remove("rsEn");
-      prefs.remove("rsMin");
-      prefs.remove("rsMask");
-      prefs.remove("rsLast");
-      prefs.end();
-
-      notifyStorage();
+      clearRestartScheduleOnly(true);
       req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Restart schedule cancelled\"}"); });
 
     server.on("/api/admin/restart", HTTP_POST, [](AsyncWebServerRequest *req)
@@ -3511,6 +3535,15 @@ void setupWebServer()
               {
       if (!requireAdminVerification(req)) {
         return;
+      }
+      if (req->hasParam("scope", true)) {
+        String scope = req->getParam("scope", true)->value();
+        scope.trim();
+        scope.toLowerCase();
+        if (scope != "storage") {
+          req->send(400, "application/json", "{\"error\":\"Reset type mismatch (expected storage)\"}");
+          return;
+        }
       }
       if (!requireBootHoldResetGesture(req)) {
         return;
@@ -3563,6 +3596,15 @@ void setupWebServer()
       if (!requireAdminVerification(req)) {
         return;
       }
+      if (req->hasParam("scope", true)) {
+        String scope = req->getParam("scope", true)->value();
+        scope.trim();
+        scope.toLowerCase();
+        if (scope != "settings") {
+          req->send(400, "application/json", "{\"error\":\"Reset type mismatch (expected settings)\"}");
+          return;
+        }
+      }
       if (!requireBootHoldResetGesture(req)) {
         return;
       }
@@ -3591,6 +3633,9 @@ void setupWebServer()
       resetTimezoneToDefault();
       addResetStep(steps, "timezone", "Time zone reset to +00:00 (London)", 520);
 
+      clearRestartScheduleOnly();
+      addResetStep(steps, "restart-schedule", "Automatic restart schedule cleared", 460);
+
       notifyStorage();
 
       String r;
@@ -3598,12 +3643,21 @@ void setupWebServer()
       req->send(200, "application/json", r);
 
       restartFlag = true;
-      restartAt = millis() + (5UL * RESET_CHECKPOINT_GAP_MS) + RESET_ALL_DONE_GAP_MS + RESET_RESTART_BUFFER_MS; });
+      restartAt = millis() + (6UL * RESET_CHECKPOINT_GAP_MS) + RESET_ALL_DONE_GAP_MS + RESET_RESTART_BUFFER_MS; });
 
     server.on("/api/admin/reset/factory", HTTP_POST, [](AsyncWebServerRequest *req)
               {
       if (!requireAdminVerification(req)) {
         return;
+      }
+      if (req->hasParam("scope", true)) {
+        String scope = req->getParam("scope", true)->value();
+        scope.trim();
+        scope.toLowerCase();
+        if (scope != "factory") {
+          req->send(400, "application/json", "{\"error\":\"Reset type mismatch (expected factory)\"}");
+          return;
+        }
       }
       if (!requireBootHoldResetGesture(req)) {
         return;
@@ -3633,6 +3687,7 @@ void setupWebServer()
       resetDeviceNameToDefault();
       resetNtpServerToDefault();
       resetTimezoneToDefault();
+      clearRestartScheduleOnly();
       addResetStep(steps, "reset-settings", "Reset Settings applied", 760);
 
       clearFirebaseCredentialsOnly();

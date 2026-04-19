@@ -3216,6 +3216,7 @@
               <li>Clear device name</li>
               <li>Clear NTP server</li>
               <li>Clear time zone</li>
+              <li>Clear restart schedule</li>
             </ul>
           </div>
           <div
@@ -5861,6 +5862,8 @@
       );
       var pendingPasswordAction = null;
       var pendingActionData = null;
+      var firebaseTokenAvailableOnDevice = false;
+      var firebaseTokenLoadedFromDevice = false;
 
       function showPasswordModal(message, action, data) {
         passwordModalMsg.textContent = message;
@@ -6545,7 +6548,9 @@
             "adminUser=" +
               encodeURIComponent(adminUser) +
               "&adminPass=" +
-              encodeURIComponent(adminPass),
+              encodeURIComponent(adminPass) +
+              "&scope=" +
+              encodeURIComponent(actionType),
           )
             .then(function (d) {
               if (!d || !d.ok) {
@@ -6553,6 +6558,21 @@
                   actionType,
                   (d && d.error) ||
                     "Reset failed. Hold BOOT for 5 seconds and try again.",
+                  "error",
+                );
+                return;
+              }
+
+              if (
+                d &&
+                d.type &&
+                String(d.type || "")
+                  .trim()
+                  .toLowerCase() !== actionType
+              ) {
+                showResetRuntimeMessage(
+                  actionType,
+                  "Unexpected reset response type received. Please refresh and try again.",
                   "error",
                 );
                 return;
@@ -6594,7 +6614,11 @@
               animateResetChecklist(view, onChecklistComplete);
             })
             .catch(function () {
-              showResetRuntimeMessage(actionType, "Connection error", "error");
+              showResetRuntimeMessage(
+                actionType,
+                "Connection error. If the device restarted, reconnect and check reset state.",
+                "error",
+              );
             });
         }, 5200);
       }
@@ -6757,7 +6781,110 @@
         );
       }
 
+      function setFirebaseTokenMaskedState(hasToken) {
+        var input = document.getElementById("firebaseTokenInput");
+        var toggleBtn = document.getElementById("firebaseTokenToggle");
+
+        firebaseTokenAvailableOnDevice = !!hasToken;
+        firebaseTokenLoadedFromDevice = false;
+
+        if (!input || !toggleBtn) return;
+
+        input.type = "password";
+        toggleBtn.classList.remove("active");
+        toggleBtn.setAttribute("aria-label", "Show token");
+
+        if (firebaseTokenAvailableOnDevice) {
+          input.value = "********";
+          input.placeholder =
+            "Saved token hidden. Use admin verification to show.";
+        } else {
+          if (/^\*+$/.test(String(input.value || ""))) {
+            input.value = "";
+          }
+          input.placeholder = "No saved database secret";
+        }
+      }
+
+      function revealFirebaseTokenWithAdmin() {
+        if (!firebaseTokenAvailableOnDevice) {
+          alert("No saved Firebase token found.");
+          return;
+        }
+
+        showPasswordModal(
+          "Enter admin credentials to show saved Firebase database secret",
+          function (data, adminUser, adminPass) {
+            apiPost(
+              "/api/fb/reveal-token",
+              appendAdminCredentials("reveal=1", adminUser, adminPass),
+            )
+              .then(function (d) {
+                if (!d || !d.ok) {
+                  alert((d && d.error) || "Failed to load Firebase token");
+                  return;
+                }
+
+                firebaseTokenAvailableOnDevice = !!d.hasToken;
+                if (!firebaseTokenAvailableOnDevice) {
+                  setFirebaseTokenMaskedState(false);
+                  alert("No saved Firebase token found.");
+                  return;
+                }
+
+                var input = document.getElementById("firebaseTokenInput");
+                if (!input) return;
+
+                input.value = d.token || "";
+                firebaseTokenLoadedFromDevice = true;
+
+                if (input.type === "password") {
+                  toggleProtectedFieldVisibility(
+                    "firebaseTokenInput",
+                    "firebaseTokenToggle",
+                    "Show token",
+                    "Hide token",
+                  );
+                }
+              })
+              .catch(function () {
+                alert("Connection error");
+              });
+          },
+        );
+      }
+
       function toggleFirebaseTokenVisibility() {
+        var input = document.getElementById("firebaseTokenInput");
+        if (!input) return;
+
+        if (input.type !== "password") {
+          toggleProtectedFieldVisibility(
+            "firebaseTokenInput",
+            "firebaseTokenToggle",
+            "Show token",
+            "Hide token",
+          );
+          return;
+        }
+
+        var currentValue = String(input.value || "");
+        var isMaskedValue = /^\*+$/.test(currentValue);
+        var needsAdminReveal =
+          firebaseTokenAvailableOnDevice &&
+          !firebaseTokenLoadedFromDevice &&
+          (isMaskedValue || !currentValue.trim());
+
+        if (needsAdminReveal) {
+          revealFirebaseTokenWithAdmin();
+          return;
+        }
+
+        if (!currentValue.trim()) {
+          alert("No saved Firebase token found.");
+          return;
+        }
+
         toggleProtectedFieldVisibility(
           "firebaseTokenInput",
           "firebaseTokenToggle",
@@ -8016,8 +8143,11 @@
                     ),
                   )
                     .then(function (d) {
-                      if (d.ok) alert("Token saved!");
-                      else alert(d.error || "Save failed");
+                      if (d.ok) {
+                        firebaseTokenAvailableOnDevice = true;
+                        firebaseTokenLoadedFromDevice = true;
+                        alert("Token saved!");
+                      } else alert(d.error || "Save failed");
                     })
                     .catch(function () {
                       alert("Connection error");
@@ -8127,7 +8257,9 @@
             var tokenInput = document.querySelector(
               "#panel-fb-token .cfg-input",
             );
-            if (tokenInput && d.token) tokenInput.value = d.token;
+            if (tokenInput) {
+              setFirebaseTokenMaskedState(!!(d && d.hasToken));
+            }
             var rulesInput = document.getElementById("firebaseRules");
             if (rulesInput) {
               var incomingRules =
