@@ -1,8 +1,11 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <WiFiManager.h>
 #include <ESPAsyncWebServer.h>
 #include <HTTPClient.h>
+#define ENABLE_USER_AUTH
+#define ENABLE_DATABASE
 #include <FirebaseClient.h> // from mobizt
 #include <Wire.h>
 #include <SPI.h>
@@ -90,6 +93,26 @@ bool portalFlag = false;
 // Firebase
 bool fbOn = false;
 String fbUrl, fbToken;
+
+String firebaseAuthUid = "";
+String firebaseStreamPath = "";
+bool firebaseRuntimeInitialized = false;
+bool firebaseStreamRunning = false;
+bool firebaseRuntimeDirty = true;
+unsigned long firebaseLastInitAttemptMs = 0;
+unsigned long firebaseLastStreamAttemptMs = 0;
+const unsigned long FIREBASE_INIT_RETRY_MS = 5000;
+const unsigned long FIREBASE_STREAM_RETRY_MS = 5000;
+const char *FIREBASE_AUTH_TASK_UID = "firebaseAuthTask";
+const char *FIREBASE_STREAM_TASK_UID = "firebaseStreamTask";
+
+WiFiClientSecure fbSslClient, fbStreamSslClient;
+using FirebaseAsyncClient = AsyncClientClass;
+FirebaseAsyncClient fbClient(fbSslClient), fbStreamClient(fbStreamSslClient);
+FirebaseApp fbApp;
+RealtimeDatabase fbDatabase;
+UserAuth *fbUserAuth = nullptr;
+
 const char *PRIMARY_ADMIN_ID = "esp";
 const char *PRIMARY_ADMIN_PASS = "456456";
 String configuredPrimaryAdminId = String(PRIMARY_ADMIN_ID);
@@ -176,8 +199,11 @@ unsigned long bootButtonPressedAt = 0;
 unsigned long bootHoldSatisfiedAt = 0;
 bool bootHoldSatisfied = false;
 
+void setRelayState(int index, bool state, const String &source);
 void setSwitch(int i, bool st);
 void calcSunriseSunset();
+void handleFirebaseRuntime();
+void firebaseAsyncCallback(AsyncResult &aResult);
 
 //  BEEP + LED ON NVS CHANGE
 void notifyStorage()
@@ -540,7 +566,7 @@ void applyPendingAutomationActions()
   {
     if (!pendingAutomationAction[i])
       continue;
-    setSwitch(i, pendingAutomationState[i]);
+    setRelayState(i, pendingAutomationState[i], "automation");
     Serial.printf("[AUTO] SW%d -> %s (source=%s, rank=%d)\n",
                   i,
                   pendingAutomationState[i] ? "ON" : "OFF",
@@ -556,6 +582,7 @@ void loadFbSettings()
   fbUrl = prefs.getString("url", "");
   fbToken = prefs.getString("tok", "");
   prefs.end();
+  firebaseRuntimeDirty = true;
 }
 
 void loadAdminSettings()
@@ -945,6 +972,7 @@ void disableFirebaseOnly()
   prefs.begin("fb", false);
   prefs.putBool("en", false);
   prefs.end();
+  firebaseRuntimeDirty = true;
 }
 
 void resetDeviceNameToDefault()
@@ -991,6 +1019,7 @@ void clearFirebaseCredentialsOnly()
   prefs.remove("url");
   prefs.remove("tok");
   prefs.end();
+  firebaseRuntimeDirty = true;
 }
 
 void resetFirebaseRulesToDefault()
@@ -1372,19 +1401,437 @@ int findFirebaseAuthUserIndex(JsonArray users, const String &email)
   return -1;
 }
 
-//  SWITCH CONTROL
-void setSwitch(int i, bool st)
+void configureFirebaseSslClient(WiFiClientSecure &client)
 {
-  if (i < 0 || i >= NUM_SWITCHES)
+  client.setInsecure();
+#if defined(ESP32)
+  client.setConnectionTimeout(1000);
+  client.setHandshakeTimeout(5);
+#endif
+#if defined(ESP8266)
+  client.setBufferSizes(4096, 1024);
+#endif
+}
+
+bool tryParseBoolText(String text, bool &out)
+{
+  text.trim();
+  text.toLowerCase();
+  if (text == "true" || text == "1")
+  {
+    out = true;
+    return true;
+  }
+  if (text == "false" || text == "0")
+  {
+    out = false;
+    return true;
+  }
+  return false;
+}
+
+bool tryParseBoolVariant(const JsonVariantConst &value, bool &out)
+{
+  if (value.is<bool>())
+  {
+    out = value.as<bool>();
+    return true;
+  }
+
+  if (value.is<int>())
+  {
+    out = value.as<int>() != 0;
+    return true;
+  }
+
+  if (value.is<long>())
+  {
+    out = value.as<long>() != 0;
+    return true;
+  }
+
+  if (value.is<double>())
+  {
+    out = value.as<double>() != 0.0;
+    return true;
+  }
+
+  if (value.is<const char *>())
+  {
+    String text = value.as<String>();
+    return tryParseBoolText(text, out);
+  }
+
+  return false;
+}
+
+bool getPrimaryFirebaseAuthCredential(String &email, String &password)
+{
+  DynamicJsonDocument doc(4096);
+  loadFirebaseAuthUsersDoc(doc);
+  JsonArray users = doc.as<JsonArray>();
+  if (users.isNull() || users.size() == 0)
+    return false;
+
+  for (JsonObject user : users)
+  {
+    String candidateEmail = normalizeEmail(user["email"].as<String>());
+    String candidatePassword = user["password"].as<String>();
+    candidatePassword.trim();
+    if (candidateEmail.isEmpty() || candidatePassword.isEmpty())
+      continue;
+
+    email = candidateEmail;
+    password = candidatePassword;
+    return true;
+  }
+
+  return false;
+}
+
+void stopFirebaseRuntime()
+{
+  fbStreamClient.stopAsync(FIREBASE_STREAM_TASK_UID);
+  fbClient.stopAsync(true);
+  fbDatabase.resetApp();
+  deinitializeApp(fbApp);
+
+  if (fbUserAuth)
+  {
+    delete fbUserAuth;
+    fbUserAuth = nullptr;
+  }
+
+  firebaseRuntimeInitialized = false;
+  firebaseStreamRunning = false;
+  firebaseAuthUid = "";
+  firebaseStreamPath = "";
+}
+
+bool firebaseSetBoolAtPath(const String &path, bool value)
+{
+  if (!firebaseRuntimeInitialized || !fbApp.ready())
+    return false;
+
+  if (firebaseAuthUid.isEmpty())
+    return false;
+
+  // Equivalent behavior to Firebase.RTDB.setBool() for FirebaseClient.h.
+  bool ok = fbDatabase.set<bool>(fbClient, path, value);
+  if (!ok)
+  {
+    Firebase.printf("[FB] set<bool> failed path=%s code=%d msg=%s\n",
+                    path.c_str(),
+                    fbClient.lastError().code(),
+                    fbClient.lastError().message().c_str());
+  }
+  return ok;
+}
+
+bool writeRelayStateToFirebase(int index, bool state)
+{
+  if (index < 0 || index >= NUM_SWITCHES)
+    return false;
+
+  if (!fbOn || firebaseAuthUid.isEmpty())
+    return false;
+
+  String path = "/devices/" + firebaseAuthUid + "/switch" + String(index + 1);
+  return firebaseSetBoolAtPath(path, state);
+}
+
+void setRelayState(int index, bool state, const String &source)
+{
+  if (index < 0 || index >= NUM_SWITCHES)
     return;
-  swState[i] = st;
-  digitalWrite(outPin[i], st ? HIGH : LOW);
-  if (relayMode[i] == "remember")
+
+  swState[index] = state;
+  digitalWrite(outPin[index], state ? HIGH : LOW);
+
+  if (relayMode[index] == "remember")
   {
     prefs.begin("sw", false);
-    prefs.putBool(("l" + String(i)).c_str(), st);
+    prefs.putBool(("l" + String(index)).c_str(), state);
     prefs.end();
   }
+
+  String normalizedSource = source;
+  normalizedSource.trim();
+  normalizedSource.toLowerCase();
+  if (normalizedSource == "firebase")
+  {
+    return;
+  }
+
+  writeRelayStateToFirebase(index, state);
+}
+
+void setSwitch(int i, bool st)
+{
+  setRelayState(i, st, "local");
+}
+
+int relayIndexFromFirebasePath(const String &dataPath)
+{
+  if (!dataPath.startsWith("/switch"))
+    return -1;
+
+  String idxText = dataPath.substring(7);
+  if (idxText.isEmpty())
+    return -1;
+
+  for (size_t i = 0; i < idxText.length(); i++)
+  {
+    char c = idxText.charAt(i);
+    if (c < '0' || c > '9')
+      return -1;
+  }
+
+  int oneBased = idxText.toInt();
+  if (oneBased < 1 || oneBased > NUM_SWITCHES)
+    return -1;
+
+  return oneBased - 1;
+}
+
+void applyFirebaseSnapshotPayload(const String &payload)
+{
+  DynamicJsonDocument doc(1024);
+  if (deserializeJson(doc, payload))
+    return;
+
+  JsonObject obj = doc.as<JsonObject>();
+  if (obj.isNull())
+    return;
+
+  for (int i = 0; i < NUM_SWITCHES; i++)
+  {
+    String key = "switch" + String(i + 1);
+    if (!obj.containsKey(key))
+      continue;
+
+    bool state = false;
+    if (tryParseBoolVariant(obj[key], state))
+    {
+      setRelayState(i, state, "firebase");
+    }
+  }
+}
+
+void applyFirebasePathPayload(const String &dataPath, const String &payload)
+{
+  if (dataPath == "/")
+  {
+    applyFirebaseSnapshotPayload(payload);
+    return;
+  }
+
+  int index = relayIndexFromFirebasePath(dataPath);
+  if (index < 0)
+    return;
+
+  bool state = false;
+  if (tryParseBoolText(payload, state))
+  {
+    setRelayState(index, state, "firebase");
+    return;
+  }
+
+  DynamicJsonDocument doc(256);
+  if (deserializeJson(doc, payload))
+    return;
+
+  JsonVariant root = doc.as<JsonVariant>();
+  if (tryParseBoolVariant(root, state))
+  {
+    setRelayState(index, state, "firebase");
+    return;
+  }
+
+  JsonObject obj = root.as<JsonObject>();
+  if (obj.isNull())
+    return;
+
+  if (obj.containsKey("state") && tryParseBoolVariant(obj["state"], state))
+  {
+    setRelayState(index, state, "firebase");
+    return;
+  }
+
+  String directKey = "switch" + String(index + 1);
+  if (obj.containsKey(directKey) && tryParseBoolVariant(obj[directKey], state))
+  {
+    setRelayState(index, state, "firebase");
+  }
+}
+
+bool beginFirebaseRuntime()
+{
+  String databaseUrl = fbUrl;
+  String apiKey = fbToken;
+  databaseUrl.trim();
+  apiKey.trim();
+
+  if (databaseUrl.isEmpty() || apiKey.isEmpty())
+    return false;
+
+  String authEmail;
+  String authPassword;
+  if (!getPrimaryFirebaseAuthCredential(authEmail, authPassword))
+    return false;
+
+  if (fbUserAuth)
+  {
+    delete fbUserAuth;
+    fbUserAuth = nullptr;
+  }
+  fbUserAuth = new UserAuth(apiKey, authEmail, authPassword, 3000);
+
+  initializeApp(fbClient, fbApp, getAuth(*fbUserAuth), firebaseAsyncCallback, FIREBASE_AUTH_TASK_UID);
+  fbApp.getApp<RealtimeDatabase>(fbDatabase);
+  fbDatabase.url(databaseUrl);
+
+  firebaseRuntimeInitialized = true;
+  firebaseStreamRunning = false;
+  firebaseAuthUid = "";
+  firebaseStreamPath = "";
+  return true;
+}
+
+void ensureFirebaseStreamConnected()
+{
+  if (!firebaseRuntimeInitialized || !fbApp.ready())
+    return;
+
+  if (firebaseAuthUid.isEmpty() || firebaseStreamPath.isEmpty())
+    return;
+
+  if (firebaseStreamRunning)
+    return;
+
+  unsigned long now = millis();
+  if (now - firebaseLastStreamAttemptMs < FIREBASE_STREAM_RETRY_MS)
+    return;
+
+  firebaseLastStreamAttemptMs = now;
+  fbStreamClient.setSSEFilters("get,put,patch,keep-alive,cancel,auth_revoked");
+  fbDatabase.get(fbStreamClient, firebaseStreamPath, firebaseAsyncCallback, true, FIREBASE_STREAM_TASK_UID);
+  firebaseStreamRunning = true;
+}
+
+void firebaseAsyncCallback(AsyncResult &aResult)
+{
+  if (!aResult.isResult())
+    return;
+
+  String taskId = aResult.uid();
+  if (aResult.isError())
+  {
+    Firebase.printf("[FB] Error task=%s msg=%s code=%d\n",
+                    taskId.c_str(),
+                    aResult.error().message().c_str(),
+                    aResult.error().code());
+    if (taskId == FIREBASE_AUTH_TASK_UID)
+    {
+      firebaseRuntimeInitialized = false;
+      firebaseRuntimeDirty = true;
+      firebaseLastInitAttemptMs = millis();
+      return;
+    }
+    if (taskId == FIREBASE_STREAM_TASK_UID)
+    {
+      firebaseStreamRunning = false;
+      firebaseLastStreamAttemptMs = millis();
+    }
+  }
+
+  if (!aResult.available())
+    return;
+
+  RealtimeDatabaseResult &stream = aResult.to<RealtimeDatabaseResult>();
+  if (!stream.isStream())
+    return;
+
+  String eventType = stream.event().c_str();
+  eventType.toLowerCase();
+  if (eventType == "cancel" || eventType == "auth_revoked")
+  {
+    firebaseStreamRunning = false;
+    firebaseLastStreamAttemptMs = millis();
+    return;
+  }
+
+  firebaseStreamRunning = true;
+
+  String dataPath = stream.dataPath().c_str();
+  String payload = stream.to<String>();
+  applyFirebasePathPayload(dataPath, payload);
+}
+
+void handleFirebaseRuntime()
+{
+  if (!fbOn)
+  {
+    if (firebaseRuntimeInitialized || firebaseStreamRunning || !firebaseAuthUid.isEmpty())
+    {
+      stopFirebaseRuntime();
+    }
+    return;
+  }
+
+  if (firebaseRuntimeDirty)
+  {
+    stopFirebaseRuntime();
+    firebaseRuntimeDirty = false;
+    firebaseLastInitAttemptMs = 0;
+    firebaseLastStreamAttemptMs = 0;
+  }
+
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    if (firebaseStreamRunning)
+    {
+      fbStreamClient.stopAsync(FIREBASE_STREAM_TASK_UID);
+      firebaseStreamRunning = false;
+    }
+    return;
+  }
+
+  if (!firebaseRuntimeInitialized)
+  {
+    unsigned long now = millis();
+    if (now - firebaseLastInitAttemptMs >= FIREBASE_INIT_RETRY_MS)
+    {
+      firebaseLastInitAttemptMs = now;
+      beginFirebaseRuntime();
+    }
+    return;
+  }
+
+  fbApp.loop();
+
+  if (!fbApp.ready())
+    return;
+
+  String uid = fbApp.getUid();
+  uid.trim();
+  if (uid.isEmpty())
+    return;
+
+  if (uid != firebaseAuthUid)
+  {
+    firebaseAuthUid = uid;
+    firebaseStreamPath = "/devices/" + firebaseAuthUid;
+    firebaseStreamRunning = false;
+    firebaseLastStreamAttemptMs = 0;
+
+    for (int i = 0; i < NUM_SWITCHES; i++)
+    {
+      writeRelayStateToFirebase(i, swState[i]);
+    }
+  }
+
+  ensureFirebaseStreamConnected();
 }
 
 bool readCurrentLocalTime(struct tm *ti)
@@ -2169,7 +2616,7 @@ void checkPhysicalSwitches()
       lastInState[i] = reading;
       if (reading == LOW)
       {
-        setSwitch(i, !swState[i]);
+        setRelayState(i, !swState[i], "physical");
         Serial.printf("[SW] Physical toggle SW%d -> %s\n", i, swState[i] ? "ON" : "OFF");
       }
     }
@@ -2314,7 +2761,7 @@ void setupWebServer()
     }
     int idx = req->getParam("index", true)->value().toInt();
     bool st = req->getParam("state", true)->value() == "true";
-    setSwitch(idx, st);
+    setRelayState(idx, st, "api");
     req->send(200, "application/json", "{\"ok\":true}"); });
 
   server.on("/api/switches/names", HTTP_POST, [](AsyncWebServerRequest *req)
@@ -2444,6 +2891,7 @@ void setupWebServer()
     user["email"] = email;
     user["password"] = password;
     saveFirebaseAuthUsersDoc(doc);
+    firebaseRuntimeDirty = true;
     notifyStorage();
     req->send(200, "application/json", "{\"ok\":true}"); });
 
@@ -2474,6 +2922,7 @@ void setupWebServer()
 
     users.remove(userIndex);
     saveFirebaseAuthUsersDoc(doc);
+    firebaseRuntimeDirty = true;
     notifyStorage();
     req->send(200, "application/json", "{\"ok\":true}"); });
 
@@ -3044,6 +3493,7 @@ void setupWebServer()
       prefs.begin("fb", false);
       prefs.putBool("en", fbOn);
       prefs.end();
+      firebaseRuntimeDirty = true;
       notifyStorage();
       req->send(200, "application/json", "{\"ok\":true}"); });
 
@@ -3060,6 +3510,7 @@ void setupWebServer()
       prefs.begin("fb", false);
       prefs.putString("url", fbUrl);
       prefs.end();
+      firebaseRuntimeDirty = true;
       notifyStorage();
       req->send(200, "application/json", "{\"ok\":true}"); });
 
@@ -3105,6 +3556,7 @@ void setupWebServer()
       prefs.begin("fb", false);
       prefs.putString("tok", fbToken);
       prefs.end();
+      firebaseRuntimeDirty = true;
       notifyStorage();
       req->send(200, "application/json", "{\"ok\":true}"); });
 
@@ -3986,6 +4438,9 @@ void setup()
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(BOOT_BUTTON, INPUT_PULLUP);
 
+  configureFirebaseSslClient(fbSslClient);
+  configureFirebaseSslClient(fbStreamSslClient);
+
   // Startup beep
   digitalWrite(BUZZER_PIN, HIGH);
   delay(100);
@@ -4115,6 +4570,8 @@ void loop()
 {
   updateBootButtonHoldState();
 
+  handleFirebaseRuntime();
+
   // Physical switch input
   checkPhysicalSwitches();
 
@@ -4148,7 +4605,6 @@ void loop()
   {
     portalFlag = false;
     server.end();
-    delay(100);
     if (!runWifiConfigPortal(true))
     {
       restartFlag = true;
