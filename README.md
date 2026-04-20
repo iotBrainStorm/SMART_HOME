@@ -205,7 +205,7 @@ Note: If your relay board is active-low, adjust wiring logic or relay module set
 4. Compile and upload firmware.
 5. Upload web assets from data folder (index.html, config.html, icons, svg assets) to SPIFFS/LittleFS.
 6. Restart device.
-7. Connect to the same network and open the device IP in browser.
+7. Connect to the same network and open the device IP (192.168.4.1) in browser.
 
 ## First Login
 
