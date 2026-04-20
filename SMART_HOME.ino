@@ -382,6 +382,21 @@ String getDefaultDeviceName()
 {
   uint64_t chipId = ESP.getEfuseMac();
   char buf[13];
+  // ESP.getEfuseMac() stores the 48-bit MAC least-significant byte first.
+  snprintf(buf, sizeof(buf), "%02X%02X%02X%02X%02X%02X",
+           (uint8_t)(chipId),
+           (uint8_t)(chipId >> 8),
+           (uint8_t)(chipId >> 16),
+           (uint8_t)(chipId >> 24),
+           (uint8_t)(chipId >> 32),
+           (uint8_t)(chipId >> 40));
+  return String(buf);
+}
+
+String getLegacyReversedDefaultDeviceName()
+{
+  uint64_t chipId = ESP.getEfuseMac();
+  char buf[13];
   snprintf(buf, sizeof(buf), "%02X%02X%02X%02X%02X%02X",
            (uint8_t)(chipId >> 40),
            (uint8_t)(chipId >> 32),
@@ -572,13 +587,25 @@ void loadAdminSettings()
   prefs.end();
 
   storedDeviceName.trim();
+  String defaultDeviceName = getDefaultDeviceName();
+  String legacyReversedDefaultDeviceName = getLegacyReversedDefaultDeviceName();
+  bool migrateLegacyReversedDeviceName = false;
   if (storedDeviceName.isEmpty())
   {
-    deviceName = getDefaultDeviceName();
+    deviceName = defaultDeviceName;
   }
   else
   {
-    deviceName = storedDeviceName;
+    if (storedDeviceName == legacyReversedDefaultDeviceName &&
+        legacyReversedDefaultDeviceName != defaultDeviceName)
+    {
+      deviceName = defaultDeviceName;
+      migrateLegacyReversedDeviceName = true;
+    }
+    else
+    {
+      deviceName = storedDeviceName;
+    }
   }
 
   storedPrimaryAdminId = normalizeUserId(storedPrimaryAdminId);
@@ -610,10 +637,10 @@ void loadAdminSettings()
     setDefaultAutomationPriorityOrder();
   }
 
-  if (storedDeviceName.isEmpty() || !orderValid || missingPrimaryAdminProfile)
+  if (storedDeviceName.isEmpty() || migrateLegacyReversedDeviceName || !orderValid || missingPrimaryAdminProfile)
   {
     prefs.begin("admin", false);
-    if (storedDeviceName.isEmpty())
+    if (storedDeviceName.isEmpty() || migrateLegacyReversedDeviceName)
     {
       prefs.putString("devname", deviceName);
     }

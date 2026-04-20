@@ -3431,7 +3431,7 @@
             class="setting-row"
             style="flex-direction: column; align-items: flex-start; gap: 10px"
           >
-            <div class="setting-label">Current Sun Time (from ESP32)</div>
+            <div class="setting-label">Current Sun Time</div>
             <div
               id="currentSunTimesDisplay"
               style="
@@ -6375,12 +6375,31 @@
         apiGet("/api/admin/device-name")
           .then(function (d) {
             var defaultEl = document.getElementById("defaultDeviceName");
+            var defaultName =
+              d && d.defaultName ? String(d.defaultName).trim() : "";
             if (defaultEl) {
-              defaultEl.textContent = d.defaultName || "Unavailable";
+              defaultEl.textContent = defaultName || "Unavailable";
             }
             var input = document.getElementById("adminDeviceName");
             if (input) {
-              input.value = d.name || d.defaultName || "";
+              var currentName = d && d.name ? String(d.name).trim() : "";
+
+              if (currentName && defaultName) {
+                var normalizedDefault = defaultName
+                  .replace(/[^0-9a-f]/gi, "")
+                  .toUpperCase();
+                if (normalizedDefault.length === 12) {
+                  var legacyReversed = "";
+                  for (var i = normalizedDefault.length - 2; i >= 0; i -= 2) {
+                    legacyReversed += normalizedDefault.substring(i, i + 2);
+                  }
+                  if (currentName.toUpperCase() === legacyReversed) {
+                    currentName = defaultName;
+                  }
+                }
+              }
+
+              input.value = currentName || defaultName || "";
             }
           })
           .catch(function () {});
