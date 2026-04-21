@@ -135,6 +135,8 @@ unsigned long firebaseStreamStartedAtMs = 0;
 String firebaseLastSyncedDeviceName = "";
 bool firebaseDeviceNameSyncDirty = true;
 String cachedDeviceId = "";
+TaskHandle_t firebaseTaskHandle = nullptr;
+SemaphoreHandle_t swStateMutex = nullptr;
 
 const char *PRIMARY_ADMIN_ID = "esp";
 const char *PRIMARY_ADMIN_PASS = "456456";
@@ -231,6 +233,12 @@ void initFirebaseWriteQueue();
 void clearFirebaseWriteQueue();
 bool enqueueFirebaseWrite(int index, bool state);
 void processFirebaseWriteQueue();
+void firebaseTask(void *param);
+void startFirebaseTask();
+bool lockSwState(TickType_t waitTicks = portMAX_DELAY);
+void unlockSwState();
+bool readSwState(int index);
+void writeSwState(int index, bool value);
 void initDeviceId();
 String firebaseDeviceId();
 String firebaseDeviceNameValue();
@@ -300,13 +308,13 @@ void loadSwitchSettings()
     swName[i] = prefs.getString(("n" + String(i)).c_str(), swName[i]);
     swIcon[i] = prefs.getString(("i" + String(i)).c_str(), swIcon[i]);
     relayMode[i] = prefs.getString(("r" + String(i)).c_str(), "off");
+    bool initialState = false;
     if (relayMode[i] == "on")
-      swState[i] = true;
+      initialState = true;
     else if (relayMode[i] == "remember")
-      swState[i] = prefs.getBool(("l" + String(i)).c_str(), false);
-    else
-      swState[i] = false;
-    digitalWrite(outPin[i], swState[i] ? HIGH : LOW);
+      initialState = prefs.getBool(("l" + String(i)).c_str(), false);
+    writeSwState(i, initialState);
+    digitalWrite(outPin[i], initialState ? HIGH : LOW);
   }
   prefs.end();
 }
@@ -996,7 +1004,7 @@ void resetRelayStatesToDefault()
   for (int i = 0; i < NUM_SWITCHES; i++)
   {
     relayMode[i] = "off";
-    swState[i] = false;
+    writeSwState(i, false);
     digitalWrite(outPin[i], LOW);
     prefs.putString(("r" + String(i)).c_str(), "off");
     prefs.remove(("l" + String(i)).c_str());
@@ -1476,6 +1484,48 @@ void clearFirebaseWriteQueue()
   }
 }
 
+bool lockSwState(TickType_t waitTicks)
+{
+  if (!swStateMutex)
+    return true;
+
+  return xSemaphoreTake(swStateMutex, waitTicks) == pdTRUE;
+}
+
+void unlockSwState()
+{
+  if (swStateMutex)
+  {
+    xSemaphoreGive(swStateMutex);
+  }
+}
+
+bool readSwState(int index)
+{
+  if (index < 0 || index >= NUM_SWITCHES)
+    return false;
+
+  bool value = false;
+  if (lockSwState())
+  {
+    value = swState[index];
+    unlockSwState();
+  }
+  return value;
+}
+
+void writeSwState(int index, bool value)
+{
+  if (index < 0 || index >= NUM_SWITCHES)
+    return;
+
+  if (lockSwState())
+  {
+    swState[index] = value;
+    unlockSwState();
+  }
+}
+
 void syncRelayStateToWebView(int index, bool state)
 {
   (void)index;
@@ -1560,7 +1610,7 @@ void queueAllRelayStatesForFirebaseSync()
 {
   for (int i = 0; i < NUM_SWITCHES; i++)
   {
-    enqueueFirebaseWrite(i, swState[i]);
+    enqueueFirebaseWrite(i, readSwState(i));
   }
 }
 
@@ -1840,10 +1890,20 @@ void setRelayState(int index, bool state, const String &source)
   normalizedSource.trim();
   normalizedSource.toLowerCase();
 
-  if (swState[index] == state)
+  bool changed = false;
+  if (lockSwState())
+  {
+    if (swState[index] != state)
+    {
+      swState[index] = state;
+      changed = true;
+    }
+    unlockSwState();
+  }
+
+  if (!changed)
     return;
 
-  swState[index] = state;
   digitalWrite(outPin[index], state ? HIGH : LOW);
 
   if (relayMode[index] == "remember")
@@ -2231,6 +2291,42 @@ void handleFirebaseRuntime()
   }
 
   ensureFirebaseStreamConnected();
+}
+
+void firebaseTask(void *param)
+{
+  (void)param;
+  for (;;)
+  {
+    handleFirebaseRuntime();
+    processFirebaseWriteQueue();
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+}
+
+void startFirebaseTask()
+{
+  if (firebaseTaskHandle)
+    return;
+
+  BaseType_t created = xTaskCreatePinnedToCore(
+      firebaseTask,
+      "FirebaseTask",
+      8192,
+      nullptr,
+      1,
+      &firebaseTaskHandle,
+      0);
+
+  if (created == pdPASS)
+  {
+    Serial.println("[FB] Firebase task started on Core 0");
+  }
+  else
+  {
+    firebaseTaskHandle = nullptr;
+    Serial.println("[FB] Failed to start Firebase task");
+  }
 }
 
 bool readCurrentLocalTime(struct tm *ti)
@@ -3015,8 +3111,10 @@ void checkPhysicalSwitches()
       lastInState[i] = reading;
       if (reading == LOW)
       {
-        setRelayState(i, !swState[i], "physical");
-        Serial.printf("[SW] Physical toggle SW%d -> %s\n", i, swState[i] ? "ON" : "OFF");
+        bool currentState = readSwState(i);
+        setRelayState(i, !currentState, "physical");
+        bool newState = readSwState(i);
+        Serial.printf("[SW] Physical toggle SW%d -> %s\n", i, newState ? "ON" : "OFF");
       }
     }
     lastInState[i] = reading;
@@ -3145,7 +3243,7 @@ void setupWebServer()
     for (int i = 0; i < NUM_SWITCHES; i++) {
       na.add(swName[i]);
       ic.add(swIcon[i]);
-      st.add(swState[i]);
+      st.add(readSwState(i));
       rl.add(relayMode[i]);
     }
     String r;
@@ -4839,6 +4937,12 @@ void setup()
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(BOOT_BUTTON, INPUT_PULLUP);
 
+  swStateMutex = xSemaphoreCreateMutex();
+  if (!swStateMutex)
+  {
+    Serial.println("[SYS] Failed to create swState mutex");
+  }
+
   configureFirebaseSslClient(fbSslClient);
   configureFirebaseSslClient(fbStreamSslClient);
   initDeviceId();
@@ -4961,6 +5065,8 @@ void setup()
     setupWebServer();
   }
 
+  startFirebaseTask();
+
   Serial.println("==============================");
   Serial.println("  System Ready");
   if (WiFi.status() == WL_CONNECTED)
@@ -4972,8 +5078,6 @@ void setup()
 void loop()
 {
   updateBootButtonHoldState();
-
-  handleFirebaseRuntime();
 
   // Physical switch input
   checkPhysicalSwitches();
@@ -5002,7 +5106,6 @@ void loop()
   }
 
   applyPendingAutomationActions();
-  processFirebaseWriteQueue();
 
   // WiFi portal request
   if (portalFlag)
