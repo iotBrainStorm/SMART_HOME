@@ -101,8 +101,13 @@ bool firebaseStreamRunning = false;
 bool firebaseRuntimeDirty = true;
 unsigned long firebaseLastInitAttemptMs = 0;
 unsigned long firebaseLastStreamAttemptMs = 0;
+unsigned long firebaseLastStreamEventMs = 0;
+unsigned long firebaseLastWriteMs = 0;
 const unsigned long FIREBASE_INIT_RETRY_MS = 5000;
 const unsigned long FIREBASE_STREAM_RETRY_MS = 5000;
+const unsigned long FIREBASE_STREAM_STALE_MS = 45000;
+const unsigned long FIREBASE_WRITE_INTERVAL_MS = 200;
+const uint8_t FIREBASE_WRITE_QUEUE_LENGTH = 16;
 const char *FIREBASE_AUTH_TASK_UID = "firebaseAuthTask";
 const char *FIREBASE_STREAM_TASK_UID = "firebaseStreamTask";
 
@@ -113,17 +118,25 @@ FirebaseApp fbApp;
 RealtimeDatabase fbDatabase;
 UserAuth *fbUserAuth = nullptr;
 
+struct FirebaseWriteTask
+{
+  uint8_t index;
+  bool state;
+};
+
+QueueHandle_t firebaseWriteQueue = nullptr;
+
 const char *PRIMARY_ADMIN_ID = "esp";
 const char *PRIMARY_ADMIN_PASS = "456456";
 String configuredPrimaryAdminId = String(PRIMARY_ADMIN_ID);
 String configuredPrimaryAdminPass = String(PRIMARY_ADMIN_PASS);
 const char *DEFAULT_FIREBASE_RULES_JSON = R"RULES({
   "rules": {
-    "devices": {
-      "$uid": {
-        "$mac": {
-          ".read": "auth != null && auth.uid === $uid",
-          ".write": "auth != null && auth.uid === $uid"
+    "espHome": {
+      "$device": {
+        "$uid": {
+          ".read": "auth != null && auth.uid == $uid",
+          ".write": "auth != null && auth.uid == $uid"
         }
       }
     }
@@ -204,6 +217,15 @@ void setSwitch(int i, bool st);
 void calcSunriseSunset();
 void handleFirebaseRuntime();
 void firebaseAsyncCallback(AsyncResult &aResult);
+void initFirebaseWriteQueue();
+void clearFirebaseWriteQueue();
+bool enqueueFirebaseWrite(int index, bool state);
+void processFirebaseWriteQueue();
+String firebaseDeviceNodeName();
+String firebaseBasePathForUid(const String &uid);
+String firebaseRelayPath(const String &uid, int index);
+void restartFirebaseStream(const char *reason);
+void syncRelayStateToWebView(int index, bool state);
 
 //  BEEP + LED ON NVS CHANGE
 void notifyStorage()
@@ -982,6 +1004,7 @@ void resetDeviceNameToDefault()
   prefs.putString("devname", deviceName);
   prefs.end();
   WiFi.setHostname(deviceName.c_str());
+  firebaseRuntimeDirty = true;
 }
 
 void resetNtpServerToDefault()
@@ -1413,6 +1436,111 @@ void configureFirebaseSslClient(WiFiClientSecure &client)
 #endif
 }
 
+void initFirebaseWriteQueue()
+{
+  if (firebaseWriteQueue)
+    return;
+
+  firebaseWriteQueue = xQueueCreate(FIREBASE_WRITE_QUEUE_LENGTH, sizeof(FirebaseWriteTask));
+  if (!firebaseWriteQueue)
+  {
+    Serial.println("[FB] Failed to create write queue");
+  }
+}
+
+void clearFirebaseWriteQueue()
+{
+  if (!firebaseWriteQueue)
+    return;
+
+  FirebaseWriteTask discarded;
+  while (xQueueReceive(firebaseWriteQueue, &discarded, 0) == pdTRUE)
+  {
+  }
+}
+
+void syncRelayStateToWebView(int index, bool state)
+{
+  (void)index;
+  (void)state;
+  // Dashboard state comes from /api/switches, so updating swState[] is enough.
+}
+
+String firebaseDeviceNodeName()
+{
+  String node = deviceName;
+  node.trim();
+  if (node.isEmpty())
+  {
+    node = getDefaultDeviceName();
+  }
+
+  node.replace("/", "_");
+  node.replace(".", "_");
+  node.replace("#", "_");
+  node.replace("$", "_");
+  node.replace("[", "_");
+  node.replace("]", "_");
+  return node;
+}
+
+String firebaseBasePathForUid(const String &uid)
+{
+  String normalizedUid = uid;
+  normalizedUid.trim();
+  if (normalizedUid.isEmpty())
+    return "";
+
+  return "/espHome/" + firebaseDeviceNodeName() + "/" + normalizedUid;
+}
+
+String firebaseRelayPath(const String &uid, int index)
+{
+  if (index < 0 || index >= NUM_SWITCHES)
+    return "";
+
+  String basePath = firebaseBasePathForUid(uid);
+  if (basePath.isEmpty())
+    return "";
+
+  return basePath + "/switch" + String(index + 1);
+}
+
+bool enqueueFirebaseWrite(int index, bool state)
+{
+  if (index < 0 || index >= NUM_SWITCHES)
+    return false;
+
+  if (!fbOn || !firebaseWriteQueue)
+    return false;
+
+  FirebaseWriteTask task = {(uint8_t)index, state};
+  if (xQueueSend(firebaseWriteQueue, &task, 0) == pdTRUE)
+    return true;
+
+  // Queue full: drop oldest to keep the most recent command.
+  FirebaseWriteTask dropped;
+  (void)xQueueReceive(firebaseWriteQueue, &dropped, 0);
+  return xQueueSend(firebaseWriteQueue, &task, 0) == pdTRUE;
+}
+
+void restartFirebaseStream(const char *reason)
+{
+  if (firebaseStreamRunning)
+  {
+    fbStreamClient.stopAsync(FIREBASE_STREAM_TASK_UID);
+  }
+
+  firebaseStreamRunning = false;
+  firebaseLastStreamAttemptMs = 0;
+  firebaseLastStreamEventMs = 0;
+
+  if (reason && reason[0] != '\0')
+  {
+    Firebase.printf("[FB] Stream restart requested: %s\n", reason);
+  }
+}
+
 bool tryParseBoolText(String text, bool &out)
 {
   text.trim();
@@ -1506,6 +1634,9 @@ void stopFirebaseRuntime()
   firebaseStreamRunning = false;
   firebaseAuthUid = "";
   firebaseStreamPath = "";
+  firebaseLastStreamEventMs = 0;
+  firebaseLastWriteMs = 0;
+  clearFirebaseWriteQueue();
 }
 
 bool firebaseSetBoolAtPath(const String &path, bool value)
@@ -1528,21 +1659,50 @@ bool firebaseSetBoolAtPath(const String &path, bool value)
   return ok;
 }
 
+void processFirebaseWriteQueue()
+{
+  if (!firebaseWriteQueue)
+    return;
+
+  if (!fbOn || !firebaseRuntimeInitialized || !fbApp.ready() || firebaseAuthUid.isEmpty())
+    return;
+
+  unsigned long now = millis();
+  if (now - firebaseLastWriteMs < FIREBASE_WRITE_INTERVAL_MS)
+    return;
+
+  FirebaseWriteTask task;
+  if (xQueueReceive(firebaseWriteQueue, &task, 0) != pdTRUE)
+    return;
+
+  String path = firebaseRelayPath(firebaseAuthUid, task.index);
+  if (path.isEmpty())
+    return;
+
+  bool ok = firebaseSetBoolAtPath(path, task.state);
+  firebaseLastWriteMs = now;
+
+  if (!ok)
+  {
+    (void)xQueueSend(firebaseWriteQueue, &task, 0);
+  }
+}
+
 bool writeRelayStateToFirebase(int index, bool state)
 {
-  if (index < 0 || index >= NUM_SWITCHES)
-    return false;
-
-  if (!fbOn || firebaseAuthUid.isEmpty())
-    return false;
-
-  String path = "/devices/" + firebaseAuthUid + "/switch" + String(index + 1);
-  return firebaseSetBoolAtPath(path, state);
+  return enqueueFirebaseWrite(index, state);
 }
 
 void setRelayState(int index, bool state, const String &source)
 {
   if (index < 0 || index >= NUM_SWITCHES)
+    return;
+
+  String normalizedSource = source;
+  normalizedSource.trim();
+  normalizedSource.toLowerCase();
+
+  if (swState[index] == state)
     return;
 
   swState[index] = state;
@@ -1555,15 +1715,31 @@ void setRelayState(int index, bool state, const String &source)
     prefs.end();
   }
 
-  String normalizedSource = source;
-  normalizedSource.trim();
-  normalizedSource.toLowerCase();
-  if (normalizedSource == "firebase")
+  bool firebaseSource = (normalizedSource == "firebase");
+  bool webSource = (normalizedSource == "web" || normalizedSource == "api");
+  bool manualSource = (normalizedSource == "manual" || normalizedSource == "physical" || normalizedSource == "local" || normalizedSource == "automation");
+
+  // Source-aware propagation prevents Firebase<->local feedback loops.
+  if (firebaseSource)
   {
+    syncRelayStateToWebView(index, state);
     return;
   }
 
-  writeRelayStateToFirebase(index, state);
+  if (webSource)
+  {
+    enqueueFirebaseWrite(index, state);
+    return;
+  }
+
+  if (manualSource)
+  {
+    syncRelayStateToWebView(index, state);
+    enqueueFirebaseWrite(index, state);
+    return;
+  }
+
+  enqueueFirebaseWrite(index, state);
 }
 
 void setSwitch(int i, bool st)
@@ -1620,6 +1796,11 @@ void applyFirebaseSnapshotPayload(const String &payload)
 
 void applyFirebasePathPayload(const String &dataPath, const String &payload)
 {
+  if (dataPath.length() == 0)
+  {
+    return;
+  }
+
   if (dataPath == "/")
   {
     applyFirebaseSnapshotPayload(payload);
@@ -1717,6 +1898,7 @@ void ensureFirebaseStreamConnected()
   fbStreamClient.setSSEFilters("get,put,patch,keep-alive,cancel,auth_revoked");
   fbDatabase.get(fbStreamClient, firebaseStreamPath, firebaseAsyncCallback, true, FIREBASE_STREAM_TASK_UID);
   firebaseStreamRunning = true;
+  firebaseLastStreamEventMs = now;
 }
 
 void firebaseAsyncCallback(AsyncResult &aResult)
@@ -1740,8 +1922,9 @@ void firebaseAsyncCallback(AsyncResult &aResult)
     }
     if (taskId == FIREBASE_STREAM_TASK_UID)
     {
-      firebaseStreamRunning = false;
+      restartFirebaseStream("stream task error");
       firebaseLastStreamAttemptMs = millis();
+      return;
     }
   }
 
@@ -1752,19 +1935,43 @@ void firebaseAsyncCallback(AsyncResult &aResult)
   if (!stream.isStream())
     return;
 
+  firebaseLastStreamEventMs = millis();
+
   String eventType = stream.event().c_str();
   eventType.toLowerCase();
   if (eventType == "cancel" || eventType == "auth_revoked")
   {
-    firebaseStreamRunning = false;
+    restartFirebaseStream(eventType.c_str());
     firebaseLastStreamAttemptMs = millis();
+    return;
+  }
+
+  if (eventType == "keep-alive")
+  {
+    firebaseStreamRunning = true;
+    return;
+  }
+
+  if (eventType != "get" && eventType != "put" && eventType != "patch")
+  {
     return;
   }
 
   firebaseStreamRunning = true;
 
   String dataPath = stream.dataPath().c_str();
+  dataPath.trim();
+  if (dataPath.isEmpty())
+  {
+    return;
+  }
+
   String payload = stream.to<String>();
+  if (payload.isEmpty() && dataPath != "/")
+  {
+    return;
+  }
+
   applyFirebasePathPayload(dataPath, payload);
 }
 
@@ -1775,6 +1982,10 @@ void handleFirebaseRuntime()
     if (firebaseRuntimeInitialized || firebaseStreamRunning || !firebaseAuthUid.isEmpty())
     {
       stopFirebaseRuntime();
+    }
+    else
+    {
+      clearFirebaseWriteQueue();
     }
     return;
   }
@@ -1791,8 +2002,7 @@ void handleFirebaseRuntime()
   {
     if (firebaseStreamRunning)
     {
-      fbStreamClient.stopAsync(FIREBASE_STREAM_TASK_UID);
-      firebaseStreamRunning = false;
+      restartFirebaseStream("wifi disconnected");
     }
     return;
   }
@@ -1821,14 +2031,24 @@ void handleFirebaseRuntime()
   if (uid != firebaseAuthUid)
   {
     firebaseAuthUid = uid;
-    firebaseStreamPath = "/devices/" + firebaseAuthUid;
-    firebaseStreamRunning = false;
-    firebaseLastStreamAttemptMs = 0;
+  }
+
+  String expectedStreamPath = firebaseBasePathForUid(firebaseAuthUid);
+  if (!expectedStreamPath.isEmpty() && expectedStreamPath != firebaseStreamPath)
+  {
+    firebaseStreamPath = expectedStreamPath;
+    restartFirebaseStream("base path changed");
+    clearFirebaseWriteQueue();
 
     for (int i = 0; i < NUM_SWITCHES; i++)
     {
       writeRelayStateToFirebase(i, swState[i]);
     }
+  }
+
+  if (firebaseStreamRunning && (millis() - firebaseLastStreamEventMs > FIREBASE_STREAM_STALE_MS))
+  {
+    restartFirebaseStream("stream stale");
   }
 
   ensureFirebaseStreamConnected();
@@ -3922,6 +4142,7 @@ void setupWebServer()
       prefs.end();
 
       WiFi.setHostname(deviceName.c_str());
+      firebaseRuntimeDirty = true;
       notifyStorage();
 
       DynamicJsonDocument d(512);
@@ -4440,6 +4661,7 @@ void setup()
 
   configureFirebaseSslClient(fbSslClient);
   configureFirebaseSslClient(fbStreamSslClient);
+  initFirebaseWriteQueue();
 
   // Startup beep
   digitalWrite(BUZZER_PIN, HIGH);
@@ -4599,6 +4821,7 @@ void loop()
   }
 
   applyPendingAutomationActions();
+  processFirebaseWriteQueue();
 
   // WiFi portal request
   if (portalFlag)
