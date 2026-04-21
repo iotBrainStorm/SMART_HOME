@@ -107,6 +107,8 @@ const unsigned long FIREBASE_INIT_RETRY_MS = 5000;
 const unsigned long FIREBASE_STREAM_RETRY_MS = 5000;
 const unsigned long FIREBASE_STREAM_STALE_MS = 45000;
 const unsigned long FIREBASE_WRITE_INTERVAL_MS = 200;
+const unsigned long FIREBASE_WRITE_FAIL_RETRY_MS = 1000;
+const unsigned long FIREBASE_INITIAL_SYNC_WAIT_MS = 3000;
 const uint8_t FIREBASE_WRITE_QUEUE_LENGTH = 16;
 const char *FIREBASE_AUTH_TASK_UID = "firebaseAuthTask";
 const char *FIREBASE_STREAM_TASK_UID = "firebaseStreamTask";
@@ -125,6 +127,14 @@ struct FirebaseWriteTask
 };
 
 QueueHandle_t firebaseWriteQueue = nullptr;
+FirebaseWriteTask firebaseDeferredWriteTask = {0, false};
+bool firebaseHasDeferredWriteTask = false;
+unsigned long firebaseDeferredWriteAtMs = 0;
+bool firebaseAwaitingInitialStreamData = false;
+unsigned long firebaseStreamStartedAtMs = 0;
+String firebaseLastSyncedDeviceName = "";
+bool firebaseDeviceNameSyncDirty = true;
+String cachedDeviceId = "";
 
 const char *PRIMARY_ADMIN_ID = "esp";
 const char *PRIMARY_ADMIN_PASS = "456456";
@@ -133,8 +143,8 @@ String configuredPrimaryAdminPass = String(PRIMARY_ADMIN_PASS);
 const char *DEFAULT_FIREBASE_RULES_JSON = R"RULES({
   "rules": {
     "espHome": {
-      "$device": {
-        "$uid": {
+      "$uid": {
+        "$deviceId": {
           ".read": "auth != null && auth.uid == $uid",
           ".write": "auth != null && auth.uid == $uid"
         }
@@ -221,9 +231,15 @@ void initFirebaseWriteQueue();
 void clearFirebaseWriteQueue();
 bool enqueueFirebaseWrite(int index, bool state);
 void processFirebaseWriteQueue();
-String firebaseDeviceNodeName();
+void initDeviceId();
+String firebaseDeviceId();
+String firebaseDeviceNameValue();
 String firebaseBasePathForUid(const String &uid);
 String firebaseRelayPath(const String &uid, int index);
+String firebaseDeviceNamePath(const String &uid);
+void queueAllRelayStatesForFirebaseSync();
+void onDeviceNameUpdated(const String &previousName);
+bool firebaseSetStringAtPath(const String &path, const String &value);
 void restartFirebaseStream(const char *reason);
 void syncRelayStateToWebView(int index, bool state);
 
@@ -999,12 +1015,13 @@ void disableFirebaseOnly()
 
 void resetDeviceNameToDefault()
 {
+  String previousName = firebaseDeviceNameValue();
   deviceName = getDefaultDeviceName();
   prefs.begin("admin", false);
   prefs.putString("devname", deviceName);
   prefs.end();
   WiFi.setHostname(deviceName.c_str());
-  firebaseRuntimeDirty = true;
+  onDeviceNameUpdated(previousName);
 }
 
 void resetNtpServerToDefault()
@@ -1466,22 +1483,46 @@ void syncRelayStateToWebView(int index, bool state)
   // Dashboard state comes from /api/switches, so updating swState[] is enough.
 }
 
-String firebaseDeviceNodeName()
+String firebaseDeviceNameValue()
 {
-  String node = deviceName;
-  node.trim();
-  if (node.isEmpty())
+  String label = deviceName;
+  label.trim();
+  if (label.isEmpty())
   {
-    node = getDefaultDeviceName();
+    label = getDefaultDeviceName();
   }
 
-  node.replace("/", "_");
-  node.replace(".", "_");
-  node.replace("#", "_");
-  node.replace("$", "_");
-  node.replace("[", "_");
-  node.replace("]", "_");
-  return node;
+  return label;
+}
+
+void initDeviceId()
+{
+  String mac = WiFi.macAddress();
+  mac.trim();
+  mac.replace(":", "");
+  mac.toUpperCase();
+
+  if (mac.length() != 12 || mac == "000000000000")
+  {
+    mac = getDefaultDeviceName();
+    mac.trim();
+    mac.toUpperCase();
+  }
+
+  cachedDeviceId = mac;
+}
+
+String firebaseDeviceId()
+{
+  if (cachedDeviceId.isEmpty())
+  {
+    initDeviceId();
+  }
+
+  if (cachedDeviceId.isEmpty())
+    return getDefaultDeviceName();
+
+  return cachedDeviceId;
 }
 
 String firebaseBasePathForUid(const String &uid)
@@ -1491,7 +1532,7 @@ String firebaseBasePathForUid(const String &uid)
   if (normalizedUid.isEmpty())
     return "";
 
-  return "/espHome/" + firebaseDeviceNodeName() + "/" + normalizedUid;
+  return "/espHome/" + normalizedUid + "/" + firebaseDeviceId();
 }
 
 String firebaseRelayPath(const String &uid, int index)
@@ -1504,6 +1545,49 @@ String firebaseRelayPath(const String &uid, int index)
     return "";
 
   return basePath + "/switch" + String(index + 1);
+}
+
+String firebaseDeviceNamePath(const String &uid)
+{
+  String basePath = firebaseBasePathForUid(uid);
+  if (basePath.isEmpty())
+    return "";
+
+  return basePath + "/deviceName";
+}
+
+void queueAllRelayStatesForFirebaseSync()
+{
+  for (int i = 0; i < NUM_SWITCHES; i++)
+  {
+    enqueueFirebaseWrite(i, swState[i]);
+  }
+}
+
+void onDeviceNameUpdated(const String &previousName)
+{
+  String oldName = previousName;
+  oldName.trim();
+  if (oldName.isEmpty())
+  {
+    oldName = getDefaultDeviceName();
+  }
+
+  String newName = firebaseDeviceNameValue();
+  if (oldName == newName)
+  {
+    return;
+  }
+
+  firebaseDeviceNameSyncDirty = true;
+  firebaseLastSyncedDeviceName = "";
+
+  // Keep Firebase node aligned with updated name by replaying the current relay state.
+  if (fbOn)
+  {
+    clearFirebaseWriteQueue();
+    queueAllRelayStatesForFirebaseSync();
+  }
 }
 
 bool enqueueFirebaseWrite(int index, bool state)
@@ -1534,6 +1618,8 @@ void restartFirebaseStream(const char *reason)
   firebaseStreamRunning = false;
   firebaseLastStreamAttemptMs = 0;
   firebaseLastStreamEventMs = 0;
+  firebaseAwaitingInitialStreamData = false;
+  firebaseStreamStartedAtMs = 0;
 
   if (reason && reason[0] != '\0')
   {
@@ -1636,6 +1722,12 @@ void stopFirebaseRuntime()
   firebaseStreamPath = "";
   firebaseLastStreamEventMs = 0;
   firebaseLastWriteMs = 0;
+  firebaseHasDeferredWriteTask = false;
+  firebaseDeferredWriteAtMs = 0;
+  firebaseAwaitingInitialStreamData = false;
+  firebaseStreamStartedAtMs = 0;
+  firebaseLastSyncedDeviceName = "";
+  firebaseDeviceNameSyncDirty = true;
   clearFirebaseWriteQueue();
 }
 
@@ -1659,6 +1751,25 @@ bool firebaseSetBoolAtPath(const String &path, bool value)
   return ok;
 }
 
+bool firebaseSetStringAtPath(const String &path, const String &value)
+{
+  if (!firebaseRuntimeInitialized || !fbApp.ready())
+    return false;
+
+  if (firebaseAuthUid.isEmpty())
+    return false;
+
+  bool ok = fbDatabase.set<String>(fbClient, path, value);
+  if (!ok)
+  {
+    Firebase.printf("[FB] set<String> failed path=%s code=%d msg=%s\n",
+                    path.c_str(),
+                    fbClient.lastError().code(),
+                    fbClient.lastError().message().c_str());
+  }
+  return ok;
+}
+
 void processFirebaseWriteQueue()
 {
   if (!firebaseWriteQueue)
@@ -1668,6 +1779,26 @@ void processFirebaseWriteQueue()
     return;
 
   unsigned long now = millis();
+
+  if (firebaseHasDeferredWriteTask)
+  {
+    if (now - firebaseDeferredWriteAtMs < FIREBASE_WRITE_FAIL_RETRY_MS)
+    {
+      return;
+    }
+
+    if (xQueueSend(firebaseWriteQueue, &firebaseDeferredWriteTask, 0) != pdTRUE)
+    {
+      FirebaseWriteTask dropped;
+      (void)xQueueReceive(firebaseWriteQueue, &dropped, 0);
+      (void)xQueueSend(firebaseWriteQueue, &firebaseDeferredWriteTask, 0);
+    }
+
+    firebaseHasDeferredWriteTask = false;
+    firebaseDeferredWriteAtMs = now;
+    return;
+  }
+
   if (now - firebaseLastWriteMs < FIREBASE_WRITE_INTERVAL_MS)
     return;
 
@@ -1679,12 +1810,19 @@ void processFirebaseWriteQueue()
   if (path.isEmpty())
     return;
 
+  Serial.println("[FB] WRITE PATH: " + path);
+  Serial.println("[FB] UID: " + firebaseAuthUid);
+  Serial.println("[FB] DEVICE ID: " + firebaseDeviceId());
+
   bool ok = firebaseSetBoolAtPath(path, task.state);
   firebaseLastWriteMs = now;
 
   if (!ok)
   {
-    (void)xQueueSend(firebaseWriteQueue, &task, 0);
+    firebaseDeferredWriteTask = task;
+    firebaseHasDeferredWriteTask = true;
+    firebaseDeferredWriteAtMs = now;
+    Serial.println("[FB] Write failed; deferred retry scheduled");
   }
 }
 
@@ -1899,6 +2037,12 @@ void ensureFirebaseStreamConnected()
   fbDatabase.get(fbStreamClient, firebaseStreamPath, firebaseAsyncCallback, true, FIREBASE_STREAM_TASK_UID);
   firebaseStreamRunning = true;
   firebaseLastStreamEventMs = now;
+  firebaseAwaitingInitialStreamData = true;
+  firebaseStreamStartedAtMs = now;
+  Serial.println("[FB] Stream start requested");
+  Serial.println("[FB] UID: " + firebaseAuthUid);
+  Serial.println("[FB] DEVICE ID: " + firebaseDeviceId());
+  Serial.println("[FB] PATH: " + firebaseStreamPath);
 }
 
 void firebaseAsyncCallback(AsyncResult &aResult)
@@ -1967,11 +2111,20 @@ void firebaseAsyncCallback(AsyncResult &aResult)
   }
 
   String payload = stream.to<String>();
-  if (payload.isEmpty() && dataPath != "/")
+  if (payload.isEmpty())
   {
+    Serial.println("[FB] Empty payload received at: " + dataPath);
+  }
+
+  if (dataPath == "/" && (payload.isEmpty() || payload == "null" || payload == "{}"))
+  {
+    firebaseAwaitingInitialStreamData = false;
+    Serial.println("[FB] No remote relay snapshot found, pushing local state");
+    queueAllRelayStatesForFirebaseSync();
     return;
   }
 
+  firebaseAwaitingInitialStreamData = false;
   applyFirebasePathPayload(dataPath, payload);
 }
 
@@ -2031,6 +2184,17 @@ void handleFirebaseRuntime()
   if (uid != firebaseAuthUid)
   {
     firebaseAuthUid = uid;
+    firebaseStreamPath = firebaseBasePathForUid(firebaseAuthUid);
+
+    restartFirebaseStream("UID updated");
+
+    clearFirebaseWriteQueue();
+    queueAllRelayStatesForFirebaseSync();
+    firebaseDeviceNameSyncDirty = true;
+
+    Serial.println("[FB] UID READY: " + firebaseAuthUid);
+    Serial.println("[FB] DEVICE ID: " + firebaseDeviceId());
+    Serial.println("[FB] PATH: " + firebaseStreamPath);
   }
 
   String expectedStreamPath = firebaseBasePathForUid(firebaseAuthUid);
@@ -2039,16 +2203,31 @@ void handleFirebaseRuntime()
     firebaseStreamPath = expectedStreamPath;
     restartFirebaseStream("base path changed");
     clearFirebaseWriteQueue();
+    firebaseDeviceNameSyncDirty = true;
+    queueAllRelayStatesForFirebaseSync();
+  }
 
-    for (int i = 0; i < NUM_SWITCHES; i++)
+  String currentDeviceName = firebaseDeviceNameValue();
+  if (firebaseDeviceNameSyncDirty || currentDeviceName != firebaseLastSyncedDeviceName)
+  {
+    String namePath = firebaseDeviceNamePath(firebaseAuthUid);
+    if (!namePath.isEmpty() && firebaseSetStringAtPath(namePath, currentDeviceName))
     {
-      writeRelayStateToFirebase(i, swState[i]);
+      firebaseLastSyncedDeviceName = currentDeviceName;
+      firebaseDeviceNameSyncDirty = false;
     }
   }
 
   if (firebaseStreamRunning && (millis() - firebaseLastStreamEventMs > FIREBASE_STREAM_STALE_MS))
   {
     restartFirebaseStream("stream stale");
+  }
+
+  if (firebaseAwaitingInitialStreamData && firebaseStreamStartedAtMs > 0 && (millis() - firebaseStreamStartedAtMs > FIREBASE_INITIAL_SYNC_WAIT_MS))
+  {
+    firebaseAwaitingInitialStreamData = false;
+    Serial.println("[FB] Initial stream wait timed out, pushing local state");
+    queueAllRelayStatesForFirebaseSync();
   }
 
   ensureFirebaseStreamConnected();
@@ -4136,13 +4315,14 @@ void setupWebServer()
         return;
       }
 
+      String previousName = firebaseDeviceNameValue();
       deviceName = newName;
       prefs.begin("admin", false);
       prefs.putString("devname", deviceName);
       prefs.end();
 
       WiFi.setHostname(deviceName.c_str());
-      firebaseRuntimeDirty = true;
+      onDeviceNameUpdated(previousName);
       notifyStorage();
 
       DynamicJsonDocument d(512);
@@ -4661,6 +4841,7 @@ void setup()
 
   configureFirebaseSslClient(fbSslClient);
   configureFirebaseSslClient(fbStreamSslClient);
+  initDeviceId();
   initFirebaseWriteQueue();
 
   // Startup beep
