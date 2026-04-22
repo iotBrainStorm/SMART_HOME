@@ -74,7 +74,7 @@ String swName[NUM_SWITCHES] = {"DEVICE-1", "DEVICE-2", "DEVICE-3", "DEVICE-4"};
 String swIcon[NUM_SWITCHES] = {"home", "home", "home", "home"};
 String relayMode[NUM_SWITCHES] = {"off", "off", "off", "off"};
 
-// Timers Ã¢â‚¬â€ volatile (RAM only, lost on power cut)
+// Timers - volatile (RAM only, lost on power cut)
 struct SwTimer
 {
   bool active = false;
@@ -192,6 +192,7 @@ const unsigned long DB_DELAY = 50;
 // Loop intervals
 unsigned long lastSchedCheck = 0;
 unsigned long lastSensorCheck = 0;
+unsigned long lastHeapLog = 0;
 int lastCheckedMinute = -1;
 
 // Restart flag
@@ -212,6 +213,7 @@ const uint32_t MIN_FREE_HEAP_FOR_EXTENDED_ROUTES = 38000;
 const int WIFI_CONNECT_MAX_ATTEMPTS = 5;
 const unsigned long WIFI_CONNECT_RETRY_MS = 2000;
 const unsigned long WIFI_PORTAL_RECOVERY_RESTART_MS = 200;
+const unsigned long HEAP_LOG_INTERVAL_MS = 30000;
 const unsigned long BOOT_HOLD_RESET_MS = 5000;
 const unsigned long BOOT_HOLD_READY_WINDOW_MS = 15000;
 const unsigned long RESET_CHECKPOINT_GAP_MS = 700;
@@ -219,6 +221,7 @@ const unsigned long RESET_ALL_DONE_GAP_MS = 2000;
 const unsigned long RESET_RESTART_BUFFER_MS = 300;
 const unsigned long FACTORY_RESET_WIFI_CLEAR_DELAY_MS = 8300;
 const unsigned long FACTORY_RESET_RESTART_DELAY_MS = 9300;
+const TickType_t FIREBASE_TASK_DELAY_TICKS = pdMS_TO_TICKS(10);
 
 unsigned long bootButtonPressedAt = 0;
 unsigned long bootHoldSatisfiedAt = 0;
@@ -432,6 +435,8 @@ bool runWifiConfigPortal(bool notifyChange = false, bool restartOnSuccess = true
     Serial.println("\n[SUCCESS] WiFi Connected via Config Portal");
     Serial.printf("SSID : %s\n", WiFi.SSID().c_str());
     Serial.printf("IP Address : %s\n", WiFi.localIP().toString().c_str());
+    WiFi.setSleep(false);
+    Serial.println("[WIFI] Power save disabled after config portal connection");
     Serial.println("==============================\n");
     saveCurrentWifiCredentials(notifyChange);
     if (restartOnSuccess)
@@ -812,7 +817,7 @@ void replaceUsersWithSingleAdmin(const String &adminId, const String &adminPass)
     if (js.isEmpty())
       continue;
 
-    DynamicJsonDocument d(1024);
+    JsonDocument d;
     if (deserializeJson(d, js))
       continue;
 
@@ -828,7 +833,7 @@ void replaceUsersWithSingleAdmin(const String &adminId, const String &adminPass)
   int targetAdminIndex = preferredIndex >= 0 ? preferredIndex : firstAdminIndex;
   if (targetAdminIndex < 0)
   {
-    DynamicJsonDocument d(1024);
+    JsonDocument d;
     d["id"] = targetAdminId;
     d["pass"] = targetAdminPass;
     d["role"] = "admin";
@@ -846,7 +851,7 @@ void replaceUsersWithSingleAdmin(const String &adminId, const String &adminPass)
     if (js.isEmpty())
       continue;
 
-    DynamicJsonDocument d(1024);
+    JsonDocument d;
     if (deserializeJson(d, js))
       continue;
 
@@ -1174,7 +1179,7 @@ void initDefaultUser()
   int count = prefs.getInt("cnt", 0);
   if (count <= 0)
   {
-    DynamicJsonDocument d(1024);
+    JsonDocument d;
     d["id"] = configuredPrimaryAdminId;
     d["pass"] = configuredPrimaryAdminPass;
     d["role"] = "admin";
@@ -1196,7 +1201,7 @@ void initDefaultUser()
     if (js.isEmpty())
       continue;
 
-    DynamicJsonDocument d(1024);
+    JsonDocument d;
     if (deserializeJson(d, js))
       continue;
 
@@ -1225,7 +1230,7 @@ void initDefaultUser()
 
   if (!hasEspAdmin)
   {
-    DynamicJsonDocument d(1024);
+    JsonDocument d;
     d["id"] = configuredPrimaryAdminId;
     d["pass"] = configuredPrimaryAdminPass;
     d["role"] = "admin";
@@ -1239,16 +1244,16 @@ void initDefaultUser()
     }
     else if (espIndex >= 0)
     {
-      // esp user exists but without admin role — promote it.
+      // esp user exists but without admin role - promote it.
       prefs.putString(("u" + String(espIndex)).c_str(), migrated);
     }
     else if (totalAdminCount == 0)
     {
-      // No admin of any kind exists — add esp as the last-resort fallback.
+      // No admin of any kind exists - add esp as the last-resort fallback.
       prefs.putString(("u" + String(count)).c_str(), migrated);
       prefs.putInt("cnt", count + 1);
     }
-    // else: other admins already exist; esp was intentionally removed — do nothing.
+    // else: other admins already exist; esp was intentionally removed - do nothing.
   }
 
   // Enforce single-admin policy: keep the first admin, demote any extra admins.
@@ -1259,7 +1264,7 @@ void initDefaultUser()
     if (js.isEmpty())
       continue;
 
-    DynamicJsonDocument d(1024);
+    JsonDocument d;
     if (deserializeJson(d, js))
       continue;
 
@@ -1292,7 +1297,7 @@ bool verifyAdmin(const String &u, const String &p)
     String js = prefs.getString(("u" + String(i)).c_str(), "");
     if (js.isEmpty())
       continue;
-    DynamicJsonDocument d(1024);
+    JsonDocument d;
     if (deserializeJson(d, js))
       continue;
     String storedPass = normalizeUserPass(d["pass"].as<String>());
@@ -1342,7 +1347,7 @@ bool verifyLogin(const String &u, const String &p, String &role)
     String js = prefs.getString(("u" + String(i)).c_str(), "");
     if (js.isEmpty())
       continue;
-    DynamicJsonDocument d(1024);
+    JsonDocument d;
     if (deserializeJson(d, js))
       continue;
     String storedPass = normalizeUserPass(d["pass"].as<String>());
@@ -1366,7 +1371,7 @@ bool hasAdmin()
     String js = prefs.getString(("u" + String(i)).c_str(), "");
     if (js.isEmpty())
       continue;
-    DynamicJsonDocument d(1024);
+    JsonDocument d;
     deserializeJson(d, js);
     if (normalizeUserRole(d["role"].as<String>()) == "admin")
     {
@@ -1387,7 +1392,7 @@ int countAdmins()
     String js = prefs.getString(("u" + String(i)).c_str(), "");
     if (js.isEmpty())
       continue;
-    DynamicJsonDocument d(1024);
+    JsonDocument d;
     deserializeJson(d, js);
     if (normalizeUserRole(d["role"].as<String>()) == "admin")
       a++;
@@ -1410,7 +1415,7 @@ bool isValidEmailAddress(const String &email)
   return !email.isEmpty() && atPos > 0 && dotPos > atPos + 1 && dotPos < email.length() - 1 && email.indexOf(' ') < 0;
 }
 
-void loadFirebaseAuthUsersDoc(DynamicJsonDocument &doc)
+void loadFirebaseAuthUsersDoc(JsonDocument &doc)
 {
   doc.clear();
   prefs.begin("fb", true);
@@ -1425,7 +1430,7 @@ void loadFirebaseAuthUsersDoc(DynamicJsonDocument &doc)
   }
 }
 
-void saveFirebaseAuthUsersDoc(DynamicJsonDocument &doc)
+void saveFirebaseAuthUsersDoc(JsonDocument &doc)
 {
   String raw;
   serializeJson(doc, raw);
@@ -1731,7 +1736,7 @@ bool tryParseBoolVariant(const JsonVariantConst &value, bool &out)
 
 bool getPrimaryFirebaseAuthCredential(String &email, String &password)
 {
-  DynamicJsonDocument doc(4096);
+  JsonDocument doc;
   loadFirebaseAuthUsersDoc(doc);
   JsonArray users = doc.as<JsonArray>();
   if (users.isNull() || users.size() == 0)
@@ -1970,13 +1975,19 @@ int relayIndexFromFirebasePath(const String &dataPath)
 
 void applyFirebaseSnapshotPayload(const String &payload)
 {
-  DynamicJsonDocument doc(1024);
+  JsonDocument doc;
   if (deserializeJson(doc, payload))
+  {
+    doc.clear();
     return;
+  }
 
   JsonObject obj = doc.as<JsonObject>();
   if (obj.isNull())
+  {
+    doc.clear();
     return;
+  }
 
   for (int i = 0; i < NUM_SWITCHES; i++)
   {
@@ -1990,6 +2001,8 @@ void applyFirebaseSnapshotPayload(const String &payload)
       setRelayState(i, state, "firebase");
     }
   }
+
+  doc.clear();
 }
 
 void applyFirebasePathPayload(const String &dataPath, const String &payload)
@@ -2016,24 +2029,32 @@ void applyFirebasePathPayload(const String &dataPath, const String &payload)
     return;
   }
 
-  DynamicJsonDocument doc(256);
+  JsonDocument doc;
   if (deserializeJson(doc, payload))
+  {
+    doc.clear();
     return;
+  }
 
   JsonVariant root = doc.as<JsonVariant>();
   if (tryParseBoolVariant(root, state))
   {
     setRelayState(index, state, "firebase");
+    doc.clear();
     return;
   }
 
   JsonObject obj = root.as<JsonObject>();
   if (obj.isNull())
+  {
+    doc.clear();
     return;
+  }
 
   if (obj.containsKey("state") && tryParseBoolVariant(obj["state"], state))
   {
     setRelayState(index, state, "firebase");
+    doc.clear();
     return;
   }
 
@@ -2042,6 +2063,8 @@ void applyFirebasePathPayload(const String &dataPath, const String &payload)
   {
     setRelayState(index, state, "firebase");
   }
+
+  doc.clear();
 }
 
 bool beginFirebaseRuntime()
@@ -2300,7 +2323,7 @@ void firebaseTask(void *param)
   {
     handleFirebaseRuntime();
     processFirebaseWriteQueue();
-    vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelay(FIREBASE_TASK_DELAY_TICKS);
   }
 }
 
@@ -2570,7 +2593,7 @@ bool scheduleDaysOverlap(JsonArray daysA, JsonArray daysB)
 
 bool validateRecurringSchedulesData(const String &data, String &error)
 {
-  DynamicJsonDocument doc(4096);
+  JsonDocument doc;
   if (deserializeJson(doc, data))
   {
     error = "Invalid schedule data";
@@ -2646,7 +2669,7 @@ bool validateRecurringSchedulesData(const String &data, String &error)
 
 bool validateFutureSchedulesData(const String &data, String &error)
 {
-  DynamicJsonDocument doc(4096);
+  JsonDocument doc;
   if (deserializeJson(doc, data))
   {
     error = "Invalid future schedule data";
@@ -2757,101 +2780,115 @@ void checkSchedules()
     String sj = prefs.getString(("s" + String(sw)).c_str(), "[]");
     prefs.end();
 
-    DynamicJsonDocument sd(2048);
-    if (deserializeJson(sd, sj))
-      continue;
-    for (JsonObject o : sd.as<JsonArray>())
     {
-      if (!o["enabled"].as<bool>())
-        continue;
-      bool dayOk = false;
-      for (JsonVariant dv : o["days"].as<JsonArray>())
+      JsonDocument sd;
+      if (deserializeJson(sd, sj))
       {
-        if (dv.as<String>() == today)
+        sd.clear();
+        continue;
+      }
+
+      for (JsonObject o : sd.as<JsonArray>())
+      {
+        if (!o["enabled"].as<bool>())
+          continue;
+        bool dayOk = false;
+        for (JsonVariant dv : o["days"].as<JsonArray>())
         {
-          dayOk = true;
-          break;
+          if (dv.as<String>() == today)
+          {
+            dayOk = true;
+            break;
+          }
+        }
+        if (!dayOk)
+          continue;
+
+        String action = getScheduleActionValue(o, "on");
+        String fromT = getRecurringStartTime(o);
+        int fromMin = parseClockMinutes(fromT);
+        if (fromMin >= 0 && curMin == fromMin)
+        {
+          queueAutomationAction(sw, action == "on", AUTOMATION_SCHEDULE);
+        }
+
+        String toT = getRecurringEndTime(o);
+        int toMin = parseClockMinutes(toT);
+        if (toMin >= 0 && curMin == toMin)
+        {
+          queueAutomationAction(sw, action != "on", AUTOMATION_SCHEDULE);
         }
       }
-      if (!dayOk)
-        continue;
 
-      String action = getScheduleActionValue(o, "on");
-      String fromT = getRecurringStartTime(o);
-      int fromMin = parseClockMinutes(fromT);
-      if (fromMin >= 0 && curMin == fromMin)
-      {
-        queueAutomationAction(sw, action == "on", AUTOMATION_SCHEDULE);
-      }
-
-      String toT = getRecurringEndTime(o);
-      int toMin = parseClockMinutes(toT);
-      if (toMin >= 0 && curMin == toMin)
-      {
-        queueAutomationAction(sw, action != "on", AUTOMATION_SCHEDULE);
-      }
+      sd.clear();
     }
 
     // Future schedules
     prefs.begin("fsched", false);
     String fj = prefs.getString(("f" + String(sw)).c_str(), "[]");
-    DynamicJsonDocument fd(2048);
-    if (deserializeJson(fd, fj))
+
     {
-      prefs.end();
-      continue;
-    }
-
-    char ds[11];
-    sprintf(ds, "%04d-%02d-%02d", ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday);
-    char ts[6];
-    sprintf(ts, "%02d:%02d", ti.tm_hour, ti.tm_min);
-    JsonArray fa = fd.as<JsonArray>();
-    bool mod = false;
-    for (int x = fa.size() - 1; x >= 0; x--)
-    {
-      JsonObject fo = fa[x];
-      if (!fo["enabled"].as<bool>())
-        continue;
-
-      if (fo["date"].as<String>() != String(ds))
-        continue;
-
-      String action = getScheduleActionValue(fo, "on");
-      String fromT = getFutureStartTime(fo);
-      String toT = getFutureEndTime(fo);
-      int fromMin = parseClockMinutes(fromT);
-      int toMin = parseClockMinutes(toT);
-      bool removeEntry = false;
-
-      if (fromMin >= 0 && curMin == fromMin)
+      JsonDocument fd;
+      if (deserializeJson(fd, fj))
       {
-        queueAutomationAction(sw, action == "on", AUTOMATION_FUTURE_SCHEDULE);
-        if (toMin < 0)
+        fd.clear();
+        prefs.end();
+        continue;
+      }
+
+      char ds[11];
+      sprintf(ds, "%04d-%02d-%02d", ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday);
+      JsonArray fa = fd.as<JsonArray>();
+      bool mod = false;
+      for (int x = fa.size() - 1; x >= 0; x--)
+      {
+        JsonObject fo = fa[x];
+        if (!fo["enabled"].as<bool>())
+          continue;
+
+        if (fo["date"].as<String>() != String(ds))
+          continue;
+
+        String action = getScheduleActionValue(fo, "on");
+        String fromT = getFutureStartTime(fo);
+        String toT = getFutureEndTime(fo);
+        int fromMin = parseClockMinutes(fromT);
+        int toMin = parseClockMinutes(toT);
+        bool removeEntry = false;
+
+        if (fromMin >= 0 && curMin == fromMin)
         {
+          queueAutomationAction(sw, action == "on", AUTOMATION_FUTURE_SCHEDULE);
+          if (toMin < 0)
+          {
+            removeEntry = true;
+          }
+        }
+
+        if (toMin >= 0 && curMin == toMin)
+        {
+          queueAutomationAction(sw, action != "on", AUTOMATION_FUTURE_SCHEDULE);
           removeEntry = true;
+        }
+
+        if (removeEntry)
+        {
+          fa.remove(x);
+          mod = true;
         }
       }
 
-      if (toMin >= 0 && curMin == toMin)
+      if (mod)
       {
-        queueAutomationAction(sw, action != "on", AUTOMATION_FUTURE_SCHEDULE);
-        removeEntry = true;
+        String nj;
+        serializeJson(fd, nj);
+        prefs.putString(("f" + String(sw)).c_str(), nj);
+        notifyStorage();
       }
 
-      if (removeEntry)
-      {
-        fa.remove(x);
-        mod = true;
-      }
+      fd.clear();
     }
-    if (mod)
-    {
-      String nj;
-      serializeJson(fd, nj);
-      prefs.putString(("f" + String(sw)).c_str(), nj);
-      notifyStorage();
-    }
+
     prefs.end();
   }
 }
@@ -2919,7 +2956,7 @@ void checkSensors()
     // Temperature
     if (ahtOk && !tj.isEmpty())
     {
-      DynamicJsonDocument d(1024);
+      JsonDocument d;
       if (!deserializeJson(d, tj) && d["enabled"].as<bool>())
       {
         String c = d["condition"].as<String>();
@@ -2939,7 +2976,7 @@ void checkSensors()
     // Humidity
     if (ahtOk && !hj.isEmpty())
     {
-      DynamicJsonDocument d(1024);
+      JsonDocument d;
       if (!deserializeJson(d, hj) && d["enabled"].as<bool>())
       {
         String c = d["condition"].as<String>();
@@ -2959,7 +2996,7 @@ void checkSensors()
     // Sunrise/Sunset
     if (!sj.isEmpty() && locOk && timeSynced)
     {
-      DynamicJsonDocument d(1024);
+      JsonDocument d;
       if (!deserializeJson(d, sj) && d["enabled"].as<bool>())
       {
         struct tm ti;
@@ -3080,6 +3117,8 @@ bool connectToSavedWiFi()
       Serial.println("\n[SUCCESS] Connected to Saved WiFi");
       Serial.printf("SSID       : %s\n", WiFi.SSID().c_str());
       Serial.printf("IP Address : %s\n", WiFi.localIP().toString().c_str());
+      WiFi.setSleep(false);
+      Serial.println("[WIFI] Power save disabled after reconnect");
       Serial.println("==============================\n");
       delay(2000);
       return true;
@@ -3182,11 +3221,10 @@ void setupWebServer()
 
   server.on("/settings.svg", HTTP_GET, [](AsyncWebServerRequest *req)
             { sendWebFile(req, "/settings.svg", "image/svg+xml"); });
-
-  // ──── STATUS ────
+  // ---- STATUS ----
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *req)
             {
-    DynamicJsonDocument d(1024);
+    JsonDocument d;
     d["timeSynced"] = timeSynced;
     d["ahtOk"] = ahtOk;
     d["locOk"] = locOk;
@@ -3196,8 +3234,7 @@ void setupWebServer()
     String r;
     serializeJson(d, r);
     req->send(200, "application/json", r); });
-
-  // ──── LOGIN ────
+  // ---- LOGIN ----
   server.on("/api/login", HTTP_POST, [](AsyncWebServerRequest *req)
             {
     bool resetAdminRequested = false;
@@ -3231,11 +3268,10 @@ void setupWebServer()
       req->send(200, "application/json", "{\"ok\":true,\"role\":\"" + role + "\"}");
     else
       req->send(401, "application/json", "{\"error\":\"Invalid credentials\"}"); });
-
-  // ──── SWITCHES ────
+  // ---- SWITCHES ----
   server.on("/api/switches", HTTP_GET, [](AsyncWebServerRequest *req)
             {
-    DynamicJsonDocument d(1024);
+    JsonDocument d;
     JsonArray na = d["names"].to<JsonArray>();
     JsonArray ic = d["icons"].to<JsonArray>();
     JsonArray st = d["states"].to<JsonArray>();
@@ -3306,10 +3342,10 @@ void setupWebServer()
   // Keep Firebase auth user APIs available even in low-memory mode.
   server.on("/api/fb/auth/users", HTTP_GET, [](AsyncWebServerRequest *req)
             {
-    DynamicJsonDocument stored(4096);
+    JsonDocument stored;
     loadFirebaseAuthUsersDoc(stored);
 
-    DynamicJsonDocument response(2048);
+    JsonDocument response;
     JsonArray out = response.to<JsonArray>();
     for (JsonObject user : stored.as<JsonArray>()) {
       JsonObject item = out.createNestedObject();
@@ -3336,7 +3372,7 @@ void setupWebServer()
       return;
     }
 
-    DynamicJsonDocument doc(4096);
+    JsonDocument doc;
     loadFirebaseAuthUsersDoc(doc);
     JsonArray users = doc.as<JsonArray>();
     int userIndex = findFirebaseAuthUserIndex(users, email);
@@ -3348,7 +3384,7 @@ void setupWebServer()
     JsonObject user = users[userIndex].as<JsonObject>();
     String password = user["password"].as<String>();
 
-    DynamicJsonDocument response(256);
+    JsonDocument response;
     response["ok"] = true;
     response["password"] = password;
     String r;
@@ -3376,7 +3412,7 @@ void setupWebServer()
       return;
     }
 
-    DynamicJsonDocument doc(4096);
+    JsonDocument doc;
     loadFirebaseAuthUsersDoc(doc);
     JsonArray users = doc.as<JsonArray>();
     if (findFirebaseAuthUserIndex(users, email) >= 0) {
@@ -3408,7 +3444,7 @@ void setupWebServer()
       return;
     }
 
-    DynamicJsonDocument doc(4096);
+    JsonDocument doc;
     loadFirebaseAuthUsersDoc(doc);
     JsonArray users = doc.as<JsonArray>();
     int userIndex = findFirebaseAuthUserIndex(users, email);
@@ -3433,8 +3469,7 @@ void setupWebServer()
   else
   {
     coreRoutesOnly = false;
-
-    // ──── TIMERS (volatile) ────
+    // ---- TIMERS (volatile) ----
     server.on("/api/timer/set", HTTP_POST, [](AsyncWebServerRequest *req)
               {
       if (!req->hasParam("sw", true)) {
@@ -3469,7 +3504,7 @@ void setupWebServer()
         }
       }
 
-      DynamicJsonDocument d(1024);
+      JsonDocument d;
       JsonArray timers = d.to<JsonArray>();
       unsigned long nowMs = millis();
 
@@ -3544,7 +3579,7 @@ void setupWebServer()
         swTimers[sw].paused = true;
       }
 
-      DynamicJsonDocument d(256);
+      JsonDocument d;
       d["ok"] = true;
       d["active"] = swTimers[sw].active;
       d["paused"] = swTimers[sw].paused;
@@ -3583,7 +3618,7 @@ void setupWebServer()
         swTimers[sw].paused = false;
       }
 
-      DynamicJsonDocument d(256);
+      JsonDocument d;
       d["ok"] = true;
       d["active"] = swTimers[sw].active;
       d["paused"] = swTimers[sw].paused;
@@ -3604,8 +3639,7 @@ void setupWebServer()
         }
       }
       req->send(200, "application/json", "{\"ok\":true}"); });
-
-    // ──── SCHEDULES (persistent) ────
+    // ---- SCHEDULES (persistent) ----
     server.on("/api/schedules", HTTP_GET, [](AsyncWebServerRequest *req)
               {
       int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
@@ -3640,8 +3674,7 @@ void setupWebServer()
       prefs.end();
       notifyStorage();
       req->send(200, "application/json", "{\"ok\":true}"); });
-
-    // ──── FUTURE SCHEDULES (persistent) ────
+    // ---- FUTURE SCHEDULES (persistent) ----
     server.on("/api/fschedules", HTTP_GET, [](AsyncWebServerRequest *req)
               {
       int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
@@ -3676,8 +3709,7 @@ void setupWebServer()
       prefs.end();
       notifyStorage();
       req->send(200, "application/json", "{\"ok\":true}"); });
-
-    // ──── SENSOR CONTROL (persistent) ────
+    // ---- SENSOR CONTROL (persistent) ----
     server.on("/api/sensor/temp", HTTP_GET, [](AsyncWebServerRequest *req)
               {
       int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
@@ -3697,7 +3729,7 @@ void setupWebServer()
         return;
       }
       String data = req->getParam("data", true)->value();
-      DynamicJsonDocument d(1024);
+      JsonDocument d;
       if (deserializeJson(d, data)) {
         req->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
         return;
@@ -3728,7 +3760,7 @@ void setupWebServer()
         return;
       }
       String data = req->getParam("data", true)->value();
-      DynamicJsonDocument d(1024);
+      JsonDocument d;
       if (deserializeJson(d, data)) {
         req->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
         return;
@@ -3763,7 +3795,7 @@ void setupWebServer()
         return;
       }
       String data = req->getParam("data", true)->value();
-      DynamicJsonDocument d(1024);
+      JsonDocument d;
       if (deserializeJson(d, data)) {
         req->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
         return;
@@ -3810,11 +3842,10 @@ void setupWebServer()
 
       notifyStorage();
       req->send(200, "application/json", "{\"ok\":true}"); });
-
-    // ──── WIFI ────
+    // ---- WIFI ----
     server.on("/api/wifi/status", HTTP_GET, [](AsyncWebServerRequest *req)
               {
-      DynamicJsonDocument d(1024);
+      JsonDocument d;
       bool connected = (WiFi.status() == WL_CONNECTED);
       String savedSsid;
       String savedPass;
@@ -3878,7 +3909,7 @@ void setupWebServer()
 
     server.on("/api/wifi/saved", HTTP_GET, [](AsyncWebServerRequest *req)
               {
-      DynamicJsonDocument d(256);
+      JsonDocument d;
       String savedSsid;
       String savedPass;
       bool connected = (WiFi.status() == WL_CONNECTED);
@@ -3955,11 +3986,10 @@ void setupWebServer()
       }
       restartFlag = true;
       restartAt = millis() + 1200; });
-
-    // ──── FIREBASE ────
+    // ---- FIREBASE ----
     server.on("/api/fb", HTTP_GET, [](AsyncWebServerRequest *req)
               {
-      DynamicJsonDocument d(1024);
+      JsonDocument d;
       d["enabled"] = fbOn;
       d["url"] = fbUrl;
       d["hasToken"] = !fbToken.isEmpty();
@@ -4017,7 +4047,7 @@ void setupWebServer()
         return;
       }
 
-      DynamicJsonDocument d(256);
+      JsonDocument d;
       d["ok"] = true;
       d["hasToken"] = !fbToken.isEmpty();
       d["token"] = fbToken;
@@ -4032,7 +4062,7 @@ void setupWebServer()
         return;
       }
 
-      DynamicJsonDocument d(256);
+      JsonDocument d;
       d["ok"] = true;
       d["hasToken"] = !fbToken.isEmpty();
       d["token"] = fbToken;
@@ -4093,18 +4123,17 @@ void setupWebServer()
       prefs.end();
       notifyStorage();
       req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Rules saved!\"}"); });
-
-    // ──── USERS ────
+    // ---- USERS ----
     server.on("/api/users", HTTP_GET, [](AsyncWebServerRequest *req)
               {
       prefs.begin("users", true);
       int n = prefs.getInt("cnt", 0);
-      DynamicJsonDocument d(1024);
+      JsonDocument d;
       JsonArray a = d.to<JsonArray>();
       for (int i = 0; i < n; i++) {
         String js = prefs.getString(("u" + String(i)).c_str(), "");
         if (js.isEmpty()) continue;
-        DynamicJsonDocument ud(512);
+        JsonDocument ud;
         deserializeJson(ud, js);
         JsonObject o = a.createNestedObject();
         o["id"] = normalizeUserId(ud["id"].as<String>());
@@ -4143,7 +4172,7 @@ void setupWebServer()
         req->send(400, "application/json", "{\"error\":\"User ID and password are required\"}");
         return;
       }
-      DynamicJsonDocument nd(512);
+      JsonDocument nd;
       nd["id"] = newId;
       nd["pass"] = newPass;
       nd["role"] = "user";
@@ -4156,7 +4185,7 @@ void setupWebServer()
         String js = prefs.getString(("u" + String(i)).c_str(), "");
         if (js.isEmpty())
           continue;
-        DynamicJsonDocument existing(1024);
+        JsonDocument existing;
         if (deserializeJson(existing, js))
           continue;
         String existingId = normalizeUserId(existing["id"].as<String>());
@@ -4210,7 +4239,7 @@ void setupWebServer()
         String js = prefs.getString(("u" + String(i)).c_str(), "");
         if (js.isEmpty())
           continue;
-        DynamicJsonDocument d(1024);
+        JsonDocument d;
         if (deserializeJson(d, js))
           continue;
 
@@ -4242,7 +4271,7 @@ void setupWebServer()
           continue;
 
         bool shouldRemove = false;
-        DynamicJsonDocument d(1024);
+        JsonDocument d;
         if (!deserializeJson(d, js)) {
           String existingId = normalizeUserId(d["id"].as<String>());
           shouldRemove = (existingId == uid);
@@ -4309,7 +4338,7 @@ void setupWebServer()
         if (js.isEmpty())
           continue;
 
-        DynamicJsonDocument d(1024);
+        JsonDocument d;
         if (deserializeJson(d, js))
           continue;
 
@@ -4336,7 +4365,7 @@ void setupWebServer()
         if (js.isEmpty())
           continue;
 
-        DynamicJsonDocument d(1024);
+        JsonDocument d;
         if (deserializeJson(d, js))
           continue;
 
@@ -4352,7 +4381,7 @@ void setupWebServer()
         if (js.isEmpty())
           continue;
 
-        DynamicJsonDocument d(1024);
+        JsonDocument d;
         if (deserializeJson(d, js))
           continue;
 
@@ -4381,11 +4410,10 @@ void setupWebServer()
       persistConfiguredPrimaryAdmin(newAdminId, newAdminPass);
       notifyStorage();
       req->send(200, "application/json", "{\"ok\":true}"); });
-
-    // ──── ADMINISTRATOR ────
+    // ---- ADMINISTRATOR ----
     server.on("/api/admin/device-name", HTTP_GET, [](AsyncWebServerRequest *req)
               {
-      DynamicJsonDocument d(512);
+      JsonDocument d;
       d["name"] = deviceName;
       d["defaultName"] = getDefaultDeviceName();
       String r;
@@ -4423,7 +4451,7 @@ void setupWebServer()
       onDeviceNameUpdated(previousName);
       notifyStorage();
 
-      DynamicJsonDocument d(512);
+      JsonDocument d;
       d["ok"] = true;
       d["name"] = deviceName;
       String r;
@@ -4432,7 +4460,7 @@ void setupWebServer()
 
     server.on("/api/admin/schedule-priority", HTTP_GET, [](AsyncWebServerRequest *req)
               {
-      DynamicJsonDocument d(1024);
+      JsonDocument d;
       JsonArray arr = d["order"].to<JsonArray>();
       JsonArray labels = d["labels"].to<JsonArray>();
       for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++) {
@@ -4455,7 +4483,7 @@ void setupWebServer()
       }
 
       String raw = req->getParam("data", true)->value();
-      DynamicJsonDocument doc(1024);
+      JsonDocument doc;
       if (deserializeJson(doc, raw)) {
         req->send(400, "application/json", "{\"error\":\"Invalid priority data\"}");
         return;
@@ -4494,7 +4522,7 @@ void setupWebServer()
 
     server.on("/api/admin/time", HTTP_GET, [](AsyncWebServerRequest *req)
               {
-      DynamicJsonDocument d(1024);
+      JsonDocument d;
       d["ntp"] = ntpSrv;
       d["tz"] = tzStr;
       d["synced"] = timeSynced;
@@ -4518,7 +4546,7 @@ void setupWebServer()
 
     server.on("/api/admin/location", HTTP_GET, [](AsyncWebServerRequest *req)
               {
-      DynamicJsonDocument d(1024);
+      JsonDocument d;
       d["lat"] = geoLat;
       d["lon"] = geoLon;
       d["configured"] = locOk;
@@ -4572,7 +4600,7 @@ void setupWebServer()
 
       calcSunriseSunset();
 
-      DynamicJsonDocument d(512);
+      JsonDocument d;
       d["ok"] = true;
       d["lat"] = geoLat;
       d["lon"] = geoLon;
@@ -4592,7 +4620,7 @@ void setupWebServer()
 
     server.on("/api/admin/restart-schedule", HTTP_GET, [](AsyncWebServerRequest *req)
               {
-      DynamicJsonDocument d(512);
+      JsonDocument d;
       d["enabled"] = restartScheduleEnabled;
       d["time"] = restartScheduleEnabled ? formatClockFromMinutes(restartScheduleMinute) : "";
       JsonArray days = d["days"].to<JsonArray>();
@@ -4622,7 +4650,7 @@ void setupWebServer()
       }
 
       String raw = req->getParam("data", true)->value();
-      DynamicJsonDocument doc(1024);
+      JsonDocument doc;
       if (deserializeJson(doc, raw)) {
         req->send(400, "application/json", "{\"error\":\"Invalid restart schedule data\"}");
         return;
@@ -4671,7 +4699,7 @@ void setupWebServer()
 
       notifyStorage();
 
-      DynamicJsonDocument response(512);
+      JsonDocument response;
       response["ok"] = true;
       response["enabled"] = true;
       response["time"] = formatClockFromMinutes(restartScheduleMinute);
@@ -4727,7 +4755,7 @@ void setupWebServer()
         return;
       }
 
-      DynamicJsonDocument response(4096);
+      JsonDocument response;
       response["ok"] = true;
       response["type"] = "storage";
       response["msg"] = "Reset Storage complete. Device restarting...";
@@ -4781,7 +4809,7 @@ void setupWebServer()
         return;
       }
 
-      DynamicJsonDocument response(3072);
+      JsonDocument response;
       response["ok"] = true;
       response["type"] = "settings";
       response["msg"] = "Reset Settings complete. Device restarting...";
@@ -4841,7 +4869,7 @@ void setupWebServer()
         return;
       }
 
-      DynamicJsonDocument response(6144);
+      JsonDocument response;
       response["ok"] = true;
       response["type"] = "factory";
       response["msg"] = "Factory Reset complete. Device restarting...";
@@ -5090,6 +5118,12 @@ void loop()
 
   // Schedule checks (every 15s)
   unsigned long now = millis();
+  if (now - lastHeapLog >= HEAP_LOG_INTERVAL_MS)
+  {
+    lastHeapLog = now;
+    Serial.printf("[HEAP] Free heap: %u bytes\n", ESP.getFreeHeap());
+  }
+
   if (now - lastSchedCheck >= 15000)
   {
     lastSchedCheck = now;
