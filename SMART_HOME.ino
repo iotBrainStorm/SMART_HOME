@@ -108,6 +108,7 @@ const unsigned long FIREBASE_STREAM_RETRY_MS = 5000;
 const unsigned long FIREBASE_STREAM_STALE_MS = 45000;
 const unsigned long FIREBASE_WRITE_INTERVAL_MS = 200;
 const unsigned long FIREBASE_WRITE_FAIL_RETRY_MS = 1000;
+const unsigned long FIREBASE_WRITE_LONG_OP_MS = 150;
 const unsigned long FIREBASE_INITIAL_SYNC_WAIT_MS = 3000;
 const uint8_t FIREBASE_WRITE_QUEUE_LENGTH = 16;
 const char *FIREBASE_AUTH_TASK_UID = "firebaseAuthTask";
@@ -221,7 +222,7 @@ const unsigned long RESET_ALL_DONE_GAP_MS = 2000;
 const unsigned long RESET_RESTART_BUFFER_MS = 300;
 const unsigned long FACTORY_RESET_WIFI_CLEAR_DELAY_MS = 8300;
 const unsigned long FACTORY_RESET_RESTART_DELAY_MS = 9300;
-const TickType_t FIREBASE_TASK_DELAY_TICKS = pdMS_TO_TICKS(10);
+const TickType_t FIREBASE_TASK_DELAY_TICKS = pdMS_TO_TICKS(50);
 
 unsigned long bootButtonPressedAt = 0;
 unsigned long bootHoldSatisfiedAt = 0;
@@ -1842,6 +1843,9 @@ void processFirebaseWriteQueue()
       return;
     }
 
+    // Yield before retrying a previously failed write so Core 0 can service background work.
+    yield();
+
     if (xQueueSend(firebaseWriteQueue, &firebaseDeferredWriteTask, 0) != pdTRUE)
     {
       FirebaseWriteTask dropped;
@@ -1869,8 +1873,15 @@ void processFirebaseWriteQueue()
   Serial.println("[FB] UID: " + firebaseAuthUid);
   Serial.println("[FB] DEVICE ID: " + firebaseDeviceId());
 
+  unsigned long writeStartedAt = millis();
   bool ok = firebaseSetBoolAtPath(path, task.state);
+  unsigned long writeDurationMs = millis() - writeStartedAt;
   firebaseLastWriteMs = now;
+
+  if (writeDurationMs >= FIREBASE_WRITE_LONG_OP_MS)
+  {
+    yield();
+  }
 
   if (!ok)
   {
@@ -2322,6 +2333,7 @@ void firebaseTask(void *param)
   for (;;)
   {
     handleFirebaseRuntime();
+    yield();
     processFirebaseWriteQueue();
     vTaskDelay(FIREBASE_TASK_DELAY_TICKS);
   }
