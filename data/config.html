@@ -2722,6 +2722,10 @@
           <div class="info-box">
             <strong>Instructions:</strong><br />
             Go to Firebase Console → Realtime Database → Rules tab<br />
+            Paste the rules below exactly, then click Publish in Firebase
+            Console<br />
+            Data path used by this device:
+            espHome/&lt;uid&gt;/&lt;deviceId&gt;<br />
             Rules are loaded from ESP32 memory and saved locally after admin
             verification
           </div>
@@ -3912,17 +3916,19 @@
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: body,
         }).then(function (r) {
+          if (!r.ok) throw new Error("HTTP " + r.status);
           return r.json();
         });
       }
       function apiGet(url) {
         return fetch(url, { cache: "no-store" }).then(function (r) {
+          if (!r.ok) throw new Error("HTTP " + r.status);
           return r.json();
         });
       }
 
       var DEFAULT_FIREBASE_RULES_JSON =
-        '{\n  "rules": {\n    "devices": {\n      "$uid": {\n        "$mac": {\n          ".read": "auth != null && auth.uid === $uid",\n          ".write": "auth != null && auth.uid === $uid"\n        }\n      }\n    }\n  }\n}';
+        '{\n  "rules": {\n    ".read": false,\n    ".write": false,\n    "espHome": {\n      "$uid": {\n        ".read": "auth != null && auth.uid == $uid",\n        ".write": "auth != null && auth.uid == $uid",\n        "$deviceId": {\n          ".read": "auth != null && auth.uid == $uid",\n          ".write": "auth != null && auth.uid == $uid"\n        }\n      }\n    }\n  }\n}';
 
       /* ── Data: tabs → sidebar items → panel IDs ── */
       var tabConfig = {
@@ -8485,6 +8491,7 @@
         /* Load Firebase settings */
         apiGet("/api/fb")
           .then(function (d) {
+            if (!d) return;
             var fbToggle = document.getElementById("firebaseToggle");
             if (fbToggle) fbToggle.checked = !!d.enabled;
             var urlInput = document.querySelector("#panel-fb-url .cfg-input");
@@ -8499,7 +8506,19 @@
             if (rulesInput) {
               var incomingRules =
                 d && typeof d.rules === "string" ? d.rules.trim() : "";
-              rulesInput.value = incomingRules;
+              if (incomingRules.indexOf('"devices"') !== -1) {
+                rulesInput.value = DEFAULT_FIREBASE_RULES_JSON;
+                var rulesHint = document.querySelector(
+                  "#panel-fb-rules .setting-sub",
+                );
+                if (rulesHint) {
+                  rulesHint.textContent =
+                    "Outdated rules detected and replaced with the current default (espHome/uid/deviceId). Review and click Save Rules to apply.";
+                  rulesHint.style.color = "#f87171";
+                }
+              } else {
+                rulesInput.value = incomingRules;
+              }
             }
           })
           .catch(function () {});

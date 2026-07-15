@@ -146,8 +146,12 @@ String configuredPrimaryAdminId = String(PRIMARY_ADMIN_ID);
 String configuredPrimaryAdminPass = String(PRIMARY_ADMIN_PASS);
 const char *DEFAULT_FIREBASE_RULES_JSON = R"RULES({
   "rules": {
+    ".read": false,
+    ".write": false,
     "espHome": {
       "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid",
         "$deviceId": {
           ".read": "auth != null && auth.uid == $uid",
           ".write": "auth != null && auth.uid == $uid"
