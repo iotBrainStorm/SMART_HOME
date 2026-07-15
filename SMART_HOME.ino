@@ -91,7 +91,7 @@ bool dhcpOn = true;
 String sIp, sMask = "255.255.255.0", sGw, sDns = "8.8.8.8";
 bool portalFlag = false;
 
-// Firebase
+// Firebase Database
 bool fbOn = false;
 String fbUrl, fbToken;
 
