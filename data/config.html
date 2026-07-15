@@ -8446,8 +8446,16 @@
                     ),
                   )
                     .then(function (d) {
-                      if (d.ok) alert(d.msg || "Rules saved!");
-                      else alert(d.error || "Save failed");
+                      if (d.ok) {
+                        alert(d.msg || "Rules saved!");
+                        var rulesHint =
+                          fbRulesPanel.querySelector(".setting-sub");
+                        if (rulesHint) {
+                          rulesHint.textContent =
+                            "Enter your Firebase Realtime Database security rules in JSON format";
+                          rulesHint.style.color = "";
+                        }
+                      } else alert(d.error || "Save failed");
                     })
                     .catch(function () {
                       alert("Connection error");
@@ -8513,8 +8521,8 @@
                 );
                 if (rulesHint) {
                   rulesHint.textContent =
-                    "Outdated rules detected and replaced with the current default (espHome/uid/deviceId). Review and click Save Rules to apply.";
-                  rulesHint.style.color = "#f87171";
+                    "This device's saved local copy of the rules is outdated (this does not affect the rules already active in Firebase Console). Click Save Rules to update the local copy shown here.";
+                  rulesHint.style.color = "#facc15";
                 }
               } else {
                 rulesInput.value = incomingRules;
