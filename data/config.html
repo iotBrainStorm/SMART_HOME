@@ -4130,6 +4130,70 @@
         window.location.href = "index.html";
       });
 
+      /* Deep link from dashboard feature icons (?tab=&panel=&sw=) */
+      function applyDeepLinkFromQuery() {
+        var params = new URLSearchParams(window.location.search);
+        var tabParam = params.get("tab");
+        var panelParam = params.get("panel");
+        var swParam = params.get("sw");
+
+        if (!tabParam || !tabConfig[tabParam]) {
+          return;
+        }
+
+        var tabEl = null;
+        tabs.forEach(function (t) {
+          if (t.getAttribute("data-tab") === tabParam) tabEl = t;
+        });
+        if (!tabEl) return;
+
+        tabs.forEach(function (t) {
+          t.classList.remove("active");
+        });
+        tabEl.classList.add("active");
+        currentTab = tabParam;
+        buildSidebar(currentTab);
+
+        var panelEl = panelParam ? document.getElementById(panelParam) : null;
+        var validPanel = !!(panelEl && panelEl.classList.contains("panel"));
+        var panelToShow = validPanel
+          ? panelParam
+          : tabConfig[currentTab][0].panel;
+        activatePanel(panelToShow, currentTab);
+
+        if (swParam !== null && swParam !== "") {
+          var swIndex = parseInt(swParam, 10);
+          if (isFinite(swIndex) && swIndex >= 0 && swIndex < 4) {
+            var switchSelectMap = {
+              "panel-auto-timer": "timerSwitch",
+              "panel-auto-schedule": "scheduleSwitch",
+              "panel-auto-future": "futureScheduleSwitch",
+              "panel-auto-sensor-temp": "tempSwitch",
+              "panel-auto-sensor-humid": "humidSwitch",
+              "panel-auto-sensor-sun": "sunSwitch",
+            };
+            var selectId = switchSelectMap[panelToShow];
+            if (selectId) {
+              var sel = document.getElementById(selectId);
+              if (sel) sel.value = String(swIndex);
+              if (selectId === "scheduleSwitch") onScheduleSwitchChange();
+              if (selectId === "futureScheduleSwitch")
+                onFutureScheduleSwitchChange();
+            }
+          }
+        }
+
+        if (panelToShow === "panel-auto-schedule") {
+          toggleScheduleList(true);
+        } else if (panelToShow === "panel-auto-future") {
+          toggleFutureScheduleList(true);
+        } else if (panelToShow === "panel-auto-sensor") {
+          toggleSensorAutomationList(true);
+        }
+      }
+
+      applyDeepLinkFromQuery();
+
       /* ══════════════════════════════════════════════════════════════
          ICON PICKER MODAL
       ══════════════════════════════════════════════════════════════ */
@@ -4966,6 +5030,11 @@
               "</div>" +
               "</div>" +
               '<div class="automation-list-actions">' +
+              '<button class="cfg-btn cfg-btn-secondary" style="padding: 6px 12px; font-size: 0.76rem" onclick="editSensorAutomation(' +
+              entry.sw +
+              ", '" +
+              entry.type +
+              "')\">Edit</button>" +
               '<button class="cfg-btn cfg-btn-danger" style="padding: 6px 12px; font-size: 0.76rem" onclick="removeSensorAutomation(' +
               entry.sw +
               ", '" +
@@ -5906,6 +5975,87 @@
             list.innerHTML =
               '<div class="automation-empty">Unable to load sensor automations right now.</div>';
           });
+      }
+
+      function editSensorAutomation(sw, type) {
+        var switchIndex = parseInt(sw, 10) || 0;
+        var sensorType = String(type || "").toLowerCase();
+        var entry = sensorAutomationListCache.find(function (item) {
+          return (
+            (parseInt(item.sw, 10) || 0) === switchIndex &&
+            item.type === sensorType
+          );
+        });
+        if (!entry) {
+          alert("Sensor automation not found.");
+          return;
+        }
+        var automation = entry.data || {};
+
+        if (sensorType === "temp") {
+          document.getElementById("tempSwitch").value = String(switchIndex);
+          document.getElementById("tempCondition").value =
+            automation.condition || "below";
+          document.getElementById("tempAction").value =
+            automation.action === "off" ? "off" : "on";
+          document.getElementById("tempEnable").checked = !!automation.enabled;
+          if (automation.condition === "between") {
+            document.getElementById("tempMin").value =
+              automation.min !== undefined && automation.min !== null
+                ? automation.min
+                : "";
+            document.getElementById("tempMax").value =
+              automation.max !== undefined && automation.max !== null
+                ? automation.max
+                : "";
+          } else {
+            document.getElementById("tempValue").value =
+              automation.value !== undefined && automation.value !== null
+                ? automation.value
+                : "";
+          }
+          toggleTempBetween();
+          activatePanel("panel-auto-sensor-temp", "automation");
+        } else if (sensorType === "humid") {
+          document.getElementById("humidSwitch").value = String(switchIndex);
+          document.getElementById("humidCondition").value =
+            automation.condition || "below";
+          document.getElementById("humidAction").value =
+            automation.action === "off" ? "off" : "on";
+          document.getElementById("humidEnable").checked = !!automation.enabled;
+          if (automation.condition === "between") {
+            document.getElementById("humidMin").value =
+              automation.min !== undefined && automation.min !== null
+                ? automation.min
+                : "";
+            document.getElementById("humidMax").value =
+              automation.max !== undefined && automation.max !== null
+                ? automation.max
+                : "";
+          } else {
+            document.getElementById("humidValue").value =
+              automation.value !== undefined && automation.value !== null
+                ? automation.value
+                : "";
+          }
+          toggleHumidBetween();
+          activatePanel("panel-auto-sensor-humid", "automation");
+        } else {
+          var offsetValue =
+            automation.offsetMinutes !== undefined &&
+            automation.offsetMinutes !== null
+              ? automation.offsetMinutes
+              : automation.offset;
+          document.getElementById("sunSwitch").value = String(switchIndex);
+          document.getElementById("sunCondition").value =
+            automation.condition || "after_sunset";
+          document.getElementById("sunOffset").value =
+            offsetValue !== undefined && offsetValue !== null ? offsetValue : 0;
+          document.getElementById("sunAction").value =
+            automation.action === "off" ? "off" : "on";
+          document.getElementById("sunEnable").checked = !!automation.enabled;
+          activatePanel("panel-auto-sensor-sun", "automation");
+        }
       }
 
       function removeSensorAutomation(sw, type) {
@@ -8516,14 +8666,6 @@
                 d && typeof d.rules === "string" ? d.rules.trim() : "";
               if (incomingRules.indexOf('"devices"') !== -1) {
                 rulesInput.value = DEFAULT_FIREBASE_RULES_JSON;
-                var rulesHint = document.querySelector(
-                  "#panel-fb-rules .setting-sub",
-                );
-                if (rulesHint) {
-                  rulesHint.textContent =
-                    "This device's saved local copy of the rules is outdated (this does not affect the rules already active in Firebase Console). Click Save Rules to update the local copy shown here.";
-                  rulesHint.style.color = "#facc15";
-                }
               } else {
                 rulesInput.value = incomingRules;
               }
