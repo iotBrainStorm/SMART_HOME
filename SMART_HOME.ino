@@ -201,6 +201,7 @@ bool coreRoutesOnly = false;
 
 const uint32_t MIN_FREE_HEAP_FOR_EXTENDED_ROUTES = 38000;
 const uint32_t MIN_FREE_HEAP_FOR_FIREBASE_WRITE = 45000;
+const uint32_t MIN_FREE_HEAP_FOR_FIREBASE_LOOP = 38000;
 const uint32_t CRITICAL_LOW_HEAP_RESTART_BYTES = 32000;
 const int WIFI_CONNECT_MAX_ATTEMPTS = 5;
 const unsigned long WIFI_CONNECT_RETRY_MS = 2000;
@@ -1918,6 +1919,9 @@ void ensureFirebaseStreamConnected() {
   if (firebaseStreamRunning)
     return;
 
+  if (ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_FIREBASE_WRITE)
+    return; // defer stream reconnect until heap recovers
+
   unsigned long now = millis();
   if (now - firebaseLastStreamAttemptMs < FIREBASE_STREAM_RETRY_MS)
     return;
@@ -2037,10 +2041,14 @@ void handleFirebaseRuntime() {
     unsigned long now = millis();
     if (now - firebaseLastInitAttemptMs >= FIREBASE_INIT_RETRY_MS) {
       firebaseLastInitAttemptMs = now;
-      beginFirebaseRuntime();
+      if (ESP.getFreeHeap() >= MIN_FREE_HEAP_FOR_FIREBASE_WRITE)
+        beginFirebaseRuntime();
     }
     return;
   }
+
+  if (ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_FIREBASE_LOOP)
+    return; // skip fbApp.loop() — ResponseContext::newBuf() would malloc(512) → NULL crash
 
   fbApp.loop();
 
