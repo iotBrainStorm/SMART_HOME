@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <WiFiManager.h>
+#include <new>
 
 #define ENABLE_USER_AUTH
 #define ENABLE_DATABASE
@@ -51,13 +52,13 @@ const int outPin[NUM_SWITCHES] = {OUTPUT_SWITCH_1, OUTPUT_SWITCH_2,
                                   OUTPUT_SWITCH_3, OUTPUT_SWITCH_4};
 const int inPin[NUM_SWITCHES] = {INPUT_SWITCH_1, INPUT_SWITCH_2, INPUT_SWITCH_3,
                                  INPUT_SWITCH_4};
-const char* DEFAULT_NTP_SERVER = "pool.ntp.org";
-const char* DEFAULT_TIME_ZONE = "+00:00";
+const char *DEFAULT_NTP_SERVER = "pool.ntp.org";
+const char *DEFAULT_TIME_ZONE = "+00:00";
 const float DEFAULT_LATITUDE = 51.5074f;
 const float DEFAULT_LONGITUDE = -0.1278f;
-const char* DEFAULT_SWITCH_NAMES[NUM_SWITCHES] = {"DEVICE-1", "DEVICE-2",
+const char *DEFAULT_SWITCH_NAMES[NUM_SWITCHES] = {"DEVICE-1", "DEVICE-2",
                                                   "DEVICE-3", "DEVICE-4"};
-const char* DEFAULT_SWITCH_ICONS[NUM_SWITCHES] = {"home", "home", "home",
+const char *DEFAULT_SWITCH_ICONS[NUM_SWITCHES] = {"home", "home", "home",
                                                   "home"};
 
 //  GLOBAL OBJECTS
@@ -107,15 +108,15 @@ const unsigned long FIREBASE_WRITE_FAIL_RETRY_MS = 1000;
 const unsigned long FIREBASE_WRITE_LONG_OP_MS = 150;
 const unsigned long FIREBASE_INITIAL_SYNC_WAIT_MS = 3000;
 const uint8_t FIREBASE_WRITE_QUEUE_LENGTH = 16;
-const char* FIREBASE_AUTH_TASK_UID = "firebaseAuthTask";
-const char* FIREBASE_STREAM_TASK_UID = "firebaseStreamTask";
+const char *FIREBASE_AUTH_TASK_UID = "firebaseAuthTask";
+const char *FIREBASE_STREAM_TASK_UID = "firebaseStreamTask";
 
 WiFiClientSecure fbSslClient, fbStreamSslClient;
 using FirebaseAsyncClient = AsyncClientClass;
 FirebaseAsyncClient fbClient(fbSslClient), fbStreamClient(fbStreamSslClient);
 FirebaseApp fbApp;
 RealtimeDatabase fbDatabase;
-UserAuth* fbUserAuth = nullptr;
+UserAuth *fbUserAuth = nullptr;
 
 struct FirebaseWriteTask {
   uint8_t index;
@@ -134,11 +135,11 @@ String cachedDeviceId = "";
 TaskHandle_t firebaseTaskHandle = nullptr;
 SemaphoreHandle_t swStateMutex = nullptr;
 
-const char* PRIMARY_ADMIN_ID = "esp";
-const char* PRIMARY_ADMIN_PASS = "456456";
+const char *PRIMARY_ADMIN_ID = "esp";
+const char *PRIMARY_ADMIN_PASS = "456456";
 String configuredPrimaryAdminId = String(PRIMARY_ADMIN_ID);
 String configuredPrimaryAdminPass = String(PRIMARY_ADMIN_PASS);
-const char* DEFAULT_FIREBASE_RULES_JSON = R"RULES({
+const char *DEFAULT_FIREBASE_RULES_JSON = R"RULES({
   "rules": {
     "espHome": {
       "$uid": {
@@ -162,7 +163,7 @@ bool ahtOk = false;
 bool locOk = true;
 
 uint8_t automationPriorityOrder[AUTOMATION_SOURCE_COUNT] = {
-    AUTOMATION_TIMER,       AUTOMATION_SCHEDULE, AUTOMATION_FUTURE_SCHEDULE,
+    AUTOMATION_TIMER, AUTOMATION_SCHEDULE, AUTOMATION_FUTURE_SCHEDULE,
     AUTOMATION_TEMPERATURE, AUTOMATION_HUMIDITY, AUTOMATION_SUN};
 
 bool pendingAutomationAction[NUM_SWITCHES] = {false, false, false, false};
@@ -199,6 +200,8 @@ unsigned long forgetWifiAt = 0;
 bool coreRoutesOnly = false;
 
 const uint32_t MIN_FREE_HEAP_FOR_EXTENDED_ROUTES = 38000;
+const uint32_t MIN_FREE_HEAP_FOR_FIREBASE_WRITE = 45000;
+const uint32_t CRITICAL_LOW_HEAP_RESTART_BYTES = 32000;
 const int WIFI_CONNECT_MAX_ATTEMPTS = 5;
 const unsigned long WIFI_CONNECT_RETRY_MS = 2000;
 const unsigned long WIFI_PORTAL_RECOVERY_RESTART_MS = 200;
@@ -212,20 +215,21 @@ const unsigned long FACTORY_RESET_WIFI_CLEAR_DELAY_MS = 8300;
 const unsigned long FACTORY_RESET_RESTART_DELAY_MS = 9300;
 const TickType_t FIREBASE_TASK_DELAY_TICKS = pdMS_TO_TICKS(50);
 
+unsigned long notifyStorageOffAt = 0;
 unsigned long bootButtonPressedAt = 0;
 unsigned long bootHoldSatisfiedAt = 0;
 bool bootHoldSatisfied = false;
 
-void setRelayState(int index, bool state, const String& source);
+void setRelayState(int index, bool state, const String &source);
 void setSwitch(int i, bool st);
 void calcSunriseSunset();
 void handleFirebaseRuntime();
-void firebaseAsyncCallback(AsyncResult& aResult);
+void firebaseAsyncCallback(AsyncResult &aResult);
 void initFirebaseWriteQueue();
 void clearFirebaseWriteQueue();
 bool enqueueFirebaseWrite(int index, bool state);
 void processFirebaseWriteQueue();
-void firebaseTask(void* param);
+void firebaseTask(void *param);
 void startFirebaseTask();
 bool lockSwState(TickType_t waitTicks = portMAX_DELAY);
 void unlockSwState();
@@ -234,28 +238,41 @@ void writeSwState(int index, bool value);
 void initDeviceId();
 String firebaseDeviceId();
 String firebaseDeviceNameValue();
-String firebaseBasePathForUid(const String& uid);
-String firebaseRelayPath(const String& uid, int index);
-String firebaseDeviceNamePath(const String& uid);
+String firebaseBasePathForUid(const String &uid);
+String firebaseRelayPath(const String &uid, int index);
+String firebaseDeviceNamePath(const String &uid);
 void queueAllRelayStatesForFirebaseSync();
-void onDeviceNameUpdated(const String& previousName);
-bool firebaseSetStringAtPath(const String& path, const String& value);
-void restartFirebaseStream(const char* reason);
+void onDeviceNameUpdated(const String &previousName);
+bool firebaseSetStringAtPath(const String &path, const String &value);
+void restartFirebaseStream(const char *reason);
 void syncRelayStateToWebView(int index, bool state);
 
+// Restart cleanly on heap exhaustion instead of crashing via std::terminate()
+static void oomNewHandler() {
+  ets_printf("[OOM] operator new failed — restarting\n");
+  esp_restart();
+}
+
 //  BEEP + LED ON NVS CHANGE
+void serviceNotifyStorage() {
+  if (notifyStorageOffAt && millis() >= notifyStorageOffAt) {
+    notifyStorageOffAt = 0;
+    digitalWrite(BUZZER_PIN, LOW);
+    digitalWrite(LED_PIN, LOW);
+  }
+}
+
 void notifyStorage() {
   digitalWrite(LED_PIN, HIGH);
   digitalWrite(BUZZER_PIN, HIGH);
-  delay(100);
-  digitalWrite(BUZZER_PIN, LOW);
-  digitalWrite(LED_PIN, LOW);
+  notifyStorageOffAt = millis() + 100;
 }
 
 //  TIMEZONE PARSING  "+00:00" -> seconds
 void parseTZ() {
   int sign = 1;
-  if (tzStr.startsWith("-")) sign = -1;
+  if (tzStr.startsWith("-"))
+    sign = -1;
   int c = tzStr.indexOf(':');
   int h = 0, m = 0;
   if (c > 0) {
@@ -312,7 +329,7 @@ void loadWifiSettings() {
   prefs.end();
 }
 
-bool getSavedWifiCredentials(String& ssid, String& pass) {
+bool getSavedWifiCredentials(String &ssid, String &pass) {
   prefs.begin("wfcfg", true);
   ssid = prefs.getString("ssid", "");
   pass = prefs.getString("pass", "");
@@ -320,8 +337,8 @@ bool getSavedWifiCredentials(String& ssid, String& pass) {
   return !ssid.isEmpty();
 }
 
-bool hasValidStaticConfig(IPAddress& ip, IPAddress& gateway, IPAddress& subnet,
-                          IPAddress& dns) {
+bool hasValidStaticConfig(IPAddress &ip, IPAddress &gateway, IPAddress &subnet,
+                          IPAddress &dns) {
   return ip.fromString(sIp) && gateway.fromString(sGw) &&
          subnet.fromString(sMask) && dns.fromString(sDns);
 }
@@ -387,8 +404,8 @@ bool runWifiConfigPortal(bool notifyChange = false,
   WiFiManager wm;
   bool success = false;
 
-  wm.setConfigPortalTimeout(180);  // 3 minutes
-  wm.setAPCallback([](WiFiManager* myWiFiManager) {
+  wm.setConfigPortalTimeout(180); // 3 minutes
+  wm.setAPCallback([](WiFiManager *myWiFiManager) {
     Serial.println(
         "[WIFI] Config portal ready - connect to ESP HOME and open "
         "192.168.4.1");
@@ -453,12 +470,13 @@ void setDefaultAutomationPriorityOrder() {
   automationPriorityOrder[5] = AUTOMATION_SUN;
 }
 
-bool validateAutomationPriorityOrder(const uint8_t* order) {
+bool validateAutomationPriorityOrder(const uint8_t *order) {
   bool seen[AUTOMATION_SOURCE_COUNT] = {false, false, false,
                                         false, false, false};
   for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++) {
     uint8_t src = order[i];
-    if (src >= AUTOMATION_SOURCE_COUNT || seen[src]) return false;
+    if (src >= AUTOMATION_SOURCE_COUNT || seen[src])
+      return false;
     seen[src] = true;
   }
   return true;
@@ -466,58 +484,65 @@ bool validateAutomationPriorityOrder(const uint8_t* order) {
 
 int getAutomationPriorityRank(uint8_t source) {
   for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++) {
-    if (automationPriorityOrder[i] == source) return i;
+    if (automationPriorityOrder[i] == source)
+      return i;
   }
   return AUTOMATION_SOURCE_COUNT;
 }
 
-const char* automationSourceKey(uint8_t source) {
+const char *automationSourceKey(uint8_t source) {
   switch (source) {
-    case AUTOMATION_TIMER:
-      return "timer";
-    case AUTOMATION_SCHEDULE:
-      return "schedule";
-    case AUTOMATION_FUTURE_SCHEDULE:
-      return "future";
-    case AUTOMATION_TEMPERATURE:
-      return "temperature";
-    case AUTOMATION_HUMIDITY:
-      return "humidity";
-    case AUTOMATION_SUN:
-      return "sun";
-    default:
-      return "timer";
+  case AUTOMATION_TIMER:
+    return "timer";
+  case AUTOMATION_SCHEDULE:
+    return "schedule";
+  case AUTOMATION_FUTURE_SCHEDULE:
+    return "future";
+  case AUTOMATION_TEMPERATURE:
+    return "temperature";
+  case AUTOMATION_HUMIDITY:
+    return "humidity";
+  case AUTOMATION_SUN:
+    return "sun";
+  default:
+    return "timer";
   }
 }
 
-const char* automationSourceLabel(uint8_t source) {
+const char *automationSourceLabel(uint8_t source) {
   switch (source) {
-    case AUTOMATION_TIMER:
-      return "Timer";
-    case AUTOMATION_SCHEDULE:
-      return "Schedule";
-    case AUTOMATION_FUTURE_SCHEDULE:
-      return "Future Schedule";
-    case AUTOMATION_TEMPERATURE:
-      return "Temperature";
-    case AUTOMATION_HUMIDITY:
-      return "Humidity";
-    case AUTOMATION_SUN:
-      return "Sunrise & Sunset";
-    default:
-      return "Timer";
+  case AUTOMATION_TIMER:
+    return "Timer";
+  case AUTOMATION_SCHEDULE:
+    return "Schedule";
+  case AUTOMATION_FUTURE_SCHEDULE:
+    return "Future Schedule";
+  case AUTOMATION_TEMPERATURE:
+    return "Temperature";
+  case AUTOMATION_HUMIDITY:
+    return "Humidity";
+  case AUTOMATION_SUN:
+    return "Sunrise & Sunset";
+  default:
+    return "Timer";
   }
 }
 
 int automationSourceFromKey(String key) {
   key.trim();
   key.toLowerCase();
-  if (key == "timer") return AUTOMATION_TIMER;
-  if (key == "schedule") return AUTOMATION_SCHEDULE;
-  if (key == "future") return AUTOMATION_FUTURE_SCHEDULE;
-  if (key == "temperature") return AUTOMATION_TEMPERATURE;
-  if (key == "humidity") return AUTOMATION_HUMIDITY;
-  if (key == "sun") return AUTOMATION_SUN;
+  if (key == "timer")
+    return AUTOMATION_TIMER;
+  if (key == "schedule")
+    return AUTOMATION_SCHEDULE;
+  if (key == "future")
+    return AUTOMATION_FUTURE_SCHEDULE;
+  if (key == "temperature")
+    return AUTOMATION_TEMPERATURE;
+  if (key == "humidity")
+    return AUTOMATION_HUMIDITY;
+  if (key == "sun")
+    return AUTOMATION_SUN;
   return -1;
 }
 
@@ -528,10 +553,12 @@ void clearPendingAutomationActions() {
 }
 
 void queueAutomationAction(int sw, bool targetState, uint8_t source) {
-  if (sw < 0 || sw >= NUM_SWITCHES) return;
+  if (sw < 0 || sw >= NUM_SWITCHES)
+    return;
 
   int newRank = getAutomationPriorityRank(source);
-  if (newRank >= AUTOMATION_SOURCE_COUNT) return;
+  if (newRank >= AUTOMATION_SOURCE_COUNT)
+    return;
 
   if (!pendingAutomationAction[sw]) {
     pendingAutomationAction[sw] = true;
@@ -549,7 +576,8 @@ void queueAutomationAction(int sw, bool targetState, uint8_t source) {
 
 void applyPendingAutomationActions() {
   for (int i = 0; i < NUM_SWITCHES; i++) {
-    if (!pendingAutomationAction[i]) continue;
+    if (!pendingAutomationAction[i])
+      continue;
     setRelayState(i, pendingAutomationState[i], "automation");
     Serial.printf("[AUTO] SW%d -> %s (source=%s, rank=%d)\n", i,
                   pendingAutomationState[i] ? "ON" : "OFF",
@@ -673,7 +701,8 @@ void loadAdminSettings() {
 String normalizeUserRole(String role) {
   role.trim();
   role.toLowerCase();
-  if (role == "admin") return "admin";
+  if (role == "admin")
+    return "admin";
   return "user";
 }
 
@@ -688,8 +717,8 @@ String normalizeUserPass(String pass) {
   return pass;
 }
 
-void persistConfiguredPrimaryAdmin(const String& adminId,
-                                   const String& adminPass) {
+void persistConfiguredPrimaryAdmin(const String &adminId,
+                                   const String &adminPass) {
   String normalizedId = normalizeUserId(adminId);
   String normalizedPass = normalizeUserPass(adminPass);
 
@@ -707,8 +736,8 @@ void persistConfiguredPrimaryAdmin(const String& adminId,
   prefs.end();
 }
 
-void replaceUsersWithSingleAdmin(const String& adminId,
-                                 const String& adminPass) {
+void replaceUsersWithSingleAdmin(const String &adminId,
+                                 const String &adminPass) {
   String targetAdminId = normalizeUserId(adminId);
   String targetAdminPass = normalizeUserPass(adminPass);
 
@@ -719,16 +748,20 @@ void replaceUsersWithSingleAdmin(const String& adminId,
   int firstAdminIndex = -1;
   for (int i = 0; i < count; i++) {
     String js = prefs.getString(("u" + String(i)).c_str(), "");
-    if (js.isEmpty()) continue;
+    if (js.isEmpty())
+      continue;
 
     JsonDocument d;
-    if (deserializeJson(d, js)) continue;
+    if (deserializeJson(d, js))
+      continue;
 
     String id = normalizeUserId(d["id"].as<String>());
     String role = normalizeUserRole(d["role"].as<String>());
 
-    if (preferredIndex < 0 && id == targetAdminId) preferredIndex = i;
-    if (firstAdminIndex < 0 && role == "admin") firstAdminIndex = i;
+    if (preferredIndex < 0 && id == targetAdminId)
+      preferredIndex = i;
+    if (firstAdminIndex < 0 && role == "admin")
+      firstAdminIndex = i;
   }
 
   int targetAdminIndex = preferredIndex >= 0 ? preferredIndex : firstAdminIndex;
@@ -747,10 +780,12 @@ void replaceUsersWithSingleAdmin(const String& adminId,
 
   for (int i = 0; i < count; i++) {
     String js = prefs.getString(("u" + String(i)).c_str(), "");
-    if (js.isEmpty()) continue;
+    if (js.isEmpty())
+      continue;
 
     JsonDocument d;
-    if (deserializeJson(d, js)) continue;
+    if (deserializeJson(d, js))
+      continue;
 
     bool changed = false;
     String role = normalizeUserRole(d["role"].as<String>());
@@ -970,7 +1005,7 @@ void resetUsersToSingleDefaultAdmin() {
                               configuredPrimaryAdminPass);
 }
 
-bool requireBootHoldResetGesture(AsyncWebServerRequest* req) {
+bool requireBootHoldResetGesture(AsyncWebServerRequest *req) {
   if (consumeBootButtonHoldForReset()) {
     return true;
   }
@@ -981,7 +1016,7 @@ bool requireBootHoldResetGesture(AsyncWebServerRequest* req) {
   return false;
 }
 
-void addResetStep(JsonArray steps, const char* key, const char* label,
+void addResetStep(JsonArray steps, const char *key, const char *label,
                   uint16_t durationMs = 420) {
   uint16_t normalizedDuration = durationMs;
   if (normalizedDuration < 180) {
@@ -1022,7 +1057,8 @@ void updateBootButtonHoldState() {
 
 bool consumeBootButtonHoldForReset() {
   unsigned long now = millis();
-  if (!bootHoldSatisfied) return false;
+  if (!bootHoldSatisfied)
+    return false;
 
   if (now - bootHoldSatisfiedAt > BOOT_HOLD_READY_WINDOW_MS) {
     bootHoldSatisfied = false;
@@ -1059,19 +1095,23 @@ void initDefaultUser() {
   int totalAdminCount = 0;
   for (int i = 0; i < count; i++) {
     String js = prefs.getString(("u" + String(i)).c_str(), "");
-    if (js.isEmpty()) continue;
+    if (js.isEmpty())
+      continue;
 
     JsonDocument d;
-    if (deserializeJson(d, js)) continue;
+    if (deserializeJson(d, js))
+      continue;
 
     String id = normalizeUserId(d["id"].as<String>());
     String pass = normalizeUserPass(d["pass"].as<String>());
     String role = normalizeUserRole(d["role"].as<String>());
 
-    if (role == "admin") totalAdminCount++;
+    if (role == "admin")
+      totalAdminCount++;
 
     if (id == normalizeUserId(configuredPrimaryAdminId)) {
-      if (espIndex < 0) espIndex = i;
+      if (espIndex < 0)
+        espIndex = i;
       if (role == "admin") {
         hasEspAdmin = true;
       }
@@ -1110,12 +1150,15 @@ void initDefaultUser() {
   int keepAdminIndex = -1;
   for (int i = 0; i < count; i++) {
     String js = prefs.getString(("u" + String(i)).c_str(), "");
-    if (js.isEmpty()) continue;
+    if (js.isEmpty())
+      continue;
 
     JsonDocument d;
-    if (deserializeJson(d, js)) continue;
+    if (deserializeJson(d, js))
+      continue;
 
-    if (normalizeUserRole(d["role"].as<String>()) != "admin") continue;
+    if (normalizeUserRole(d["role"].as<String>()) != "admin")
+      continue;
 
     if (keepAdminIndex < 0) {
       keepAdminIndex = i;
@@ -1131,16 +1174,18 @@ void initDefaultUser() {
   prefs.end();
 }
 
-bool verifyAdmin(const String& u, const String& p) {
+bool verifyAdmin(const String &u, const String &p) {
   String targetUser = normalizeUserId(u);
   String targetPass = normalizeUserPass(p);
   prefs.begin("users", true);
   int n = prefs.getInt("cnt", 0);
   for (int i = 0; i < n; i++) {
     String js = prefs.getString(("u" + String(i)).c_str(), "");
-    if (js.isEmpty()) continue;
+    if (js.isEmpty())
+      continue;
     JsonDocument d;
-    if (deserializeJson(d, js)) continue;
+    if (deserializeJson(d, js))
+      continue;
     String storedPass = normalizeUserPass(d["pass"].as<String>());
     if (normalizeUserId(d["id"].as<String>()) == targetUser &&
         storedPass == targetPass &&
@@ -1153,7 +1198,7 @@ bool verifyAdmin(const String& u, const String& p) {
   return false;
 }
 
-bool requireAdminVerification(AsyncWebServerRequest* req) {
+bool requireAdminVerification(AsyncWebServerRequest *req) {
   if (!req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
     req->send(400, "application/json",
               "{\"error\":\"Admin credentials required\"}");
@@ -1176,16 +1221,18 @@ bool requireAdminVerification(AsyncWebServerRequest* req) {
   return true;
 }
 
-bool verifyLogin(const String& u, const String& p, String& role) {
+bool verifyLogin(const String &u, const String &p, String &role) {
   String targetUser = normalizeUserId(u);
   String targetPass = normalizeUserPass(p);
   prefs.begin("users", true);
   int n = prefs.getInt("cnt", 0);
   for (int i = 0; i < n; i++) {
     String js = prefs.getString(("u" + String(i)).c_str(), "");
-    if (js.isEmpty()) continue;
+    if (js.isEmpty())
+      continue;
     JsonDocument d;
-    if (deserializeJson(d, js)) continue;
+    if (deserializeJson(d, js))
+      continue;
     String storedPass = normalizeUserPass(d["pass"].as<String>());
     if (normalizeUserId(d["id"].as<String>()) == targetUser &&
         storedPass == targetPass) {
@@ -1203,7 +1250,8 @@ bool hasAdmin() {
   int n = prefs.getInt("cnt", 0);
   for (int i = 0; i < n; i++) {
     String js = prefs.getString(("u" + String(i)).c_str(), "");
-    if (js.isEmpty()) continue;
+    if (js.isEmpty())
+      continue;
     JsonDocument d;
     deserializeJson(d, js);
     if (normalizeUserRole(d["role"].as<String>()) == "admin") {
@@ -1220,10 +1268,12 @@ int countAdmins() {
   int n = prefs.getInt("cnt", 0), a = 0;
   for (int i = 0; i < n; i++) {
     String js = prefs.getString(("u" + String(i)).c_str(), "");
-    if (js.isEmpty()) continue;
+    if (js.isEmpty())
+      continue;
     JsonDocument d;
     deserializeJson(d, js);
-    if (normalizeUserRole(d["role"].as<String>()) == "admin") a++;
+    if (normalizeUserRole(d["role"].as<String>()) == "admin")
+      a++;
   }
   prefs.end();
   return a;
@@ -1235,14 +1285,14 @@ String normalizeEmail(String email) {
   return email;
 }
 
-bool isValidEmailAddress(const String& email) {
+bool isValidEmailAddress(const String &email) {
   int atPos = email.indexOf('@');
   int dotPos = email.lastIndexOf('.');
   return !email.isEmpty() && atPos > 0 && dotPos > atPos + 1 &&
          dotPos < email.length() - 1 && email.indexOf(' ') < 0;
 }
 
-void loadFirebaseAuthUsersDoc(JsonDocument& doc) {
+void loadFirebaseAuthUsersDoc(JsonDocument &doc) {
   doc.clear();
   prefs.begin("fb", true);
   String raw = prefs.getString("authUsers", "[]");
@@ -1255,7 +1305,7 @@ void loadFirebaseAuthUsersDoc(JsonDocument& doc) {
   }
 }
 
-void saveFirebaseAuthUsersDoc(JsonDocument& doc) {
+void saveFirebaseAuthUsersDoc(JsonDocument &doc) {
   String raw;
   serializeJson(doc, raw);
   prefs.begin("fb", false);
@@ -1263,7 +1313,7 @@ void saveFirebaseAuthUsersDoc(JsonDocument& doc) {
   prefs.end();
 }
 
-int findFirebaseAuthUserIndex(JsonArray users, const String& email) {
+int findFirebaseAuthUserIndex(JsonArray users, const String &email) {
   String targetEmail = normalizeEmail(email);
   int index = 0;
   for (JsonObject user : users) {
@@ -1275,7 +1325,7 @@ int findFirebaseAuthUserIndex(JsonArray users, const String& email) {
   return -1;
 }
 
-void configureFirebaseSslClient(WiFiClientSecure& client) {
+void configureFirebaseSslClient(WiFiClientSecure &client) {
   client.setInsecure();
 #if defined(ESP32)
   client.setConnectionTimeout(1000);
@@ -1287,7 +1337,8 @@ void configureFirebaseSslClient(WiFiClientSecure& client) {
 }
 
 void initFirebaseWriteQueue() {
-  if (firebaseWriteQueue) return;
+  if (firebaseWriteQueue)
+    return;
 
   firebaseWriteQueue =
       xQueueCreate(FIREBASE_WRITE_QUEUE_LENGTH, sizeof(FirebaseWriteTask));
@@ -1297,7 +1348,8 @@ void initFirebaseWriteQueue() {
 }
 
 void clearFirebaseWriteQueue() {
-  if (!firebaseWriteQueue) return;
+  if (!firebaseWriteQueue)
+    return;
 
   FirebaseWriteTask discarded;
   while (xQueueReceive(firebaseWriteQueue, &discarded, 0) == pdTRUE) {
@@ -1305,7 +1357,8 @@ void clearFirebaseWriteQueue() {
 }
 
 bool lockSwState(TickType_t waitTicks) {
-  if (!swStateMutex) return true;
+  if (!swStateMutex)
+    return true;
 
   return xSemaphoreTake(swStateMutex, waitTicks) == pdTRUE;
 }
@@ -1317,7 +1370,8 @@ void unlockSwState() {
 }
 
 bool readSwState(int index) {
-  if (index < 0 || index >= NUM_SWITCHES) return false;
+  if (index < 0 || index >= NUM_SWITCHES)
+    return false;
 
   bool value = false;
   if (lockSwState()) {
@@ -1328,7 +1382,8 @@ bool readSwState(int index) {
 }
 
 void writeSwState(int index, bool value) {
-  if (index < 0 || index >= NUM_SWITCHES) return;
+  if (index < 0 || index >= NUM_SWITCHES)
+    return;
 
   if (lockSwState()) {
     swState[index] = value;
@@ -1372,31 +1427,36 @@ String firebaseDeviceId() {
     initDeviceId();
   }
 
-  if (cachedDeviceId.isEmpty()) return getDefaultDeviceName();
+  if (cachedDeviceId.isEmpty())
+    return getDefaultDeviceName();
 
   return cachedDeviceId;
 }
 
-String firebaseBasePathForUid(const String& uid) {
+String firebaseBasePathForUid(const String &uid) {
   String normalizedUid = uid;
   normalizedUid.trim();
-  if (normalizedUid.isEmpty()) return "";
+  if (normalizedUid.isEmpty())
+    return "";
 
   return "/espHome/" + normalizedUid + "/" + firebaseDeviceId();
 }
 
-String firebaseRelayPath(const String& uid, int index) {
-  if (index < 0 || index >= NUM_SWITCHES) return "";
+String firebaseRelayPath(const String &uid, int index) {
+  if (index < 0 || index >= NUM_SWITCHES)
+    return "";
 
   String basePath = firebaseBasePathForUid(uid);
-  if (basePath.isEmpty()) return "";
+  if (basePath.isEmpty())
+    return "";
 
   return basePath + "/switch" + String(index + 1);
 }
 
-String firebaseDeviceNamePath(const String& uid) {
+String firebaseDeviceNamePath(const String &uid) {
   String basePath = firebaseBasePathForUid(uid);
-  if (basePath.isEmpty()) return "";
+  if (basePath.isEmpty())
+    return "";
 
   return basePath + "/deviceName";
 }
@@ -1407,7 +1467,7 @@ void queueAllRelayStatesForFirebaseSync() {
   }
 }
 
-void onDeviceNameUpdated(const String& previousName) {
+void onDeviceNameUpdated(const String &previousName) {
   String oldName = previousName;
   oldName.trim();
   if (oldName.isEmpty()) {
@@ -1431,12 +1491,15 @@ void onDeviceNameUpdated(const String& previousName) {
 }
 
 bool enqueueFirebaseWrite(int index, bool state) {
-  if (index < 0 || index >= NUM_SWITCHES) return false;
+  if (index < 0 || index >= NUM_SWITCHES)
+    return false;
 
-  if (!fbOn || !firebaseWriteQueue) return false;
+  if (!fbOn || !firebaseWriteQueue)
+    return false;
 
   FirebaseWriteTask task = {(uint8_t)index, state};
-  if (xQueueSend(firebaseWriteQueue, &task, 0) == pdTRUE) return true;
+  if (xQueueSend(firebaseWriteQueue, &task, 0) == pdTRUE)
+    return true;
 
   // Queue full: drop oldest to keep the most recent command.
   FirebaseWriteTask dropped;
@@ -1444,7 +1507,7 @@ bool enqueueFirebaseWrite(int index, bool state) {
   return xQueueSend(firebaseWriteQueue, &task, 0) == pdTRUE;
 }
 
-void restartFirebaseStream(const char* reason) {
+void restartFirebaseStream(const char *reason) {
   if (firebaseStreamRunning) {
     fbStreamClient.stopAsync(FIREBASE_STREAM_TASK_UID);
   }
@@ -1460,7 +1523,7 @@ void restartFirebaseStream(const char* reason) {
   }
 }
 
-bool tryParseBoolText(String text, bool& out) {
+bool tryParseBoolText(String text, bool &out) {
   text.trim();
   text.toLowerCase();
   if (text == "true" || text == "1") {
@@ -1474,7 +1537,7 @@ bool tryParseBoolText(String text, bool& out) {
   return false;
 }
 
-bool tryParseBoolVariant(const JsonVariantConst& value, bool& out) {
+bool tryParseBoolVariant(const JsonVariantConst &value, bool &out) {
   if (value.is<bool>()) {
     out = value.as<bool>();
     return true;
@@ -1495,7 +1558,7 @@ bool tryParseBoolVariant(const JsonVariantConst& value, bool& out) {
     return true;
   }
 
-  if (value.is<const char*>()) {
+  if (value.is<const char *>()) {
     String text = value.as<String>();
     return tryParseBoolText(text, out);
   }
@@ -1503,17 +1566,19 @@ bool tryParseBoolVariant(const JsonVariantConst& value, bool& out) {
   return false;
 }
 
-bool getPrimaryFirebaseAuthCredential(String& email, String& password) {
+bool getPrimaryFirebaseAuthCredential(String &email, String &password) {
   JsonDocument doc;
   loadFirebaseAuthUsersDoc(doc);
   JsonArray users = doc.as<JsonArray>();
-  if (users.isNull() || users.size() == 0) return false;
+  if (users.isNull() || users.size() == 0)
+    return false;
 
   for (JsonObject user : users) {
     String candidateEmail = normalizeEmail(user["email"].as<String>());
     String candidatePassword = user["password"].as<String>();
     candidatePassword.trim();
-    if (candidateEmail.isEmpty() || candidatePassword.isEmpty()) continue;
+    if (candidateEmail.isEmpty() || candidatePassword.isEmpty())
+      continue;
 
     email = candidateEmail;
     password = candidatePassword;
@@ -1549,10 +1614,12 @@ void stopFirebaseRuntime() {
   clearFirebaseWriteQueue();
 }
 
-bool firebaseSetBoolAtPath(const String& path, bool value) {
-  if (!firebaseRuntimeInitialized || !fbApp.ready()) return false;
+bool firebaseSetBoolAtPath(const String &path, bool value) {
+  if (!firebaseRuntimeInitialized || !fbApp.ready())
+    return false;
 
-  if (firebaseAuthUid.isEmpty()) return false;
+  if (firebaseAuthUid.isEmpty())
+    return false;
 
   // Equivalent behavior to Firebase.RTDB.setBool() for FirebaseClient.h.
   bool ok = fbDatabase.set<bool>(fbClient, path, value);
@@ -1564,10 +1631,12 @@ bool firebaseSetBoolAtPath(const String& path, bool value) {
   return ok;
 }
 
-bool firebaseSetStringAtPath(const String& path, const String& value) {
-  if (!firebaseRuntimeInitialized || !fbApp.ready()) return false;
+bool firebaseSetStringAtPath(const String &path, const String &value) {
+  if (!firebaseRuntimeInitialized || !fbApp.ready())
+    return false;
 
-  if (firebaseAuthUid.isEmpty()) return false;
+  if (firebaseAuthUid.isEmpty())
+    return false;
 
   bool ok = fbDatabase.set<String>(fbClient, path, value);
   if (!ok) {
@@ -1579,11 +1648,16 @@ bool firebaseSetStringAtPath(const String& path, const String& value) {
 }
 
 void processFirebaseWriteQueue() {
-  if (!firebaseWriteQueue) return;
+  if (!firebaseWriteQueue)
+    return;
 
   if (!fbOn || !firebaseRuntimeInitialized || !fbApp.ready() ||
       firebaseAuthUid.isEmpty())
     return;
+
+  if (ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_FIREBASE_WRITE) {
+    return; // skip TLS write under memory pressure; retry next cycle
+  }
 
   unsigned long now = millis();
 
@@ -1608,13 +1682,16 @@ void processFirebaseWriteQueue() {
     return;
   }
 
-  if (now - firebaseLastWriteMs < FIREBASE_WRITE_INTERVAL_MS) return;
+  if (now - firebaseLastWriteMs < FIREBASE_WRITE_INTERVAL_MS)
+    return;
 
   FirebaseWriteTask task;
-  if (xQueueReceive(firebaseWriteQueue, &task, 0) != pdTRUE) return;
+  if (xQueueReceive(firebaseWriteQueue, &task, 0) != pdTRUE)
+    return;
 
   String path = firebaseRelayPath(firebaseAuthUid, task.index);
-  if (path.isEmpty()) return;
+  if (path.isEmpty())
+    return;
 
   Serial.println("[FB] WRITE PATH: " + path);
   Serial.println("[FB] UID: " + firebaseAuthUid);
@@ -1641,8 +1718,9 @@ bool writeRelayStateToFirebase(int index, bool state) {
   return enqueueFirebaseWrite(index, state);
 }
 
-void setRelayState(int index, bool state, const String& source) {
-  if (index < 0 || index >= NUM_SWITCHES) return;
+void setRelayState(int index, bool state, const String &source) {
+  if (index < 0 || index >= NUM_SWITCHES)
+    return;
 
   String normalizedSource = source;
   normalizedSource.trim();
@@ -1657,7 +1735,8 @@ void setRelayState(int index, bool state, const String& source) {
     unlockSwState();
   }
 
-  if (!changed) return;
+  if (!changed)
+    return;
 
   digitalWrite(outPin[index], state ? HIGH : LOW);
 
@@ -1695,24 +1774,28 @@ void setRelayState(int index, bool state, const String& source) {
 
 void setSwitch(int i, bool st) { setRelayState(i, st, "local"); }
 
-int relayIndexFromFirebasePath(const String& dataPath) {
-  if (!dataPath.startsWith("/switch")) return -1;
+int relayIndexFromFirebasePath(const String &dataPath) {
+  if (!dataPath.startsWith("/switch"))
+    return -1;
 
   String idxText = dataPath.substring(7);
-  if (idxText.isEmpty()) return -1;
+  if (idxText.isEmpty())
+    return -1;
 
   for (size_t i = 0; i < idxText.length(); i++) {
     char c = idxText.charAt(i);
-    if (c < '0' || c > '9') return -1;
+    if (c < '0' || c > '9')
+      return -1;
   }
 
   int oneBased = idxText.toInt();
-  if (oneBased < 1 || oneBased > NUM_SWITCHES) return -1;
+  if (oneBased < 1 || oneBased > NUM_SWITCHES)
+    return -1;
 
   return oneBased - 1;
 }
 
-void applyFirebaseSnapshotPayload(const String& payload) {
+void applyFirebaseSnapshotPayload(const String &payload) {
   JsonDocument doc;
   if (deserializeJson(doc, payload)) {
     doc.clear();
@@ -1727,7 +1810,8 @@ void applyFirebaseSnapshotPayload(const String& payload) {
 
   for (int i = 0; i < NUM_SWITCHES; i++) {
     String key = "switch" + String(i + 1);
-    if (!obj.containsKey(key)) continue;
+    if (!obj.containsKey(key))
+      continue;
 
     bool state = false;
     if (tryParseBoolVariant(obj[key], state)) {
@@ -1738,7 +1822,7 @@ void applyFirebaseSnapshotPayload(const String& payload) {
   doc.clear();
 }
 
-void applyFirebasePathPayload(const String& dataPath, const String& payload) {
+void applyFirebasePathPayload(const String &dataPath, const String &payload) {
   if (dataPath.length() == 0) {
     return;
   }
@@ -1749,7 +1833,8 @@ void applyFirebasePathPayload(const String& dataPath, const String& payload) {
   }
 
   int index = relayIndexFromFirebasePath(dataPath);
-  if (index < 0) return;
+  if (index < 0)
+    return;
 
   bool state = false;
   if (tryParseBoolText(payload, state)) {
@@ -1797,11 +1882,13 @@ bool beginFirebaseRuntime() {
   databaseUrl.trim();
   apiKey.trim();
 
-  if (databaseUrl.isEmpty() || apiKey.isEmpty()) return false;
+  if (databaseUrl.isEmpty() || apiKey.isEmpty())
+    return false;
 
   String authEmail;
   String authPassword;
-  if (!getPrimaryFirebaseAuthCredential(authEmail, authPassword)) return false;
+  if (!getPrimaryFirebaseAuthCredential(authEmail, authPassword))
+    return false;
 
   if (fbUserAuth) {
     delete fbUserAuth;
@@ -1822,14 +1909,18 @@ bool beginFirebaseRuntime() {
 }
 
 void ensureFirebaseStreamConnected() {
-  if (!firebaseRuntimeInitialized || !fbApp.ready()) return;
+  if (!firebaseRuntimeInitialized || !fbApp.ready())
+    return;
 
-  if (firebaseAuthUid.isEmpty() || firebaseStreamPath.isEmpty()) return;
+  if (firebaseAuthUid.isEmpty() || firebaseStreamPath.isEmpty())
+    return;
 
-  if (firebaseStreamRunning) return;
+  if (firebaseStreamRunning)
+    return;
 
   unsigned long now = millis();
-  if (now - firebaseLastStreamAttemptMs < FIREBASE_STREAM_RETRY_MS) return;
+  if (now - firebaseLastStreamAttemptMs < FIREBASE_STREAM_RETRY_MS)
+    return;
 
   firebaseLastStreamAttemptMs = now;
   fbStreamClient.setSSEFilters("get,put,patch,keep-alive,cancel,auth_revoked");
@@ -1845,8 +1936,9 @@ void ensureFirebaseStreamConnected() {
   Serial.println("[FB] PATH: " + firebaseStreamPath);
 }
 
-void firebaseAsyncCallback(AsyncResult& aResult) {
-  if (!aResult.isResult()) return;
+void firebaseAsyncCallback(AsyncResult &aResult) {
+  if (!aResult.isResult())
+    return;
 
   String taskId = aResult.uid();
   if (aResult.isError()) {
@@ -1865,10 +1957,12 @@ void firebaseAsyncCallback(AsyncResult& aResult) {
     }
   }
 
-  if (!aResult.available()) return;
+  if (!aResult.available())
+    return;
 
-  RealtimeDatabaseResult& stream = aResult.to<RealtimeDatabaseResult>();
-  if (!stream.isStream()) return;
+  RealtimeDatabaseResult &stream = aResult.to<RealtimeDatabaseResult>();
+  if (!stream.isStream())
+    return;
 
   firebaseLastStreamEventMs = millis();
 
@@ -1950,11 +2044,13 @@ void handleFirebaseRuntime() {
 
   fbApp.loop();
 
-  if (!fbApp.ready()) return;
+  if (!fbApp.ready())
+    return;
 
   String uid = fbApp.getUid();
   uid.trim();
-  if (uid.isEmpty()) return;
+  if (uid.isEmpty())
+    return;
 
   if (uid != firebaseAuthUid) {
     firebaseAuthUid = uid;
@@ -2007,7 +2103,7 @@ void handleFirebaseRuntime() {
   ensureFirebaseStreamConnected();
 }
 
-void firebaseTask(void* param) {
+void firebaseTask(void *param) {
   (void)param;
   for (;;) {
     handleFirebaseRuntime();
@@ -2018,10 +2114,11 @@ void firebaseTask(void* param) {
 }
 
 void startFirebaseTask() {
-  if (firebaseTaskHandle) return;
+  if (firebaseTaskHandle)
+    return;
 
   BaseType_t created = xTaskCreatePinnedToCore(
-      firebaseTask, "FirebaseTask", 8192, nullptr, 1, &firebaseTaskHandle, 0);
+      firebaseTask, "FirebaseTask", 16384, nullptr, 1, &firebaseTaskHandle, 0);
 
   if (created == pdPASS) {
     Serial.println("[FB] Firebase task started on Core 0");
@@ -2031,21 +2128,24 @@ void startFirebaseTask() {
   }
 }
 
-bool readCurrentLocalTime(struct tm* ti) {
-  if (!ti) return false;
+bool readCurrentLocalTime(struct tm *ti) {
+  if (!ti)
+    return false;
 
   time_t nowEpoch = time(nullptr);
-  if (nowEpoch <= 0) return false;
+  if (nowEpoch <= 0)
+    return false;
 
   localtime_r(&nowEpoch, ti);
   int year = ti->tm_year + 1900;
-  if (year < 2020) return false;
+  if (year < 2020)
+    return false;
 
   return true;
 }
 
 //  TIME SYNC
-bool syncTime(struct tm* syncedTime = nullptr) {
+bool syncTime(struct tm *syncedTime = nullptr) {
   Serial.printf("[TIME] syncTime() called. WiFi=%s\n",
                 WiFi.status() == WL_CONNECTED ? "connected" : "disconnected");
 
@@ -2103,10 +2203,12 @@ bool syncTime(struct tm* syncedTime = nullptr) {
 
 //  SUNRISE & SUNSET
 void calcSunriseSunset() {
-  if (!locOk || !timeSynced) return;
+  if (!locOk || !timeSynced)
+    return;
 
   struct tm ti;
-  if (!readCurrentLocalTime(&ti)) return;
+  if (!readCurrentLocalTime(&ti))
+    return;
 
   int day = ti.tm_mday;
   if (day == lastCalcDay && srMin >= 0 && srMin <= 1439 && ssMin >= 0 &&
@@ -2120,15 +2222,20 @@ void calcSunriseSunset() {
   int sunriseMinute = loc.sunrise(ti.tm_year + 1900, ti.tm_mon + 1, day, false);
   int sunsetMinute = loc.sunset(ti.tm_year + 1900, ti.tm_mon + 1, day, false);
 
-  if (sunriseMinute < 0 || sunsetMinute < 0) return;
+  if (sunriseMinute < 0 || sunsetMinute < 0)
+    return;
 
   sunriseMinute += tzM;
   sunsetMinute += tzM;
 
-  while (sunriseMinute < 0) sunriseMinute += 1440;
-  while (sunriseMinute > 1439) sunriseMinute -= 1440;
-  while (sunsetMinute < 0) sunsetMinute += 1440;
-  while (sunsetMinute > 1439) sunsetMinute -= 1440;
+  while (sunriseMinute < 0)
+    sunriseMinute += 1440;
+  while (sunriseMinute > 1439)
+    sunriseMinute -= 1440;
+  while (sunsetMinute < 0)
+    sunsetMinute += 1440;
+  while (sunsetMinute > 1439)
+    sunsetMinute -= 1440;
 
   srMin = sunriseMinute;
   ssMin = sunsetMinute;
@@ -2152,18 +2259,21 @@ void checkTimers() {
   }
 }
 
-int parseClockMinutes(const String& timeText) {
-  if (timeText.length() < 5 || timeText.charAt(2) != ':') return -1;
+int parseClockMinutes(const String &timeText) {
+  if (timeText.length() < 5 || timeText.charAt(2) != ':')
+    return -1;
 
   int hours = timeText.substring(0, 2).toInt();
   int mins = timeText.substring(3, 5).toInt();
-  if (hours < 0 || hours > 23 || mins < 0 || mins > 59) return -1;
+  if (hours < 0 || hours > 23 || mins < 0 || mins > 59)
+    return -1;
 
   return hours * 60 + mins;
 }
 
 String formatClockFromMinutes(int totalMinutes) {
-  if (totalMinutes < 0 || totalMinutes > 1439) return "";
+  if (totalMinutes < 0 || totalMinutes > 1439)
+    return "";
 
   char buf[6];
   sprintf(buf, "%02d:%02d", totalMinutes / 60, totalMinutes % 60);
@@ -2177,35 +2287,40 @@ int weekdayIndexFromText(String dayText) {
     dayText = dayText.substring(0, 3);
   }
 
-  const char* days[] = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
+  const char *days[] = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
   for (int i = 0; i < 7; i++) {
-    if (dayText == days[i]) return i;
+    if (dayText == days[i])
+      return i;
   }
 
   return -1;
 }
 
-String getScheduleActionValue(JsonObject obj, const char* defaultValue = "on") {
+String getScheduleActionValue(JsonObject obj, const char *defaultValue = "on") {
   String action = obj["action"].as<String>();
-  if (action != "on" && action != "off") action = defaultValue;
+  if (action != "on" && action != "off")
+    action = defaultValue;
   return action;
 }
 
 String getRecurringStartTime(JsonObject obj) {
   String timeText = obj["fromTime"].as<String>();
-  if (timeText.isEmpty()) timeText = obj["onTime"].as<String>();
+  if (timeText.isEmpty())
+    timeText = obj["onTime"].as<String>();
   return timeText;
 }
 
 String getRecurringEndTime(JsonObject obj) {
   String timeText = obj["toTime"].as<String>();
-  if (timeText.isEmpty()) timeText = obj["offTime"].as<String>();
+  if (timeText.isEmpty())
+    timeText = obj["offTime"].as<String>();
   return timeText;
 }
 
 String getFutureStartTime(JsonObject obj) {
   String timeText = obj["fromTime"].as<String>();
-  if (timeText.isEmpty()) timeText = obj["time"].as<String>();
+  if (timeText.isEmpty())
+    timeText = obj["time"].as<String>();
   return timeText;
 }
 
@@ -2219,13 +2334,14 @@ bool scheduleDaysOverlap(JsonArray daysA, JsonArray daysB) {
   for (JsonVariant dayA : daysA) {
     String dayText = dayA.as<String>();
     for (JsonVariant dayB : daysB) {
-      if (dayText == dayB.as<String>()) return true;
+      if (dayText == dayB.as<String>())
+        return true;
     }
   }
   return false;
 }
 
-bool validateRecurringSchedulesData(const String& data, String& error) {
+bool validateRecurringSchedulesData(const String &data, String &error) {
   JsonDocument doc;
   if (deserializeJson(doc, data)) {
     error = "Invalid schedule data";
@@ -2240,7 +2356,8 @@ bool validateRecurringSchedulesData(const String& data, String& error) {
 
   for (int i = 0; i < arr.size(); i++) {
     JsonObject entry = arr[i].as<JsonObject>();
-    if (!entry["enabled"].as<bool>()) continue;
+    if (!entry["enabled"].as<bool>())
+      continue;
 
     String fromTime = getRecurringStartTime(entry);
     String toTime = getRecurringEndTime(entry);
@@ -2264,7 +2381,8 @@ bool validateRecurringSchedulesData(const String& data, String& error) {
 
   for (int i = 0; i < arr.size(); i++) {
     JsonObject entryA = arr[i].as<JsonObject>();
-    if (!entryA["enabled"].as<bool>()) continue;
+    if (!entryA["enabled"].as<bool>())
+      continue;
 
     int startA = parseClockMinutes(getRecurringStartTime(entryA));
     int endA = parseClockMinutes(getRecurringEndTime(entryA));
@@ -2272,7 +2390,8 @@ bool validateRecurringSchedulesData(const String& data, String& error) {
 
     for (int j = i + 1; j < arr.size(); j++) {
       JsonObject entryB = arr[j].as<JsonObject>();
-      if (!entryB["enabled"].as<bool>()) continue;
+      if (!entryB["enabled"].as<bool>())
+        continue;
 
       int startB = parseClockMinutes(getRecurringStartTime(entryB));
       int endB = parseClockMinutes(getRecurringEndTime(entryB));
@@ -2293,7 +2412,7 @@ bool validateRecurringSchedulesData(const String& data, String& error) {
   return true;
 }
 
-bool validateFutureSchedulesData(const String& data, String& error) {
+bool validateFutureSchedulesData(const String &data, String &error) {
   JsonDocument doc;
   if (deserializeJson(doc, data)) {
     error = "Invalid future schedule data";
@@ -2308,7 +2427,8 @@ bool validateFutureSchedulesData(const String& data, String& error) {
 
   for (int i = 0; i < arr.size(); i++) {
     JsonObject entry = arr[i].as<JsonObject>();
-    if (!entry["enabled"].as<bool>()) continue;
+    if (!entry["enabled"].as<bool>())
+      continue;
 
     String date = entry["date"].as<String>();
     String fromTime = getFutureStartTime(entry);
@@ -2342,7 +2462,8 @@ bool validateFutureSchedulesData(const String& data, String& error) {
 
   for (int i = 0; i < arr.size(); i++) {
     JsonObject entryA = arr[i].as<JsonObject>();
-    if (!entryA["enabled"].as<bool>()) continue;
+    if (!entryA["enabled"].as<bool>())
+      continue;
 
     String dateA = entryA["date"].as<String>();
     int startA = parseClockMinutes(getFutureStartTime(entryA));
@@ -2351,9 +2472,11 @@ bool validateFutureSchedulesData(const String& data, String& error) {
 
     for (int j = i + 1; j < arr.size(); j++) {
       JsonObject entryB = arr[j].as<JsonObject>();
-      if (!entryB["enabled"].as<bool>()) continue;
+      if (!entryB["enabled"].as<bool>())
+        continue;
 
-      if (dateA != entryB["date"].as<String>()) continue;
+      if (dateA != entryB["date"].as<String>())
+        continue;
 
       int startB = parseClockMinutes(getFutureStartTime(entryB));
       String endTimeB = getFutureEndTime(entryB);
@@ -2375,15 +2498,18 @@ bool validateFutureSchedulesData(const String& data, String& error) {
 
 //  SCHEDULE CHECK (loop)
 void checkSchedules() {
-  if (!timeSynced) return;
+  if (!timeSynced)
+    return;
   struct tm ti;
-  if (!getLocalTime(&ti)) return;
+  if (!getLocalTime(&ti))
+    return;
 
   int curMin = ti.tm_hour * 60 + ti.tm_min;
-  if (curMin == lastCheckedMinute) return;
+  if (curMin == lastCheckedMinute)
+    return;
   lastCheckedMinute = curMin;
 
-  const char* dn[] = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
+  const char *dn[] = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
   String today = dn[ti.tm_wday];
 
   for (int sw = 0; sw < NUM_SWITCHES; sw++) {
@@ -2400,7 +2526,8 @@ void checkSchedules() {
       }
 
       for (JsonObject o : sd.as<JsonArray>()) {
-        if (!o["enabled"].as<bool>()) continue;
+        if (!o["enabled"].as<bool>())
+          continue;
         bool dayOk = false;
         for (JsonVariant dv : o["days"].as<JsonArray>()) {
           if (dv.as<String>() == today) {
@@ -2408,7 +2535,8 @@ void checkSchedules() {
             break;
           }
         }
-        if (!dayOk) continue;
+        if (!dayOk)
+          continue;
 
         String action = getScheduleActionValue(o, "on");
         String fromT = getRecurringStartTime(o);
@@ -2446,9 +2574,11 @@ void checkSchedules() {
       bool mod = false;
       for (int x = fa.size() - 1; x >= 0; x--) {
         JsonObject fo = fa[x];
-        if (!fo["enabled"].as<bool>()) continue;
+        if (!fo["enabled"].as<bool>())
+          continue;
 
-        if (fo["date"].as<String>() != String(ds)) continue;
+        if (fo["date"].as<String>() != String(ds))
+          continue;
 
         String action = getScheduleActionValue(fo, "on");
         String fromT = getFutureStartTime(fo);
@@ -2493,25 +2623,32 @@ void checkRestartSchedule() {
   if (!restartScheduleEnabled || restartScheduleMinute < 0 ||
       restartScheduleMinute > 1439 || restartScheduleDayMask == 0)
     return;
-  if (!timeSynced) return;
+  if (!timeSynced)
+    return;
 
   struct tm ti;
-  if (!getLocalTime(&ti)) return;
-  if (ti.tm_wday < 0 || ti.tm_wday > 6) return;
-  if ((restartScheduleDayMask & (1 << ti.tm_wday)) == 0) return;
+  if (!getLocalTime(&ti))
+    return;
+  if (ti.tm_wday < 0 || ti.tm_wday > 6)
+    return;
+  if ((restartScheduleDayMask & (1 << ti.tm_wday)) == 0)
+    return;
 
   int curMin = ti.tm_hour * 60 + ti.tm_min;
-  if (curMin != restartScheduleMinute) return;
+  if (curMin != restartScheduleMinute)
+    return;
 
   char slotBuf[20];
   sprintf(slotBuf, "%04d-%02d-%02d-%02d:%02d", ti.tm_year + 1900, ti.tm_mon + 1,
           ti.tm_mday, ti.tm_hour, ti.tm_min);
   String currentSlotKey = String(slotBuf);
-  if (restartScheduleLastRunKey == currentSlotKey) return;
+  if (restartScheduleLastRunKey == currentSlotKey)
+    return;
 
   long stamp =
       (long)(ti.tm_year + 1900) * 1000000L + (long)ti.tm_yday * 1440L + curMin;
-  if (stamp == lastRestartScheduleStamp) return;
+  if (stamp == lastRestartScheduleStamp)
+    return;
 
   lastRestartScheduleStamp = stamp;
   restartScheduleLastRunKey = currentSlotKey;
@@ -2726,7 +2863,8 @@ bool connectToSavedWiFi() {
 void checkPhysicalSwitches() {
   for (int i = 0; i < NUM_SWITCHES; i++) {
     bool reading = digitalRead(inPin[i]);
-    if (reading != lastInState[i]) lastDbMs[i] = millis();
+    if (reading != lastInState[i])
+      lastDbMs[i] = millis();
     if ((millis() - lastDbMs[i]) > DB_DELAY && reading != lastInState[i]) {
       lastInState[i] = reading;
       if (reading == LOW) {
@@ -2741,14 +2879,19 @@ void checkPhysicalSwitches() {
   }
 }
 
-void sendWebFile(AsyncWebServerRequest* request, const char* path,
-                 const char* contentType) {
+void sendWebFile(AsyncWebServerRequest *request, const char *path,
+                 const char *contentType) {
+  // Reject page requests when heap is too low to safely allocate response objects
+  if (ESP.getFreeHeap() < 28000) {
+    request->send(503, "text/plain", "Low memory");
+    return;
+  }
   String gzPath = String(path) + ".gz";
   bool noStore = String(contentType) == "text/html";
 
   if (SPIFFS.exists(gzPath)) {
     Serial.printf("[HTTP] %s -> %s\n", request->url().c_str(), gzPath.c_str());
-    AsyncWebServerResponse* response =
+    AsyncWebServerResponse *response =
         request->beginResponse(SPIFFS, gzPath, contentType);
     response->addHeader("Content-Encoding", "gzip");
     if (noStore) {
@@ -2760,7 +2903,7 @@ void sendWebFile(AsyncWebServerRequest* request, const char* path,
 
   if (SPIFFS.exists(path)) {
     Serial.printf("[HTTP] %s -> %s\n", request->url().c_str(), path);
-    AsyncWebServerResponse* response =
+    AsyncWebServerResponse *response =
         request->beginResponse(SPIFFS, path, contentType);
     if (noStore) {
       response->addHeader("Cache-Control", "no-store");
@@ -2783,31 +2926,31 @@ void setupWebServer() {
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers",
                                        "Content-Type");
 
-  server.on("/ping", HTTP_GET, [](AsyncWebServerRequest* req) {
+  server.on("/ping", HTTP_GET, [](AsyncWebServerRequest *req) {
     req->send(200, "text/plain", "pong");
   });
 
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest* req) {
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *req) {
     sendWebFile(req, "/index.html", "text/html");
   });
 
-  server.on("/index.html", HTTP_GET, [](AsyncWebServerRequest* req) {
+  server.on("/index.html", HTTP_GET, [](AsyncWebServerRequest *req) {
     sendWebFile(req, "/index.html", "text/html");
   });
 
-  server.on("/config.html", HTTP_GET, [](AsyncWebServerRequest* req) {
+  server.on("/config.html", HTTP_GET, [](AsyncWebServerRequest *req) {
     sendWebFile(req, "/config.html", "text/html");
   });
 
-  server.on("/index.svg", HTTP_GET, [](AsyncWebServerRequest* req) {
+  server.on("/index.svg", HTTP_GET, [](AsyncWebServerRequest *req) {
     sendWebFile(req, "/index.svg", "image/svg+xml");
   });
 
-  server.on("/settings.svg", HTTP_GET, [](AsyncWebServerRequest* req) {
+  server.on("/settings.svg", HTTP_GET, [](AsyncWebServerRequest *req) {
     sendWebFile(req, "/settings.svg", "image/svg+xml");
   });
   // ---- STATUS ----
-  server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest* req) {
+  server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *req) {
     JsonDocument d;
     d["timeSynced"] = timeSynced;
     d["ahtOk"] = ahtOk;
@@ -2820,7 +2963,7 @@ void setupWebServer() {
     req->send(200, "application/json", r);
   });
   // ---- LOGIN ----
-  server.on("/api/login", HTTP_POST, [](AsyncWebServerRequest* req) {
+  server.on("/api/login", HTTP_POST, [](AsyncWebServerRequest *req) {
     bool resetAdminRequested = false;
     if (req->hasParam("resetAdmin", true)) {
       String resetValue = req->getParam("resetAdmin", true)->value();
@@ -2862,7 +3005,7 @@ void setupWebServer() {
       req->send(401, "application/json", "{\"error\":\"Invalid credentials\"}");
   });
   // ---- SWITCHES ----
-  server.on("/api/switches", HTTP_GET, [](AsyncWebServerRequest* req) {
+  server.on("/api/switches", HTTP_GET, [](AsyncWebServerRequest *req) {
     JsonDocument d;
     JsonArray na = d["names"].to<JsonArray>();
     JsonArray ic = d["icons"].to<JsonArray>();
@@ -2879,7 +3022,7 @@ void setupWebServer() {
     req->send(200, "application/json", r);
   });
 
-  server.on("/api/switch/toggle", HTTP_POST, [](AsyncWebServerRequest* req) {
+  server.on("/api/switch/toggle", HTTP_POST, [](AsyncWebServerRequest *req) {
     if (!req->hasParam("index", true) || !req->hasParam("state", true)) {
       req->send(400, "application/json", "{\"error\":\"Missing params\"}");
       return;
@@ -2890,7 +3033,7 @@ void setupWebServer() {
     req->send(200, "application/json", "{\"ok\":true}");
   });
 
-  server.on("/api/switches/names", HTTP_POST, [](AsyncWebServerRequest* req) {
+  server.on("/api/switches/names", HTTP_POST, [](AsyncWebServerRequest *req) {
     prefs.begin("sw", false);
     for (int i = 0; i < NUM_SWITCHES; i++) {
       String k = "name" + String(i);
@@ -2904,7 +3047,7 @@ void setupWebServer() {
     req->send(200, "application/json", "{\"ok\":true}");
   });
 
-  server.on("/api/switches/icons", HTTP_POST, [](AsyncWebServerRequest* req) {
+  server.on("/api/switches/icons", HTTP_POST, [](AsyncWebServerRequest *req) {
     prefs.begin("sw", false);
     for (int i = 0; i < NUM_SWITCHES; i++) {
       String k = "icon" + String(i);
@@ -2918,7 +3061,7 @@ void setupWebServer() {
     req->send(200, "application/json", "{\"ok\":true}");
   });
 
-  server.on("/api/switches/relay", HTTP_POST, [](AsyncWebServerRequest* req) {
+  server.on("/api/switches/relay", HTTP_POST, [](AsyncWebServerRequest *req) {
     prefs.begin("sw", false);
     for (int i = 0; i < NUM_SWITCHES; i++) {
       String k = "relay" + String(i);
@@ -2933,7 +3076,7 @@ void setupWebServer() {
   });
 
   // Keep Firebase auth user APIs available even in low-memory mode.
-  server.on("/api/fb/auth/users", HTTP_GET, [](AsyncWebServerRequest* req) {
+  server.on("/api/fb/auth/users", HTTP_GET, [](AsyncWebServerRequest *req) {
     JsonDocument stored;
     loadFirebaseAuthUsersDoc(stored);
 
@@ -2950,7 +3093,7 @@ void setupWebServer() {
   });
 
   server.on(
-      "/api/fb/auth/users/password", HTTP_POST, [](AsyncWebServerRequest* req) {
+      "/api/fb/auth/users/password", HTTP_POST, [](AsyncWebServerRequest *req) {
         if (!req->hasParam("email", true)) {
           req->send(400, "application/json", "{\"error\":\"Missing email\"}");
           return;
@@ -2988,7 +3131,7 @@ void setupWebServer() {
       });
 
   server.on(
-      "/api/fb/auth/users/add", HTTP_POST, [](AsyncWebServerRequest* req) {
+      "/api/fb/auth/users/add", HTTP_POST, [](AsyncWebServerRequest *req) {
         if (!req->hasParam("email", true) || !req->hasParam("password", true)) {
           req->send(400, "application/json", "{\"error\":\"Missing params\"}");
           return;
@@ -3029,7 +3172,7 @@ void setupWebServer() {
       });
 
   server.on(
-      "/api/fb/auth/users/remove", HTTP_POST, [](AsyncWebServerRequest* req) {
+      "/api/fb/auth/users/remove", HTTP_POST, [](AsyncWebServerRequest *req) {
         if (!req->hasParam("email", true)) {
           req->send(400, "application/json", "{\"error\":\"Missing email\"}");
           return;
@@ -3073,7 +3216,7 @@ void setupWebServer() {
   } else {
     coreRoutesOnly = false;
     // ---- TIMERS (volatile) ----
-    server.on("/api/timer/set", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/timer/set", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("sw", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing sw\"}");
         return;
@@ -3104,7 +3247,7 @@ void setupWebServer() {
       req->send(200, "application/json", "{\"ok\":true}");
     });
 
-    server.on("/api/timers", HTTP_GET, [](AsyncWebServerRequest* req) {
+    server.on("/api/timers", HTTP_GET, [](AsyncWebServerRequest *req) {
       int filterSw = -1;
       if (req->hasParam("sw")) {
         filterSw = req->getParam("sw")->value().toInt();
@@ -3157,7 +3300,7 @@ void setupWebServer() {
       req->send(200, "application/json", r);
     });
 
-    server.on("/api/timer/pause", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/timer/pause", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("sw", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing sw\"}");
         return;
@@ -3202,7 +3345,7 @@ void setupWebServer() {
       req->send(200, "application/json", r);
     });
 
-    server.on("/api/timer/resume", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/timer/resume", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("sw", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing sw\"}");
         return;
@@ -3243,7 +3386,7 @@ void setupWebServer() {
       req->send(200, "application/json", r);
     });
 
-    server.on("/api/timer/clear", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/timer/clear", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (req->hasParam("sw", true)) {
         int sw = req->getParam("sw", true)->value().toInt();
         if (sw >= 0 && sw < NUM_SWITCHES) {
@@ -3256,7 +3399,7 @@ void setupWebServer() {
       req->send(200, "application/json", "{\"ok\":true}");
     });
     // ---- SCHEDULES (persistent) ----
-    server.on("/api/schedules", HTTP_GET, [](AsyncWebServerRequest* req) {
+    server.on("/api/schedules", HTTP_GET, [](AsyncWebServerRequest *req) {
       int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
       prefs.begin("sched", true);
       String j = prefs.getString(("s" + String(sw)).c_str(), "[]");
@@ -3264,7 +3407,7 @@ void setupWebServer() {
       req->send(200, "application/json", j);
     });
 
-    server.on("/api/schedules", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/schedules", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("sw", true) || !req->hasParam("data", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing params\"}");
         return;
@@ -3292,7 +3435,7 @@ void setupWebServer() {
       req->send(200, "application/json", "{\"ok\":true}");
     });
     // ---- FUTURE SCHEDULES (persistent) ----
-    server.on("/api/fschedules", HTTP_GET, [](AsyncWebServerRequest* req) {
+    server.on("/api/fschedules", HTTP_GET, [](AsyncWebServerRequest *req) {
       int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
       prefs.begin("fsched", true);
       String j = prefs.getString(("f" + String(sw)).c_str(), "[]");
@@ -3300,7 +3443,7 @@ void setupWebServer() {
       req->send(200, "application/json", j);
     });
 
-    server.on("/api/fschedules", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/fschedules", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("sw", true) || !req->hasParam("data", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing params\"}");
         return;
@@ -3328,7 +3471,7 @@ void setupWebServer() {
       req->send(200, "application/json", "{\"ok\":true}");
     });
     // ---- SENSOR CONTROL (persistent) ----
-    server.on("/api/sensor/temp", HTTP_GET, [](AsyncWebServerRequest* req) {
+    server.on("/api/sensor/temp", HTTP_GET, [](AsyncWebServerRequest *req) {
       int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
       prefs.begin("sensor", true);
       String j = prefs.getString(("t" + String(sw)).c_str(), "{}");
@@ -3336,7 +3479,7 @@ void setupWebServer() {
       req->send(200, "application/json", j);
     });
 
-    server.on("/api/sensor/temp", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/sensor/temp", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("data", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing data\"}");
         return;
@@ -3360,7 +3503,7 @@ void setupWebServer() {
       req->send(200, "application/json", "{\"ok\":true}");
     });
 
-    server.on("/api/sensor/humid", HTTP_GET, [](AsyncWebServerRequest* req) {
+    server.on("/api/sensor/humid", HTTP_GET, [](AsyncWebServerRequest *req) {
       int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
       prefs.begin("sensor", true);
       String j = prefs.getString(("h" + String(sw)).c_str(), "{}");
@@ -3368,7 +3511,7 @@ void setupWebServer() {
       req->send(200, "application/json", j);
     });
 
-    server.on("/api/sensor/humid", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/sensor/humid", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("data", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing data\"}");
         return;
@@ -3392,7 +3535,7 @@ void setupWebServer() {
       req->send(200, "application/json", "{\"ok\":true}");
     });
 
-    server.on("/api/sensor/sun", HTTP_GET, [](AsyncWebServerRequest* req) {
+    server.on("/api/sensor/sun", HTTP_GET, [](AsyncWebServerRequest *req) {
       int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
       prefs.begin("sensor", true);
       String j = prefs.getString(("x" + String(sw)).c_str(), "{}");
@@ -3400,7 +3543,7 @@ void setupWebServer() {
       req->send(200, "application/json", j);
     });
 
-    server.on("/api/sensor/sun", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/sensor/sun", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("data", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing data\"}");
         return;
@@ -3428,7 +3571,7 @@ void setupWebServer() {
       req->send(200, "application/json", "{\"ok\":true}");
     });
 
-    server.on("/api/sensor/clear", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/sensor/clear", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("sw", true) || !req->hasParam("type", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing params\"}");
         return;
@@ -3465,7 +3608,7 @@ void setupWebServer() {
       req->send(200, "application/json", "{\"ok\":true}");
     });
     // ---- WIFI ----
-    server.on("/api/wifi/status", HTTP_GET, [](AsyncWebServerRequest* req) {
+    server.on("/api/wifi/status", HTTP_GET, [](AsyncWebServerRequest *req) {
       JsonDocument d;
       bool connected = (WiFi.status() == WL_CONNECTED);
       String savedSsid;
@@ -3490,7 +3633,7 @@ void setupWebServer() {
       req->send(200, "application/json", r);
     });
 
-    server.on("/api/wifi/connect", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/wifi/connect", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("ssid", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing SSID\"}");
         return;
@@ -3528,12 +3671,12 @@ void setupWebServer() {
     });
 
     server.on("/api/wifi/disconnect", HTTP_POST,
-              [](AsyncWebServerRequest* req) {
+              [](AsyncWebServerRequest *req) {
                 WiFi.disconnect();
                 req->send(200, "application/json", "{\"ok\":true}");
               });
 
-    server.on("/api/wifi/scan", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/wifi/scan", HTTP_POST, [](AsyncWebServerRequest *req) {
       req->send(200, "application/json",
                 "{\"ok\":true,\"msg\":\"WiFi portal starting. Connect to ESP "
                 "HOME at 192.168.4.1. The current web session will disconnect "
@@ -3541,7 +3684,7 @@ void setupWebServer() {
       portalFlag = true;
     });
 
-    server.on("/api/wifi/saved", HTTP_GET, [](AsyncWebServerRequest* req) {
+    server.on("/api/wifi/saved", HTTP_GET, [](AsyncWebServerRequest *req) {
       JsonDocument d;
       String savedSsid;
       String savedPass;
@@ -3556,7 +3699,7 @@ void setupWebServer() {
       req->send(200, "application/json", r);
     });
 
-    server.on("/api/wifi/forget", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/wifi/forget", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("adminUser", true) ||
           !req->hasParam("adminPass", true)) {
         req->send(400, "application/json",
@@ -3581,7 +3724,7 @@ void setupWebServer() {
       forgetWifiAt = millis() + 1000;
     });
 
-    server.on("/api/wifi/ip", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/wifi/ip", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("dhcp", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing\"}");
         return;
@@ -3637,7 +3780,7 @@ void setupWebServer() {
       restartAt = millis() + 1200;
     });
     // ---- FIREBASE ----
-    server.on("/api/fb", HTTP_GET, [](AsyncWebServerRequest* req) {
+    server.on("/api/fb", HTTP_GET, [](AsyncWebServerRequest *req) {
       JsonDocument d;
       d["enabled"] = fbOn;
       d["url"] = fbUrl;
@@ -3656,7 +3799,7 @@ void setupWebServer() {
       req->send(200, "application/json", r);
     });
 
-    server.on("/api/fb/toggle", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/fb/toggle", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("enabled", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing\"}");
         return;
@@ -3674,7 +3817,7 @@ void setupWebServer() {
       req->send(200, "application/json", "{\"ok\":true}");
     });
 
-    server.on("/api/fb/url", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/fb/url", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("url", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing\"}");
         return;
@@ -3692,7 +3835,7 @@ void setupWebServer() {
     });
 
     server.on("/api/fb/reveal-token", HTTP_POST,
-              [](AsyncWebServerRequest* req) {
+              [](AsyncWebServerRequest *req) {
                 if (!requireAdminVerification(req)) {
                   return;
                 }
@@ -3708,7 +3851,7 @@ void setupWebServer() {
 
     // Backward-compatible alias for existing UI builds.
     server.on("/api/fb/token/reveal", HTTP_POST,
-              [](AsyncWebServerRequest* req) {
+              [](AsyncWebServerRequest *req) {
                 if (!requireAdminVerification(req)) {
                   return;
                 }
@@ -3722,7 +3865,7 @@ void setupWebServer() {
                 req->send(200, "application/json", r);
               });
 
-    server.on("/api/fb/token", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/fb/token", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("token", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing\"}");
         return;
@@ -3739,7 +3882,7 @@ void setupWebServer() {
       req->send(200, "application/json", "{\"ok\":true}");
     });
 
-    server.on("/api/fb/test", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/fb/test", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (fbUrl.isEmpty() || fbToken.isEmpty()) {
         req->send(400, "application/json",
                   "{\"error\":\"URL or Token not configured\"}");
@@ -3765,7 +3908,7 @@ void setupWebServer() {
             "{\"error\":\"Connection failed: HTTP " + String(code) + "\"}");
     });
 
-    server.on("/api/fb/rules", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/fb/rules", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("rules", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing rules\"}");
         return;
@@ -3782,14 +3925,15 @@ void setupWebServer() {
                 "{\"ok\":true,\"msg\":\"Rules saved!\"}");
     });
     // ---- USERS ----
-    server.on("/api/users", HTTP_GET, [](AsyncWebServerRequest* req) {
+    server.on("/api/users", HTTP_GET, [](AsyncWebServerRequest *req) {
       prefs.begin("users", true);
       int n = prefs.getInt("cnt", 0);
       JsonDocument d;
       JsonArray a = d.to<JsonArray>();
       for (int i = 0; i < n; i++) {
         String js = prefs.getString(("u" + String(i)).c_str(), "");
-        if (js.isEmpty()) continue;
+        if (js.isEmpty())
+          continue;
         JsonDocument ud;
         deserializeJson(ud, js);
         JsonObject o = a.createNestedObject();
@@ -3802,7 +3946,7 @@ void setupWebServer() {
       req->send(200, "application/json", r);
     });
 
-    server.on("/api/users/add", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/users/add", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("id", true) || !req->hasParam("pass", true) ||
           !req->hasParam("adminUser", true) ||
           !req->hasParam("adminPass", true)) {
@@ -3845,9 +3989,11 @@ void setupWebServer() {
 
       for (int i = 0; i < cnt; i++) {
         String js = prefs.getString(("u" + String(i)).c_str(), "");
-        if (js.isEmpty()) continue;
+        if (js.isEmpty())
+          continue;
         JsonDocument existing;
-        if (deserializeJson(existing, js)) continue;
+        if (deserializeJson(existing, js))
+          continue;
         String existingId = normalizeUserId(existing["id"].as<String>());
         if (existingId == newId) {
           prefs.end();
@@ -3864,7 +4010,7 @@ void setupWebServer() {
       req->send(200, "application/json", "{\"ok\":true}");
     });
 
-    server.on("/api/users/remove", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/users/remove", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("id", true) || !req->hasParam("adminUser", true) ||
           !req->hasParam("adminPass", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing params\"}");
@@ -3902,9 +4048,11 @@ void setupWebServer() {
       int matchedAdmins = 0;
       for (int i = 0; i < cnt; i++) {
         String js = prefs.getString(("u" + String(i)).c_str(), "");
-        if (js.isEmpty()) continue;
+        if (js.isEmpty())
+          continue;
         JsonDocument d;
-        if (deserializeJson(d, js)) continue;
+        if (deserializeJson(d, js))
+          continue;
 
         String existingId = normalizeUserId(d["id"].as<String>());
         if (existingId == uid) {
@@ -3931,7 +4079,8 @@ void setupWebServer() {
       int writeIdx = 0;
       for (int i = 0; i < cnt; i++) {
         String js = prefs.getString(("u" + String(i)).c_str(), "");
-        if (js.isEmpty()) continue;
+        if (js.isEmpty())
+          continue;
 
         bool shouldRemove = false;
         JsonDocument d;
@@ -3940,7 +4089,8 @@ void setupWebServer() {
           shouldRemove = (existingId == uid);
         }
 
-        if (shouldRemove) continue;
+        if (shouldRemove)
+          continue;
 
         if (writeIdx != i) {
           prefs.putString(("u" + String(writeIdx)).c_str(), js);
@@ -3959,7 +4109,7 @@ void setupWebServer() {
     });
 
     server.on(
-        "/api/users/admin/edit", HTTP_POST, [](AsyncWebServerRequest* req) {
+        "/api/users/admin/edit", HTTP_POST, [](AsyncWebServerRequest *req) {
           if (!req->hasParam("id", true) || !req->hasParam("pass", true) ||
               !req->hasParam("adminUser", true) ||
               !req->hasParam("adminPass", true)) {
@@ -4008,10 +4158,12 @@ void setupWebServer() {
 
           for (int i = 0; i < cnt; i++) {
             String js = prefs.getString(("u" + String(i)).c_str(), "");
-            if (js.isEmpty()) continue;
+            if (js.isEmpty())
+              continue;
 
             JsonDocument d;
-            if (deserializeJson(d, js)) continue;
+            if (deserializeJson(d, js))
+              continue;
 
             String id = normalizeUserId(d["id"].as<String>());
             String pass = normalizeUserPass(d["pass"].as<String>());
@@ -4031,13 +4183,16 @@ void setupWebServer() {
           }
 
           for (int i = 0; i < cnt; i++) {
-            if (i == targetAdminIndex) continue;
+            if (i == targetAdminIndex)
+              continue;
 
             String js = prefs.getString(("u" + String(i)).c_str(), "");
-            if (js.isEmpty()) continue;
+            if (js.isEmpty())
+              continue;
 
             JsonDocument d;
-            if (deserializeJson(d, js)) continue;
+            if (deserializeJson(d, js))
+              continue;
 
             if (normalizeUserId(d["id"].as<String>()) == newAdminId) {
               prefs.end();
@@ -4049,10 +4204,12 @@ void setupWebServer() {
 
           for (int i = 0; i < cnt; i++) {
             String js = prefs.getString(("u" + String(i)).c_str(), "");
-            if (js.isEmpty()) continue;
+            if (js.isEmpty())
+              continue;
 
             JsonDocument d;
-            if (deserializeJson(d, js)) continue;
+            if (deserializeJson(d, js))
+              continue;
 
             bool changed = false;
             String role = normalizeUserRole(d["role"].as<String>());
@@ -4082,7 +4239,7 @@ void setupWebServer() {
         });
     // ---- ADMINISTRATOR ----
     server.on("/api/admin/device-name", HTTP_GET,
-              [](AsyncWebServerRequest* req) {
+              [](AsyncWebServerRequest *req) {
                 JsonDocument d;
                 d["name"] = deviceName;
                 d["defaultName"] = getDefaultDeviceName();
@@ -4092,7 +4249,7 @@ void setupWebServer() {
               });
 
     server.on(
-        "/api/admin/device-name", HTTP_POST, [](AsyncWebServerRequest* req) {
+        "/api/admin/device-name", HTTP_POST, [](AsyncWebServerRequest *req) {
           if (!req->hasParam("name", true)) {
             req->send(400, "application/json",
                       "{\"error\":\"Missing device name\"}");
@@ -4135,7 +4292,7 @@ void setupWebServer() {
         });
 
     server.on("/api/admin/schedule-priority", HTTP_GET,
-              [](AsyncWebServerRequest* req) {
+              [](AsyncWebServerRequest *req) {
                 JsonDocument d;
                 JsonArray arr = d["order"].to<JsonArray>();
                 JsonArray labels = d["labels"].to<JsonArray>();
@@ -4150,7 +4307,7 @@ void setupWebServer() {
               });
 
     server.on("/api/admin/schedule-priority", HTTP_POST,
-              [](AsyncWebServerRequest* req) {
+              [](AsyncWebServerRequest *req) {
                 if (!req->hasParam("data", true)) {
                   req->send(400, "application/json",
                             "{\"error\":\"Missing data\"}");
@@ -4206,7 +4363,7 @@ void setupWebServer() {
                 req->send(200, "application/json", "{\"ok\":true}");
               });
 
-    server.on("/api/admin/time", HTTP_GET, [](AsyncWebServerRequest* req) {
+    server.on("/api/admin/time", HTTP_GET, [](AsyncWebServerRequest *req) {
       JsonDocument d;
       d["ntp"] = ntpSrv;
       d["tz"] = tzStr;
@@ -4216,7 +4373,7 @@ void setupWebServer() {
       req->send(200, "application/json", r);
     });
 
-    server.on("/api/admin/time", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/admin/time", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (req->hasParam("ntp", true))
         ntpSrv = req->getParam("ntp", true)->value();
       if (req->hasParam("tz", true)) {
@@ -4231,7 +4388,7 @@ void setupWebServer() {
       req->send(200, "application/json", "{\"ok\":true}");
     });
 
-    server.on("/api/admin/location", HTTP_GET, [](AsyncWebServerRequest* req) {
+    server.on("/api/admin/location", HTTP_GET, [](AsyncWebServerRequest *req) {
       JsonDocument d;
       d["lat"] = geoLat;
       d["lon"] = geoLon;
@@ -4260,7 +4417,7 @@ void setupWebServer() {
       req->send(200, "application/json", r);
     });
 
-    server.on("/api/admin/location", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/admin/location", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("lat", true) || !req->hasParam("lon", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing params\"}");
         return;
@@ -4302,14 +4459,14 @@ void setupWebServer() {
     });
 
     server.on("/api/admin/restart-schedule", HTTP_GET,
-              [](AsyncWebServerRequest* req) {
+              [](AsyncWebServerRequest *req) {
                 JsonDocument d;
                 d["enabled"] = restartScheduleEnabled;
                 d["time"] = restartScheduleEnabled
                                 ? formatClockFromMinutes(restartScheduleMinute)
                                 : "";
                 JsonArray days = d["days"].to<JsonArray>();
-                const char* dayKeys[] = {"sun", "mon", "tue", "wed",
+                const char *dayKeys[] = {"sun", "mon", "tue", "wed",
                                          "thu", "fri", "sat"};
                 for (int i = 0; i < 7; i++) {
                   if (restartScheduleDayMask & (1 << i)) {
@@ -4323,7 +4480,7 @@ void setupWebServer() {
 
     server.on(
         "/api/admin/restart-schedule", HTTP_POST,
-        [](AsyncWebServerRequest* req) {
+        [](AsyncWebServerRequest *req) {
           if (!req->hasParam("data", true)) {
             if (!requireAdminVerification(req)) {
               return;
@@ -4398,7 +4555,7 @@ void setupWebServer() {
           response["enabled"] = true;
           response["time"] = formatClockFromMinutes(restartScheduleMinute);
           JsonArray outDays = response["days"].to<JsonArray>();
-          const char* dayKeys[] = {"sun", "mon", "tue", "wed",
+          const char *dayKeys[] = {"sun", "mon", "tue", "wed",
                                    "thu", "fri", "sat"};
           for (int i = 0; i < 7; i++) {
             if (restartScheduleDayMask & (1 << i)) {
@@ -4411,7 +4568,7 @@ void setupWebServer() {
         });
 
     server.on("/api/admin/restart-schedule/cancel", HTTP_POST,
-              [](AsyncWebServerRequest* req) {
+              [](AsyncWebServerRequest *req) {
                 if (!requireAdminVerification(req)) {
                   return;
                 }
@@ -4422,7 +4579,7 @@ void setupWebServer() {
                     "{\"ok\":true,\"msg\":\"Restart schedule cancelled\"}");
               });
 
-    server.on("/api/admin/restart", HTTP_POST, [](AsyncWebServerRequest* req) {
+    server.on("/api/admin/restart", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("adminUser", true) ||
           !req->hasParam("adminPass", true)) {
         req->send(400, "application/json",
@@ -4442,7 +4599,7 @@ void setupWebServer() {
     });
 
     server.on(
-        "/api/admin/reset/storage", HTTP_POST, [](AsyncWebServerRequest* req) {
+        "/api/admin/reset/storage", HTTP_POST, [](AsyncWebServerRequest *req) {
           if (!requireAdminVerification(req)) {
             return;
           }
@@ -4508,7 +4665,7 @@ void setupWebServer() {
         });
 
     server.on(
-        "/api/admin/reset/settings", HTTP_POST, [](AsyncWebServerRequest* req) {
+        "/api/admin/reset/settings", HTTP_POST, [](AsyncWebServerRequest *req) {
           if (!requireAdminVerification(req)) {
             return;
           }
@@ -4581,7 +4738,7 @@ void setupWebServer() {
         });
 
     server.on(
-        "/api/admin/reset/factory", HTTP_POST, [](AsyncWebServerRequest* req) {
+        "/api/admin/reset/factory", HTTP_POST, [](AsyncWebServerRequest *req) {
           if (!requireAdminVerification(req)) {
             return;
           }
@@ -4659,7 +4816,7 @@ void setupWebServer() {
         });
   }
 
-  server.onNotFound([](AsyncWebServerRequest* req) {
+  server.onNotFound([](AsyncWebServerRequest *req) {
     if (req->method() == HTTP_OPTIONS) {
       req->send(204);
       return;
@@ -4687,6 +4844,7 @@ void setupWebServer() {
 
 //  SETUP
 void setup() {
+  std::set_new_handler(oomNewHandler);
   Serial.begin(115200);
   Serial.println("\n==============================");
   Serial.println("  ESP32 Smart Home Starting");
@@ -4827,6 +4985,7 @@ void setup() {
 
 //  LOOP
 void loop() {
+  serviceNotifyStorage();
   updateBootButtonHoldState();
 
   // Physical switch input
@@ -4880,6 +5039,14 @@ void loop() {
     factoryResetWifiClearPending = false;
     clearWifiCredentialsOnly();
     WiFi.disconnect(true, true);
+  }
+
+  // Critical heap failsafe
+  if (!restartFlag && ESP.getFreeHeap() < CRITICAL_LOW_HEAP_RESTART_BYTES) {
+    Serial.printf("[HEAP] Critical low heap %u bytes — scheduling restart\n",
+                  ESP.getFreeHeap());
+    restartFlag = true;
+    restartAt = millis() + 1500;
   }
 
   // Restart request

@@ -1,0 +1,217 @@
+{
+  "README.md": {
+    "mtime": 1784084959.746694,
+    "ast_hash": "70eb8cc9056a798abf14db94fb98cde8",
+    "semantic_hash": "70eb8cc9056a798abf14db94fb98cde8"
+  },
+  "data/config.html": {
+    "mtime": 1784084959.753044,
+    "ast_hash": "33998ffd39a81c0ec06ad349688c618f",
+    "semantic_hash": "33998ffd39a81c0ec06ad349688c618f"
+  },
+  "data/index.html": {
+    "mtime": 1784084959.7548263,
+    "ast_hash": "f2bdb6dcec0fc9d759b7f7a0423216df",
+    "semantic_hash": "f2bdb6dcec0fc9d759b7f7a0423216df"
+  },
+  "data/index.svg": {
+    "mtime": 1784084959.7603757,
+    "ast_hash": "348cdcfbadaa7f2f678ab665127c4732",
+    "semantic_hash": "348cdcfbadaa7f2f678ab665127c4732"
+  },
+  "data/settings.svg": {
+    "mtime": 1784084959.7644255,
+    "ast_hash": "e10e7377cf83978bcd1cdda041cbad64",
+    "semantic_hash": "e10e7377cf83978bcd1cdda041cbad64"
+  },
+  "screenshots/addESPUsers.png": {
+    "mtime": 1784084959.7661395,
+    "ast_hash": "4f67316002008a436c181b66531fcdd1",
+    "semantic_hash": "4f67316002008a436c181b66531fcdd1"
+  },
+  "screenshots/addFBUsers.png": {
+    "mtime": 1784084959.7680402,
+    "ast_hash": "f4144beb9b385622628eab1b71ff7226",
+    "semantic_hash": "f4144beb9b385622628eab1b71ff7226"
+  },
+  "screenshots/addFutureSchedules.png": {
+    "mtime": 1784084959.7704575,
+    "ast_hash": "8b155a17af48bddc694c821de6a41345",
+    "semantic_hash": "8b155a17af48bddc694c821de6a41345"
+  },
+  "screenshots/addSchedule.png": {
+    "mtime": 1784084959.7722106,
+    "ast_hash": "9cd12c642aa26af46bcfacf593e31ea1",
+    "semantic_hash": "9cd12c642aa26af46bcfacf593e31ea1"
+  },
+  "screenshots/addSunriseSunsetAutomations.png": {
+    "mtime": 1784084959.7739246,
+    "ast_hash": "f16b1bb649ed18f4ae5372794b402a48",
+    "semantic_hash": "f16b1bb649ed18f4ae5372794b402a48"
+  },
+  "screenshots/addTemperatureAutomation.png": {
+    "mtime": 1784084959.7766798,
+    "ast_hash": "86f85b9efe790d44fb7dd791193e032c",
+    "semantic_hash": "86f85b9efe790d44fb7dd791193e032c"
+  },
+  "screenshots/changeDeviceName.png": {
+    "mtime": 1784084959.778679,
+    "ast_hash": "a76e976a2d160f665ef1a8f8b29dbe67",
+    "semantic_hash": "a76e976a2d160f665ef1a8f8b29dbe67"
+  },
+  "screenshots/connectWifi.png": {
+    "mtime": 1784084959.7796805,
+    "ast_hash": "14c905fc3033748683a4e919db305762",
+    "semantic_hash": "14c905fc3033748683a4e919db305762"
+  },
+  "screenshots/controlDashboard.png": {
+    "mtime": 1784084959.781882,
+    "ast_hash": "cd87b9b0461eda965c943d662b0dfb4e",
+    "semantic_hash": "cd87b9b0461eda965c943d662b0dfb4e"
+  },
+  "screenshots/databaseRules.png": {
+    "mtime": 1784084959.78396,
+    "ast_hash": "393e5f9e25af17d2925a907c78a2a840",
+    "semantic_hash": "393e5f9e25af17d2925a907c78a2a840"
+  },
+  "screenshots/dhcpIP.png": {
+    "mtime": 1784084959.7885323,
+    "ast_hash": "b8b0737d39a9f6c6c736ab4b8d400338",
+    "semantic_hash": "b8b0737d39a9f6c6c736ab4b8d400338"
+  },
+  "screenshots/editAdmin.png": {
+    "mtime": 1784084959.790298,
+    "ast_hash": "6bda43a7b319118228ad7aed1e9f6d5b",
+    "semantic_hash": "6bda43a7b319118228ad7aed1e9f6d5b"
+  },
+  "screenshots/firebaseSecret.png": {
+    "mtime": 1784084959.7942233,
+    "ast_hash": "11559e0751bc806799fe6113117376a2",
+    "semantic_hash": "11559e0751bc806799fe6113117376a2"
+  },
+  "screenshots/firebaseUrl.png": {
+    "mtime": 1784084959.7952237,
+    "ast_hash": "c0b8cd4bbdb3d4da18f8f6bcad694c3e",
+    "semantic_hash": "c0b8cd4bbdb3d4da18f8f6bcad694c3e"
+  },
+  "screenshots/firebaseUsers.png": {
+    "mtime": 1784084959.797939,
+    "ast_hash": "77c10335f06e9e83e2ed3e46e3be50a4",
+    "semantic_hash": "77c10335f06e9e83e2ed3e46e3be50a4"
+  },
+  "screenshots/forgetWifi.png": {
+    "mtime": 1784084959.801272,
+    "ast_hash": "b9db11441e4a64213dfb7e8f60f4d5cf",
+    "semantic_hash": "b9db11441e4a64213dfb7e8f60f4d5cf"
+  },
+  "screenshots/hardReset.png": {
+    "mtime": 1784084959.8025906,
+    "ast_hash": "e2a663e220306187790495b1be06d00c",
+    "semantic_hash": "e2a663e220306187790495b1be06d00c"
+  },
+  "screenshots/locationSetup.png": {
+    "mtime": 1784084959.8102868,
+    "ast_hash": "73768d3a74277cae4d740256f61eef0f",
+    "semantic_hash": "73768d3a74277cae4d740256f61eef0f"
+  },
+  "screenshots/login.png": {
+    "mtime": 1784084959.8133426,
+    "ast_hash": "5d70c98bb1949031f15f94a065b9c8bd",
+    "semantic_hash": "5d70c98bb1949031f15f94a065b9c8bd"
+  },
+  "screenshots/removeESPUsers.png": {
+    "mtime": 1784084959.8143513,
+    "ast_hash": "47d7227ab9ff4d8045ce1b44f514a77a",
+    "semantic_hash": "47d7227ab9ff4d8045ce1b44f514a77a"
+  },
+  "screenshots/resetUI.png": {
+    "mtime": 1784084959.8164759,
+    "ast_hash": "0ad323db23722c65152479f5f6667ba1",
+    "semantic_hash": "0ad323db23722c65152479f5f6667ba1"
+  },
+  "screenshots/restartSetup.png": {
+    "mtime": 1784084959.8187914,
+    "ast_hash": "6b36a608cec5687228d1fddec4525941",
+    "semantic_hash": "6b36a608cec5687228d1fddec4525941"
+  },
+  "screenshots/restartUI.png": {
+    "mtime": 1784084959.8205488,
+    "ast_hash": "d81fca4d906e8d7f57a89de4ad97fbf4",
+    "semantic_hash": "d81fca4d906e8d7f57a89de4ad97fbf4"
+  },
+  "screenshots/schedulePriority.png": {
+    "mtime": 1784084959.824925,
+    "ast_hash": "8d042dc6fadae42cab3f9b807f7ed5c9",
+    "semantic_hash": "8d042dc6fadae42cab3f9b807f7ed5c9"
+  },
+  "screenshots/settingsReset.png": {
+    "mtime": 1784084959.8274882,
+    "ast_hash": "402d97e797da155cea6f3fdbd4da4a9a",
+    "semantic_hash": "402d97e797da155cea6f3fdbd4da4a9a"
+  },
+  "screenshots/showESPUsers.png": {
+    "mtime": 1784084959.8294978,
+    "ast_hash": "7d392ff386e433d1d6c951390a6e6bc8",
+    "semantic_hash": "7d392ff386e433d1d6c951390a6e6bc8"
+  },
+  "screenshots/showFutureSchedules.png": {
+    "mtime": 1784084959.8314984,
+    "ast_hash": "8edf4bceb0ad46bb2e86fa7d434aaaa5",
+    "semantic_hash": "8edf4bceb0ad46bb2e86fa7d434aaaa5"
+  },
+  "screenshots/showSchedules.png": {
+    "mtime": 1784084959.835779,
+    "ast_hash": "93607a1a9bba69a4554cb614e98810f7",
+    "semantic_hash": "93607a1a9bba69a4554cb614e98810f7"
+  },
+  "screenshots/showSensorAutomations.png": {
+    "mtime": 1784084959.837368,
+    "ast_hash": "7fbc3e1e2482b75c1de0a6b1ea60fb5f",
+    "semantic_hash": "7fbc3e1e2482b75c1de0a6b1ea60fb5f"
+  },
+  "screenshots/showfbUsers.png": {
+    "mtime": 1784084959.8400998,
+    "ast_hash": "048542bc4dcbfecbf4c7c2e8d20feebf",
+    "semantic_hash": "048542bc4dcbfecbf4c7c2e8d20feebf"
+  },
+  "screenshots/staticIP.png": {
+    "mtime": 1784084959.845536,
+    "ast_hash": "bf9806c82d1057f92a3f0f6411d14acc",
+    "semantic_hash": "bf9806c82d1057f92a3f0f6411d14acc"
+  },
+  "screenshots/storageReset.png": {
+    "mtime": 1784084959.8479881,
+    "ast_hash": "c2aed8d937b9c214fe31b3c9ef102058",
+    "semantic_hash": "c2aed8d937b9c214fe31b3c9ef102058"
+  },
+  "screenshots/switchName.png": {
+    "mtime": 1784084959.849065,
+    "ast_hash": "e232e86aa4feddf2f1494423c7c21f6c",
+    "semantic_hash": "e232e86aa4feddf2f1494423c7c21f6c"
+  },
+  "screenshots/switchState.png": {
+    "mtime": 1784084959.8511171,
+    "ast_hash": "8efcf747118bbb88c0c97d5a8f695e88",
+    "semantic_hash": "8efcf747118bbb88c0c97d5a8f695e88"
+  },
+  "screenshots/switchiconChange.png": {
+    "mtime": 1784084959.8536139,
+    "ast_hash": "06bf9812842064977f970dc86f23c200",
+    "semantic_hash": "06bf9812842064977f970dc86f23c200"
+  },
+  "screenshots/timeSetup.png": {
+    "mtime": 1784084959.8560817,
+    "ast_hash": "8e9e58793ce7a48d85456a34b655a28e",
+    "semantic_hash": "8e9e58793ce7a48d85456a34b655a28e"
+  },
+  "screenshots/timer.png": {
+    "mtime": 1784084959.8607013,
+    "ast_hash": "3b5723e06e5d70eff48f76063c015ce5",
+    "semantic_hash": "3b5723e06e5d70eff48f76063c015ce5"
+  },
+  "screenshots/wifiNetworkStatus.png": {
+    "mtime": 1784084959.8638732,
+    "ast_hash": "b3308597b9fe26715d07359d1db47bcc",
+    "semantic_hash": "b3308597b9fe26715d07359d1db47bcc"
+  }
+}
