@@ -21,6 +21,8 @@
 #include <SPIFFS.h>
 #include <Wire.h>
 
+#include "time.h"
+
 //  PIN DEFINITIONS
 #define INPUT_SWITCH_1 34
 #define INPUT_SWITCH_2 35
@@ -375,18 +377,27 @@ void applyStationIpConfig() {
 
   if (dhcpOn) {
     IPAddress zero(0, 0, 0, 0);
-    WiFi.config(zero, zero, zero, zero);
+    if (WiFi.config(zero, zero, zero, zero)) {
+      Serial.println("[WIFI] DHCP mode enabled");
+    } else {
+      Serial.println("[WIFI] Failed to enable DHCP mode");
+    }
     return;
   }
 
   IPAddress ip, gateway, subnet, dns;
   if (!hasValidStaticConfig(ip, gateway, subnet, dns)) {
+    Serial.println("[WIFI] Invalid static IP settings, falling back to DHCP");
     IPAddress zero(0, 0, 0, 0);
     WiFi.config(zero, zero, zero, zero);
     return;
   }
 
-  WiFi.config(ip, gateway, subnet, dns);
+  if (WiFi.config(ip, gateway, subnet, dns)) {
+    Serial.printf("[WIFI] Static IP configured: %s\n", ip.toString().c_str());
+  } else {
+    Serial.println("[WIFI] Failed to apply static IP settings");
+  }
 }
 
 void saveCurrentWifiCredentials(bool notifyChange = false) {
@@ -421,17 +432,27 @@ bool runWifiConfigPortal(bool notifyChange = false,
 
   wm.setConfigPortalTimeout(180); // 3 minutes
   wm.setAPCallback([](WiFiManager *myWiFiManager) {
-    Serial.println("[WIFI] Config portal ready - connect to 'ESP HOME'");
+    Serial.println(
+        "[WIFI] Config portal ready - connect to ESP HOME and open "
+        "192.168.4.1");
   });
   prepareWifiForConfigPortal();
   Serial.println("[WIFI] Starting forced config portal...");
+  Serial.println("[WIFI] SSID: 'ESP HOME' | IP: 192.168.4.1");
   success = wm.startConfigPortal("ESP HOME");
 
   if (success) {
-    Serial.println("\n[OK] WiFi Connected via Portal");
+    Serial.println("\n[SUCCESS] WiFi Connected via Config Portal");
+    Serial.printf("SSID : %s\n", WiFi.SSID().c_str());
+    Serial.printf("IP Address : %s\n", WiFi.localIP().toString().c_str());
     WiFi.setSleep(false);
+    Serial.println("[WIFI] Power save disabled after config portal connection");
+    Serial.println("==============================\n");
     saveCurrentWifiCredentials(notifyChange);
     if (restartOnSuccess) {
+      Serial.println(
+          "[WIFI] Restarting to bring the web server up on the saved "
+          "network...");
       delay(500);
       ESP.restart();
     }
@@ -439,6 +460,8 @@ bool runWifiConfigPortal(bool notifyChange = false,
   }
 
   Serial.println("\n[ERROR] Config Portal Timeout!");
+  Serial.println("Device not connected to WiFi.");
+  Serial.println("==============================\n");
   delay(1000);
   return false;
 }
@@ -446,6 +469,7 @@ bool runWifiConfigPortal(bool notifyChange = false,
 String getDefaultDeviceName() {
   uint64_t chipId = ESP.getEfuseMac();
   char buf[13];
+  // ESP.getEfuseMac() stores the 48-bit MAC least-significant byte first.
   snprintf(buf, sizeof(buf), "%02X%02X%02X%02X%02X%02X", (uint8_t)(chipId),
            (uint8_t)(chipId >> 8), (uint8_t)(chipId >> 16),
            (uint8_t)(chipId >> 24), (uint8_t)(chipId >> 32),
@@ -581,6 +605,10 @@ void applyPendingAutomationActions() {
     if (!pendingAutomationAction[i])
       continue;
     setRelayState(i, pendingAutomationState[i], "automation");
+    Serial.printf("[AUTO] SW%d -> %s (source=%s, rank=%d)\n", i,
+                  pendingAutomationState[i] ? "ON" : "OFF",
+                  automationSourceLabel(pendingAutomationSource[i]),
+                  getAutomationPriorityRank(pendingAutomationSource[i]) + 1);
   }
 }
 
@@ -691,7 +719,8 @@ void loadAdminSettings() {
   restartScheduleLastRunKey = loadedRestartScheduleLastRunKey;
   lastRestartScheduleStamp = -1;
 
-  locOk = (geoLat >= -90.0f && geoLat <= 90.0f && geoLon >= -180.0f && geoLon <= 180.0f);
+  locOk = (geoLat >= -90.0f && geoLat <= 90.0f && geoLon >= -180.0f &&
+           geoLon <= 180.0f);
   parseTZ();
 }
 
@@ -714,7 +743,8 @@ String normalizeUserPass(String pass) {
   return pass;
 }
 
-void persistConfiguredPrimaryAdmin(const String &adminId, const String &adminPass) {
+void persistConfiguredPrimaryAdmin(const String &adminId,
+                                   const String &adminPass) {
   String normalizedId = normalizeUserId(adminId);
   String normalizedPass = normalizeUserPass(adminPass);
 
@@ -732,7 +762,8 @@ void persistConfiguredPrimaryAdmin(const String &adminId, const String &adminPas
   prefs.end();
 }
 
-void replaceUsersWithSingleAdmin(const String &adminId, const String &adminPass) {
+void replaceUsersWithSingleAdmin(const String &adminId,
+                                 const String &adminPass) {
   String targetAdminId = normalizeUserId(adminId);
   String targetAdminPass = normalizeUserPass(adminPass);
 
@@ -806,8 +837,10 @@ void replaceUsersWithSingleAdmin(const String &adminId, const String &adminPass)
 }
 
 void resetAdminToFactoryDefault() {
-  persistConfiguredPrimaryAdmin(String(PRIMARY_ADMIN_ID), String(PRIMARY_ADMIN_PASS));
-  replaceUsersWithSingleAdmin(configuredPrimaryAdminId, configuredPrimaryAdminPass);
+  persistConfiguredPrimaryAdmin(String(PRIMARY_ADMIN_ID),
+                                String(PRIMARY_ADMIN_PASS));
+  replaceUsersWithSingleAdmin(configuredPrimaryAdminId,
+                              configuredPrimaryAdminPass);
   notifyStorage();
 }
 
@@ -867,8 +900,9 @@ void clearRestartScheduleOnly(bool notifyChange = false) {
   prefs.remove("rsLast");
   prefs.end();
 
-  if (notifyChange)
+  if (notifyChange) {
     notifyStorage();
+  }
 }
 
 void clearStaticIpConfiguration() {
@@ -913,9 +947,13 @@ void resetLocationToDefault() {
 void resetRelayStatesToDefault() {
   prefs.begin("sw", false);
   for (int i = 0; i < NUM_SWITCHES; i++) {
+    // 1. Set the active RAM state using the Enum
     relayMode[i] = RELAY_MODE_OFF;
+
     writeSwState(i, false);
     digitalWrite(outPin[i], LOW);
+
+    // 2. Save the string "off" to NVS memory
     prefs.putString(("r" + String(i)).c_str(), "off");
     prefs.remove(("l" + String(i)).c_str());
   }
@@ -991,19 +1029,25 @@ void resetUsersToSingleDefaultAdmin() {
   prefs.clear();
   prefs.end();
 
-  persistConfiguredPrimaryAdmin(String(PRIMARY_ADMIN_ID), String(PRIMARY_ADMIN_PASS));
-  replaceUsersWithSingleAdmin(configuredPrimaryAdminId, configuredPrimaryAdminPass);
+  persistConfiguredPrimaryAdmin(String(PRIMARY_ADMIN_ID),
+                                String(PRIMARY_ADMIN_PASS));
+  replaceUsersWithSingleAdmin(configuredPrimaryAdminId,
+                              configuredPrimaryAdminPass);
 }
 
 bool requireBootHoldResetGesture(AsyncWebServerRequest *req) {
   if (consumeBootButtonHoldForReset()) {
     return true;
   }
-  req->send(400, "application/json", "{\"ok\":false,\"bootRequired\":true,\"error\":\"Press and hold BOOT for 5 seconds, then retry reset.\"}");
+
+  req->send(400, "application/json",
+            "{\"ok\":false,\"bootRequired\":true,\"error\":\"Press and hold "
+            "BOOT for 5 seconds, then retry reset.\"}");
   return false;
 }
 
-void addResetStep(JsonArray steps, const char *key, const char *label, uint16_t durationMs = 420) {
+void addResetStep(JsonArray steps, const char *key, const char *label,
+                  uint16_t durationMs = 420) {
   uint16_t normalizedDuration = durationMs;
   if (normalizedDuration < 180) {
     normalizedDuration = (uint16_t)RESET_CHECKPOINT_GAP_MS;
@@ -1022,16 +1066,20 @@ void updateBootButtonHoldState() {
     if (bootButtonPressedAt == 0) {
       bootButtonPressedAt = now;
     }
-    if (!bootHoldSatisfied && (now - bootButtonPressedAt >= BOOT_HOLD_RESET_MS)) {
+
+    if (!bootHoldSatisfied &&
+        (now - bootButtonPressedAt >= BOOT_HOLD_RESET_MS)) {
       bootHoldSatisfied = true;
       bootHoldSatisfiedAt = now;
       Serial.println("[BOOT] Hold detected for admin reset");
     }
+
     return;
   }
 
   bootButtonPressedAt = 0;
-  if (bootHoldSatisfied && (now - bootHoldSatisfiedAt > BOOT_HOLD_READY_WINDOW_MS)) {
+  if (bootHoldSatisfied &&
+      (now - bootHoldSatisfiedAt > BOOT_HOLD_READY_WINDOW_MS)) {
     bootHoldSatisfied = false;
     bootHoldSatisfiedAt = 0;
   }
@@ -1099,7 +1147,8 @@ void initDefaultUser() {
       }
     }
 
-    if (legacyDefaultIndex < 0 && id == "mrinal" && pass == "1234" && role == "admin") {
+    if (legacyDefaultIndex < 0 && id == "mrinal" && pass == "1234" &&
+        role == "admin") {
       legacyDefaultIndex = i;
     }
   }
@@ -1113,15 +1162,21 @@ void initDefaultUser() {
     serializeJson(d, migrated);
 
     if (legacyDefaultIndex >= 0) {
+      // Migrate legacy mrinal/1234 admin to the default esp admin.
       prefs.putString(("u" + String(legacyDefaultIndex)).c_str(), migrated);
     } else if (espIndex >= 0) {
+      // esp user exists but without admin role - promote it.
       prefs.putString(("u" + String(espIndex)).c_str(), migrated);
     } else if (totalAdminCount == 0) {
+      // No admin of any kind exists - add esp as the last-resort fallback.
       prefs.putString(("u" + String(count)).c_str(), migrated);
       prefs.putInt("cnt", count + 1);
     }
+    // else: other admins already exist; esp was intentionally removed - do
+    // nothing.
   }
 
+  // Enforce single-admin policy: keep the first admin, demote any extra admins.
   int keepAdminIndex = -1;
   for (int i = 0; i < count; i++) {
     String js = prefs.getString(("u" + String(i)).c_str(), "");
@@ -1175,7 +1230,8 @@ bool verifyAdmin(const String &u, const String &p) {
 
 bool requireAdminVerification(AsyncWebServerRequest *req) {
   if (!req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
-    req->send(400, "application/json", "{\"error\":\"Admin credentials required\"}");
+    req->send(400, "application/json",
+              "{\"error\":\"Admin credentials required\"}");
     return false;
   }
 
@@ -1183,12 +1239,15 @@ bool requireAdminVerification(AsyncWebServerRequest *req) {
   String adminPass = req->getParam("adminPass", true)->value();
 
   if (!verifyAdmin(adminUser, adminPass)) {
+    // Try to recover primary admin in case storage was previously corrupted.
     initDefaultUser();
     if (!verifyAdmin(adminUser, adminPass)) {
-      req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+      req->send(403, "application/json",
+                "{\"error\":\"Admin verification failed\"}");
       return false;
     }
   }
+
   return true;
 }
 
@@ -1205,7 +1264,8 @@ bool verifyLogin(const String &u, const String &p, String &role) {
     if (deserializeJson(d, js))
       continue;
     String storedPass = normalizeUserPass(d["pass"].as<String>());
-    if (normalizeUserId(d["id"].as<String>()) == targetUser && storedPass == targetPass) {
+    if (normalizeUserId(d["id"].as<String>()) == targetUser &&
+        storedPass == targetPass) {
       role = normalizeUserRole(d["role"].as<String>());
       prefs.end();
       return true;
@@ -1300,7 +1360,6 @@ void configureFirebaseSslClient(WiFiClientSecure &client) {
 #if defined(ESP32)
   client.setConnectionTimeout(1000);
   client.setHandshakeTimeout(5);
-  // Removed the invalid setBufferSizes line here
 #endif
 #if defined(ESP8266)
   client.setBufferSizes(4096, 1024);
@@ -1310,12 +1369,18 @@ void configureFirebaseSslClient(WiFiClientSecure &client) {
 void initFirebaseWriteQueue() {
   if (firebaseWriteQueue)
     return;
-  firebaseWriteQueue = xQueueCreate(FIREBASE_WRITE_QUEUE_LENGTH, sizeof(FirebaseWriteTask));
+
+  firebaseWriteQueue =
+      xQueueCreate(FIREBASE_WRITE_QUEUE_LENGTH, sizeof(FirebaseWriteTask));
+  if (!firebaseWriteQueue) {
+    Serial.println("[FB] Failed to create write queue");
+  }
 }
 
 void clearFirebaseWriteQueue() {
   if (!firebaseWriteQueue)
     return;
+
   FirebaseWriteTask discarded;
   while (xQueueReceive(firebaseWriteQueue, &discarded, 0) == pdTRUE) {
   }
@@ -1324,17 +1389,20 @@ void clearFirebaseWriteQueue() {
 bool lockSwState(TickType_t waitTicks) {
   if (!swStateMutex)
     return true;
+
   return xSemaphoreTake(swStateMutex, waitTicks) == pdTRUE;
 }
 
 void unlockSwState() {
-  if (swStateMutex)
+  if (swStateMutex) {
     xSemaphoreGive(swStateMutex);
+  }
 }
 
 bool readSwState(int index) {
   if (index < 0 || index >= NUM_SWITCHES)
     return false;
+
   bool value = false;
   if (lockSwState()) {
     value = swState[index];
@@ -1346,6 +1414,7 @@ bool readSwState(int index) {
 void writeSwState(int index, bool value) {
   if (index < 0 || index >= NUM_SWITCHES)
     return;
+
   if (lockSwState()) {
     swState[index] = value;
     unlockSwState();
@@ -1355,13 +1424,16 @@ void writeSwState(int index, bool value) {
 void syncRelayStateToWebView(int index, bool state) {
   (void)index;
   (void)state;
+  // Dashboard state comes from /api/switches, so updating swState[] is enough.
 }
 
 String firebaseDeviceNameValue() {
   String label = deviceName;
   label.trim();
-  if (label.isEmpty())
+  if (label.isEmpty()) {
     label = getDefaultDeviceName();
+  }
+
   return label;
 }
 
@@ -1376,14 +1448,18 @@ void initDeviceId() {
     mac.trim();
     mac.toUpperCase();
   }
+
   cachedDeviceId = mac;
 }
 
 String firebaseDeviceId() {
-  if (cachedDeviceId.isEmpty())
+  if (cachedDeviceId.isEmpty()) {
     initDeviceId();
+  }
+
   if (cachedDeviceId.isEmpty())
     return getDefaultDeviceName();
+
   return cachedDeviceId;
 }
 
@@ -1392,15 +1468,18 @@ String firebaseBasePathForUid(const String &uid) {
   normalizedUid.trim();
   if (normalizedUid.isEmpty())
     return "";
+
   return "/espHome/" + normalizedUid + "/" + firebaseDeviceId();
 }
 
 String firebaseRelayPath(const String &uid, int index) {
   if (index < 0 || index >= NUM_SWITCHES)
     return "";
+
   String basePath = firebaseBasePathForUid(uid);
   if (basePath.isEmpty())
     return "";
+
   return basePath + "/switch" + String(index + 1);
 }
 
@@ -1408,6 +1487,7 @@ String firebaseDeviceNamePath(const String &uid) {
   String basePath = firebaseBasePathForUid(uid);
   if (basePath.isEmpty())
     return "";
+
   return basePath + "/deviceName";
 }
 
@@ -1420,16 +1500,20 @@ void queueAllRelayStatesForFirebaseSync() {
 void onDeviceNameUpdated(const String &previousName) {
   String oldName = previousName;
   oldName.trim();
-  if (oldName.isEmpty())
+  if (oldName.isEmpty()) {
     oldName = getDefaultDeviceName();
+  }
 
   String newName = firebaseDeviceNameValue();
-  if (oldName == newName)
+  if (oldName == newName) {
     return;
+  }
 
   firebaseDeviceNameSyncDirty = true;
   firebaseLastSyncedDeviceName = "";
 
+  // Keep Firebase node aligned with updated name by replaying the current relay
+  // state.
   if (fbOn) {
     clearFirebaseWriteQueue();
     queueAllRelayStatesForFirebaseSync();
@@ -1439,6 +1523,7 @@ void onDeviceNameUpdated(const String &previousName) {
 bool enqueueFirebaseWrite(int index, bool state) {
   if (index < 0 || index >= NUM_SWITCHES)
     return false;
+
   if (!fbOn || !firebaseWriteQueue)
     return false;
 
@@ -1446,20 +1531,26 @@ bool enqueueFirebaseWrite(int index, bool state) {
   if (xQueueSend(firebaseWriteQueue, &task, 0) == pdTRUE)
     return true;
 
+  // Queue full: drop oldest to keep the most recent command.
   FirebaseWriteTask dropped;
   (void)xQueueReceive(firebaseWriteQueue, &dropped, 0);
   return xQueueSend(firebaseWriteQueue, &task, 0) == pdTRUE;
 }
 
 void restartFirebaseStream(const char *reason) {
-  if (firebaseStreamRunning)
+  if (firebaseStreamRunning) {
     fbStreamClient.stopAsync(FIREBASE_STREAM_TASK_UID);
+  }
 
   firebaseStreamRunning = false;
   firebaseLastStreamAttemptMs = 0;
   firebaseLastStreamEventMs = 0;
   firebaseAwaitingInitialStreamData = false;
   firebaseStreamStartedAtMs = 0;
+
+  if (reason && reason[0] != '\0') {
+    Firebase.printf("[FB] Stream restart requested: %s\n", reason);
+  }
 }
 
 bool tryParseBoolText(String text, bool &out) {
@@ -1481,21 +1572,27 @@ bool tryParseBoolVariant(const JsonVariantConst &value, bool &out) {
     out = value.as<bool>();
     return true;
   }
+
   if (value.is<int>()) {
     out = value.as<int>() != 0;
     return true;
   }
+
   if (value.is<long>()) {
     out = value.as<long>() != 0;
     return true;
   }
+
   if (value.is<double>()) {
     out = value.as<double>() != 0.0;
     return true;
   }
+
   if (value.is<const char *>()) {
-    return tryParseBoolText(value.as<String>(), out);
+    String text = value.as<String>();
+    return tryParseBoolText(text, out);
   }
+
   return false;
 }
 
@@ -1512,10 +1609,12 @@ bool getPrimaryFirebaseAuthCredential(String &email, String &password) {
     candidatePassword.trim();
     if (candidateEmail.isEmpty() || candidatePassword.isEmpty())
       continue;
+
     email = candidateEmail;
     password = candidatePassword;
     return true;
   }
+
   return false;
 }
 
@@ -1546,34 +1645,68 @@ void stopFirebaseRuntime() {
 }
 
 bool firebaseSetBoolAtPath(const String &path, bool value) {
-  if (!firebaseRuntimeInitialized || !fbApp.ready() || firebaseAuthUid.isEmpty())
+  if (!firebaseRuntimeInitialized || !fbApp.ready())
     return false;
-  return fbDatabase.set<bool>(fbClient, path, value);
+
+  if (firebaseAuthUid.isEmpty())
+    return false;
+
+  // Equivalent behavior to Firebase.RTDB.setBool() for FirebaseClient.h.
+  bool ok = fbDatabase.set<bool>(fbClient, path, value);
+  if (!ok) {
+    Firebase.printf("[FB] set<bool> failed path=%s code=%d msg=%s\n",
+                    path.c_str(), fbClient.lastError().code(),
+                    fbClient.lastError().message().c_str());
+  }
+  return ok;
 }
 
 bool firebaseSetStringAtPath(const String &path, const String &value) {
-  if (!firebaseRuntimeInitialized || !fbApp.ready() || firebaseAuthUid.isEmpty())
+  if (!firebaseRuntimeInitialized || !fbApp.ready())
     return false;
-  return fbDatabase.set<String>(fbClient, path, value);
+
+  if (firebaseAuthUid.isEmpty())
+    return false;
+
+  bool ok = fbDatabase.set<String>(fbClient, path, value);
+  if (!ok) {
+    Firebase.printf("[FB] set<String> failed path=%s code=%d msg=%s\n",
+                    path.c_str(), fbClient.lastError().code(),
+                    fbClient.lastError().message().c_str());
+  }
+  return ok;
 }
 
 void processFirebaseWriteQueue() {
-  if (!firebaseWriteQueue || !fbOn || !firebaseRuntimeInitialized || !fbApp.ready() || firebaseAuthUid.isEmpty())
+  if (!firebaseWriteQueue)
     return;
-  if (ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_FIREBASE_WRITE)
+
+  if (!fbOn || !firebaseRuntimeInitialized || !fbApp.ready() ||
+      firebaseAuthUid.isEmpty())
     return;
+
+  if (ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_FIREBASE_WRITE) {
+    return; // skip TLS write under memory pressure; retry next cycle
+  }
 
   unsigned long now = millis();
 
   if (firebaseHasDeferredWriteTask) {
-    if (now - firebaseDeferredWriteAtMs < FIREBASE_WRITE_FAIL_RETRY_MS)
+    if (now - firebaseDeferredWriteAtMs < FIREBASE_WRITE_FAIL_RETRY_MS) {
       return;
+    }
+
+    // Yield before retrying a previously failed write so Core 0 can service
+    // background work.
     yield();
-    if (xQueueSend(firebaseWriteQueue, &firebaseDeferredWriteTask, 0) != pdTRUE) {
+
+    if (xQueueSend(firebaseWriteQueue, &firebaseDeferredWriteTask, 0) !=
+        pdTRUE) {
       FirebaseWriteTask dropped;
       (void)xQueueReceive(firebaseWriteQueue, &dropped, 0);
       (void)xQueueSend(firebaseWriteQueue, &firebaseDeferredWriteTask, 0);
     }
+
     firebaseHasDeferredWriteTask = false;
     firebaseDeferredWriteAtMs = now;
     return;
@@ -1590,18 +1723,24 @@ void processFirebaseWriteQueue() {
   if (path.isEmpty())
     return;
 
+  Serial.println("[FB] WRITE PATH: " + path);
+  Serial.println("[FB] UID: " + firebaseAuthUid);
+  Serial.println("[FB] DEVICE ID: " + firebaseDeviceId());
+
   unsigned long writeStartedAt = millis();
   bool ok = firebaseSetBoolAtPath(path, task.state);
   unsigned long writeDurationMs = millis() - writeStartedAt;
   firebaseLastWriteMs = millis();
 
-  if (writeDurationMs >= FIREBASE_WRITE_LONG_OP_MS)
+  if (writeDurationMs >= FIREBASE_WRITE_LONG_OP_MS) {
     yield();
+  }
 
   if (!ok) {
     firebaseDeferredWriteTask = task;
     firebaseHasDeferredWriteTask = true;
     firebaseDeferredWriteAtMs = now;
+    Serial.println("[FB] Write failed; deferred retry scheduled");
   }
 }
 
@@ -1631,8 +1770,10 @@ void setRelayState(int index, bool state, const String &source) {
 
   digitalWrite(outPin[index], state ? HIGH : LOW);
 
-  if (relayMode[index] == RELAY_MODE_REMEMBER)
+  // DEFERRED FLASH WRITE: Just set the flag. The loop() will safely write it to flash.
+  if (relayMode[index] == RELAY_MODE_REMEMBER) {
     nvsRelayDirty[index] = true;
+  }
 
   bool firebaseSource = (normalizedSource == "firebase");
   bool webSource = (normalizedSource == "web" || normalizedSource == "api");
@@ -1652,6 +1793,7 @@ void setRelayState(int index, bool state, const String &source) {
     enqueueFirebaseWrite(index, state);
     return;
   }
+
   enqueueFirebaseWrite(index, state);
 }
 
@@ -1660,16 +1802,21 @@ void setSwitch(int i, bool st) { setRelayState(i, st, "local"); }
 int relayIndexFromFirebasePath(const String &dataPath) {
   if (!dataPath.startsWith("/switch"))
     return -1;
+
   String idxText = dataPath.substring(7);
   if (idxText.isEmpty())
     return -1;
+
   for (size_t i = 0; i < idxText.length(); i++) {
-    if (idxText.charAt(i) < '0' || idxText.charAt(i) > '9')
+    char c = idxText.charAt(i);
+    if (c < '0' || c > '9')
       return -1;
   }
+
   int oneBased = idxText.toInt();
   if (oneBased < 1 || oneBased > NUM_SWITCHES)
     return -1;
+
   return oneBased - 1;
 }
 
@@ -1679,6 +1826,7 @@ void applyFirebaseSnapshotPayload(const String &payload) {
     doc.clear();
     return;
   }
+
   JsonObject obj = doc.as<JsonObject>();
   if (obj.isNull()) {
     doc.clear();
@@ -1689,17 +1837,21 @@ void applyFirebaseSnapshotPayload(const String &payload) {
     String key = "switch" + String(i + 1);
     if (!obj.containsKey(key))
       continue;
+
     bool state = false;
     if (tryParseBoolVariant(obj[key], state)) {
       setRelayState(i, state, "firebase");
     }
   }
+
   doc.clear();
 }
 
 void applyFirebasePathPayload(const String &dataPath, const String &payload) {
-  if (dataPath.length() == 0)
+  if (dataPath.length() == 0) {
     return;
+  }
+
   if (dataPath == "/") {
     applyFirebaseSnapshotPayload(payload);
     return;
@@ -1720,27 +1872,32 @@ void applyFirebasePathPayload(const String &dataPath, const String &payload) {
     doc.clear();
     return;
   }
-  JsonVariant root = doc.as<JsonVariant>();
 
+  JsonVariant root = doc.as<JsonVariant>();
   if (tryParseBoolVariant(root, state)) {
     setRelayState(index, state, "firebase");
     doc.clear();
     return;
   }
+
   JsonObject obj = root.as<JsonObject>();
   if (obj.isNull()) {
     doc.clear();
     return;
   }
+
   if (obj.containsKey("state") && tryParseBoolVariant(obj["state"], state)) {
     setRelayState(index, state, "firebase");
     doc.clear();
     return;
   }
+
   String directKey = "switch" + String(index + 1);
-  if (obj.containsKey(directKey) && tryParseBoolVariant(obj[directKey], state)) {
+  if (obj.containsKey(directKey) &&
+      tryParseBoolVariant(obj[directKey], state)) {
     setRelayState(index, state, "firebase");
   }
+
   doc.clear();
 }
 
@@ -1749,10 +1906,12 @@ bool beginFirebaseRuntime() {
   String apiKey = fbToken;
   databaseUrl.trim();
   apiKey.trim();
+
   if (databaseUrl.isEmpty() || apiKey.isEmpty())
     return false;
 
-  String authEmail, authPassword;
+  String authEmail;
+  String authPassword;
   if (!getPrimaryFirebaseAuthCredential(authEmail, authPassword))
     return false;
 
@@ -1762,7 +1921,8 @@ bool beginFirebaseRuntime() {
   }
   fbUserAuth = new UserAuth(apiKey, authEmail, authPassword, 3000);
 
-  initializeApp(fbClient, fbApp, getAuth(*fbUserAuth), firebaseAsyncCallback, FIREBASE_AUTH_TASK_UID);
+  initializeApp(fbClient, fbApp, getAuth(*fbUserAuth), firebaseAsyncCallback,
+                FIREBASE_AUTH_TASK_UID);
   fbApp.getApp<RealtimeDatabase>(fbDatabase);
   fbDatabase.url(databaseUrl);
 
@@ -1774,10 +1934,17 @@ bool beginFirebaseRuntime() {
 }
 
 void ensureFirebaseStreamConnected() {
-  if (!firebaseRuntimeInitialized || !fbApp.ready() || firebaseAuthUid.isEmpty() || firebaseStreamPath.isEmpty() || firebaseStreamRunning)
+  if (!firebaseRuntimeInitialized || !fbApp.ready())
     return;
+
+  if (firebaseAuthUid.isEmpty() || firebaseStreamPath.isEmpty())
+    return;
+
+  if (firebaseStreamRunning)
+    return;
+
   if (ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_FIREBASE_WRITE)
-    return;
+    return; // defer stream reconnect until heap recovers
 
   unsigned long now = millis();
   if (now - firebaseLastStreamAttemptMs < FIREBASE_STREAM_RETRY_MS)
@@ -1785,21 +1952,26 @@ void ensureFirebaseStreamConnected() {
 
   firebaseLastStreamAttemptMs = now;
   fbStreamClient.setSSEFilters("get,put,patch,keep-alive,cancel,auth_revoked");
-  fbDatabase.get(fbStreamClient, firebaseStreamPath, firebaseAsyncCallback, true, FIREBASE_STREAM_TASK_UID);
+  fbDatabase.get(fbStreamClient, firebaseStreamPath, firebaseAsyncCallback,
+                 true, FIREBASE_STREAM_TASK_UID);
   firebaseStreamRunning = true;
   firebaseLastStreamEventMs = now;
   firebaseAwaitingInitialStreamData = true;
   firebaseStreamStartedAtMs = now;
+  Serial.println("[FB] Stream start requested");
+  Serial.println("[FB] UID: " + firebaseAuthUid);
+  Serial.println("[FB] DEVICE ID: " + firebaseDeviceId());
+  Serial.println("[FB] PATH: " + firebaseStreamPath);
 }
 
 void firebaseAsyncCallback(AsyncResult &aResult) {
   if (!aResult.isResult())
     return;
+
   String taskId = aResult.uid();
   if (aResult.isError()) {
-    if (aResult.error().code() != -118 && aResult.error().code() != -103) {
-      Firebase.printf("[FB] Error: %s\n", aResult.error().message().c_str());
-    }
+    Firebase.printf("[FB] Error task=%s msg=%s code=%d\n", taskId.c_str(),
+                    aResult.error().message().c_str(), aResult.error().code());
     if (taskId == FIREBASE_AUTH_TASK_UID) {
       firebaseRuntimeInitialized = false;
       firebaseRuntimeDirty = true;
@@ -1815,46 +1987,59 @@ void firebaseAsyncCallback(AsyncResult &aResult) {
 
   if (!aResult.available())
     return;
+
   RealtimeDatabaseResult &stream = aResult.to<RealtimeDatabaseResult>();
   if (!stream.isStream())
     return;
 
   firebaseLastStreamEventMs = millis();
+
   String eventType = stream.event().c_str();
   eventType.toLowerCase();
-
   if (eventType == "cancel" || eventType == "auth_revoked") {
     restartFirebaseStream(eventType.c_str());
     firebaseLastStreamAttemptMs = millis();
     return;
   }
+
   if (eventType == "keep-alive") {
     firebaseStreamRunning = true;
     return;
   }
-  if (eventType != "get" && eventType != "put" && eventType != "patch")
+
+  if (eventType != "get" && eventType != "put" && eventType != "patch") {
     return;
+  }
 
   firebaseStreamRunning = true;
+
   String dataPath = stream.dataPath().c_str();
   dataPath.trim();
-  if (dataPath.isEmpty())
+  if (dataPath.isEmpty()) {
     return;
+  }
 
   String payload = stream.to<String>();
+  if (payload.isEmpty()) {
+    Serial.println("[FB] Empty payload received at: " + dataPath);
+  }
 
-  if (dataPath == "/" && (payload.isEmpty() || payload == "null" || payload == "{}")) {
+  if (dataPath == "/" &&
+      (payload.isEmpty() || payload == "null" || payload == "{}")) {
     firebaseAwaitingInitialStreamData = false;
+    Serial.println("[FB] No remote relay snapshot found, pushing local state");
     queueAllRelayStatesForFirebaseSync();
     return;
   }
+
   firebaseAwaitingInitialStreamData = false;
   applyFirebasePathPayload(dataPath, payload);
 }
 
 void handleFirebaseRuntime() {
   if (!fbOn) {
-    if (firebaseRuntimeInitialized || firebaseStreamRunning || !firebaseAuthUid.isEmpty()) {
+    if (firebaseRuntimeInitialized || firebaseStreamRunning ||
+        !firebaseAuthUid.isEmpty()) {
       stopFirebaseRuntime();
     } else {
       clearFirebaseWriteQueue();
@@ -1870,8 +2055,9 @@ void handleFirebaseRuntime() {
   }
 
   if (WiFi.status() != WL_CONNECTED) {
-    if (firebaseStreamRunning)
+    if (firebaseStreamRunning) {
       restartFirebaseStream("wifi disconnected");
+    }
     return;
   }
 
@@ -1886,9 +2072,10 @@ void handleFirebaseRuntime() {
   }
 
   if (ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_FIREBASE_LOOP)
-    return;
+    return; // skip fbApp.loop() — ResponseContext::newBuf() would malloc(512) → NULL crash
 
   fbApp.loop();
+
   if (!fbApp.ready())
     return;
 
@@ -1900,15 +2087,21 @@ void handleFirebaseRuntime() {
   if (uid != firebaseAuthUid) {
     firebaseAuthUid = uid;
     firebaseStreamPath = firebaseBasePathForUid(firebaseAuthUid);
+
     restartFirebaseStream("UID updated");
+
     clearFirebaseWriteQueue();
     queueAllRelayStatesForFirebaseSync();
     firebaseDeviceNameSyncDirty = true;
-    Serial.println("[FB] Connected to Firebase Stream");
+
+    Serial.println("[FB] UID READY: " + firebaseAuthUid);
+    Serial.println("[FB] DEVICE ID: " + firebaseDeviceId());
+    Serial.println("[FB] PATH: " + firebaseStreamPath);
   }
 
   String expectedStreamPath = firebaseBasePathForUid(firebaseAuthUid);
-  if (!expectedStreamPath.isEmpty() && expectedStreamPath != firebaseStreamPath) {
+  if (!expectedStreamPath.isEmpty() &&
+      expectedStreamPath != firebaseStreamPath) {
     firebaseStreamPath = expectedStreamPath;
     restartFirebaseStream("base path changed");
     clearFirebaseWriteQueue();
@@ -1917,23 +2110,28 @@ void handleFirebaseRuntime() {
   }
 
   String currentDeviceName = firebaseDeviceNameValue();
-  if (firebaseDeviceNameSyncDirty || currentDeviceName != firebaseLastSyncedDeviceName) {
+  if (firebaseDeviceNameSyncDirty ||
+      currentDeviceName != firebaseLastSyncedDeviceName) {
     String namePath = firebaseDeviceNamePath(firebaseAuthUid);
-    if (!namePath.isEmpty() && firebaseSetStringAtPath(namePath, currentDeviceName)) {
+    if (!namePath.isEmpty() &&
+        firebaseSetStringAtPath(namePath, currentDeviceName)) {
       firebaseLastSyncedDeviceName = currentDeviceName;
       firebaseDeviceNameSyncDirty = false;
     }
   }
 
-  if (firebaseStreamRunning && (millis() - firebaseLastStreamEventMs > FIREBASE_STREAM_STALE_MS)) {
+  if (firebaseStreamRunning &&
+      (millis() - firebaseLastStreamEventMs > FIREBASE_STREAM_STALE_MS)) {
     restartFirebaseStream("stream stale");
   }
 
   if (firebaseAwaitingInitialStreamData && firebaseStreamStartedAtMs > 0 &&
       (millis() - firebaseStreamStartedAtMs > FIREBASE_INITIAL_SYNC_WAIT_MS)) {
     firebaseAwaitingInitialStreamData = false;
+    Serial.println("[FB] Initial stream wait timed out, pushing local state");
     queueAllRelayStatesForFirebaseSync();
   }
+
   ensureFirebaseStreamConnected();
 }
 
@@ -1950,52 +2148,75 @@ void firebaseTask(void *param) {
 void startFirebaseTask() {
   if (firebaseTaskHandle)
     return;
+
   BaseType_t created = xTaskCreatePinnedToCore(
       firebaseTask, "FirebaseTask", 16384, nullptr, 1, &firebaseTaskHandle, 0);
-  if (created == pdPASS)
-    Serial.println("[FB] Firebase task started");
+
+  if (created == pdPASS) {
+    Serial.println("[FB] Firebase task started on Core 0");
+  } else {
+    firebaseTaskHandle = nullptr;
+    Serial.println("[FB] Failed to start Firebase task");
+  }
 }
 
 bool readCurrentLocalTime(struct tm *ti) {
   if (!ti)
     return false;
+
   time_t nowEpoch = time(nullptr);
   if (nowEpoch <= 0)
     return false;
+
   localtime_r(&nowEpoch, ti);
   int year = ti->tm_year + 1900;
   if (year < 2020)
     return false;
+
   return true;
 }
 
 void sntpTimeAvailableCallback(struct timeval *t) {
-  Serial.println("[TIME] Time synced");
+  Serial.println("[TIME] SNTP sync completed successfully in background!");
   timeSynced = true;
-  calcSunriseSunset();
+  calcSunriseSunset(); // Auto-update sun times when time arrives
 }
 
+// SYNC TIME
 bool syncTime(struct tm *syncedTime = nullptr) {
+  Serial.printf("[TIME] Requesting SNTP sync. WiFi=%s\n",
+                WiFi.status() == WL_CONNECTED ? "connected" : "disconnected");
+
   if (WiFi.status() != WL_CONNECTED)
     return false;
+
   loadTimeSettingsFromAdminStorage();
   ntpSrv.trim();
   if (ntpSrv.isEmpty())
     ntpSrv = "pool.ntp.org";
+
+  // Bind the background callback
   sntp_set_time_sync_notification_cb(sntpTimeAvailableCallback);
+
+  // This triggers the ESP32 to fetch time asynchronously
   configTime(gmtOff, 0, ntpSrv.c_str(), "pool.ntp.org", "time.nist.gov");
+
+  Serial.println("[TIME] SNTP configured. Syncing in background...");
   return true;
 }
 
+//  SUNRISE & SUNSET
 void calcSunriseSunset() {
   if (!locOk || !timeSynced)
     return;
+
   struct tm ti;
   if (!readCurrentLocalTime(&ti))
     return;
 
   int day = ti.tm_mday;
-  if (day == lastCalcDay && srMin >= 0 && srMin <= 1439 && ssMin >= 0 && ssMin <= 1439)
+  if (day == lastCalcDay && srMin >= 0 && srMin <= 1439 && ssMin >= 0 &&
+      ssMin <= 1439)
     return;
 
   int tzH = gmtOff / 3600;
@@ -2023,9 +2244,11 @@ void calcSunriseSunset() {
   srMin = sunriseMinute;
   ssMin = sunsetMinute;
   lastCalcDay = day;
-  Serial.printf("[SUN] Rise=%02d:%02d  Set=%02d:%02d\n", srMin / 60, srMin % 60, ssMin / 60, ssMin % 60);
+  Serial.printf("[SUN] Rise=%02d:%02d  Set=%02d:%02d\n", srMin / 60, srMin % 60,
+                ssMin / 60, ssMin % 60);
 }
 
+//  TIMER CHECK (loop)
 void checkTimers() {
   unsigned long now = millis();
   for (int i = 0; i < NUM_SWITCHES; i++) {
@@ -2034,6 +2257,8 @@ void checkTimers() {
       swTimers[i].active = false;
       swTimers[i].paused = false;
       swTimers[i].remainingMs = 0;
+      Serial.printf("[TIMER] SW%d -> %s\n", i,
+                    swTimers[i].targetState ? "ON" : "OFF");
     }
   }
 }
@@ -2041,16 +2266,19 @@ void checkTimers() {
 int parseClockMinutes(const String &timeText) {
   if (timeText.length() < 5 || timeText.charAt(2) != ':')
     return -1;
+
   int hours = timeText.substring(0, 2).toInt();
   int mins = timeText.substring(3, 5).toInt();
   if (hours < 0 || hours > 23 || mins < 0 || mins > 59)
     return -1;
+
   return hours * 60 + mins;
 }
 
 String formatClockFromMinutes(int totalMinutes) {
   if (totalMinutes < 0 || totalMinutes > 1439)
     return "";
+
   char buf[6];
   sprintf(buf, "%02d:%02d", totalMinutes / 60, totalMinutes % 60);
   return String(buf);
@@ -2059,13 +2287,16 @@ String formatClockFromMinutes(int totalMinutes) {
 int weekdayIndexFromText(String dayText) {
   dayText.trim();
   dayText.toLowerCase();
-  if (dayText.length() >= 3)
+  if (dayText.length() >= 3) {
     dayText = dayText.substring(0, 3);
+  }
+
   const char *days[] = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
   for (int i = 0; i < 7; i++) {
     if (dayText == days[i])
       return i;
   }
+
   return -1;
 }
 
@@ -2099,7 +2330,9 @@ String getFutureStartTime(JsonObject obj) {
 
 String getFutureEndTime(JsonObject obj) { return obj["toTime"].as<String>(); }
 
-bool rangesOverlapMinutes(int startA, int endA, int startB, int endB) { return startA < endB && endA > startB; }
+bool rangesOverlapMinutes(int startA, int endA, int startB, int endB) {
+  return startA < endB && endA > startB;
+}
 
 bool scheduleDaysOverlap(JsonArray daysA, JsonArray daysB) {
   for (JsonVariant dayA : daysA) {
@@ -2118,6 +2351,7 @@ bool validateRecurringSchedulesData(const String &data, String &error) {
     error = "Invalid schedule data";
     return false;
   }
+
   JsonArray arr = doc.as<JsonArray>();
   if (arr.isNull()) {
     error = "Schedule data must be an array";
@@ -2129,8 +2363,10 @@ bool validateRecurringSchedulesData(const String &data, String &error) {
     if (!entry["enabled"].as<bool>())
       continue;
 
-    int fromMin = parseClockMinutes(getRecurringStartTime(entry));
-    int toMin = parseClockMinutes(getRecurringEndTime(entry));
+    String fromTime = getRecurringStartTime(entry);
+    String toTime = getRecurringEndTime(entry);
+    int fromMin = parseClockMinutes(fromTime);
+    int toMin = parseClockMinutes(toTime);
     JsonArray days = entry["days"].as<JsonArray>();
 
     if (fromMin < 0 || toMin < 0) {
@@ -2151,6 +2387,7 @@ bool validateRecurringSchedulesData(const String &data, String &error) {
     JsonObject entryA = arr[i].as<JsonObject>();
     if (!entryA["enabled"].as<bool>())
       continue;
+
     int startA = parseClockMinutes(getRecurringStartTime(entryA));
     int endA = parseClockMinutes(getRecurringEndTime(entryA));
     JsonArray daysA = entryA["days"].as<JsonArray>();
@@ -2159,17 +2396,23 @@ bool validateRecurringSchedulesData(const String &data, String &error) {
       JsonObject entryB = arr[j].as<JsonObject>();
       if (!entryB["enabled"].as<bool>())
         continue;
+
       int startB = parseClockMinutes(getRecurringStartTime(entryB));
       int endB = parseClockMinutes(getRecurringEndTime(entryB));
       JsonArray daysB = entryB["days"].as<JsonArray>();
 
-      if (getScheduleActionValue(entryA, "on") == getScheduleActionValue(entryB, "on") &&
-          scheduleDaysOverlap(daysA, daysB) && rangesOverlapMinutes(startA, endA, startB, endB)) {
-        error = "Schedules with the same action cannot overlap on the same repeat days";
+      if (getScheduleActionValue(entryA, "on") ==
+              getScheduleActionValue(entryB, "on") &&
+          scheduleDaysOverlap(daysA, daysB) &&
+          rangesOverlapMinutes(startA, endA, startB, endB)) {
+        error =
+            "Schedules with the same action cannot overlap on the same repeat "
+            "days";
         return false;
       }
     }
   }
+
   return true;
 }
 
@@ -2179,6 +2422,7 @@ bool validateFutureSchedulesData(const String &data, String &error) {
     error = "Invalid future schedule data";
     return false;
   }
+
   JsonArray arr = doc.as<JsonArray>();
   if (arr.isNull()) {
     error = "Future schedule data must be an array";
@@ -2193,7 +2437,8 @@ bool validateFutureSchedulesData(const String &data, String &error) {
     String date = entry["date"].as<String>();
     String fromTime = getFutureStartTime(entry);
     String toTime = getFutureEndTime(entry);
-    bool legacyOneShot = !fromTime.isEmpty() && toTime.isEmpty() && entry["fromTime"].as<String>().isEmpty();
+    bool legacyOneShot = !fromTime.isEmpty() && toTime.isEmpty() &&
+                         entry["fromTime"].as<String>().isEmpty();
     int fromMin = parseClockMinutes(fromTime);
 
     if (date.length() < 10) {
@@ -2211,7 +2456,9 @@ bool validateFutureSchedulesData(const String &data, String &error) {
         return false;
       }
       if (toMin <= fromMin) {
-        error = "Each enabled future schedule needs a Time Range where To is after From";
+        error =
+            "Each enabled future schedule needs a Time Range where To is after "
+            "From";
         return false;
       }
     }
@@ -2221,6 +2468,7 @@ bool validateFutureSchedulesData(const String &data, String &error) {
     JsonObject entryA = arr[i].as<JsonObject>();
     if (!entryA["enabled"].as<bool>())
       continue;
+
     String dateA = entryA["date"].as<String>();
     int startA = parseClockMinutes(getFutureStartTime(entryA));
     String endTimeA = getFutureEndTime(entryA);
@@ -2230,22 +2478,29 @@ bool validateFutureSchedulesData(const String &data, String &error) {
       JsonObject entryB = arr[j].as<JsonObject>();
       if (!entryB["enabled"].as<bool>())
         continue;
+
       if (dateA != entryB["date"].as<String>())
         continue;
+
       int startB = parseClockMinutes(getFutureStartTime(entryB));
       String endTimeB = getFutureEndTime(entryB);
       int endB = endTimeB.isEmpty() ? startB + 1 : parseClockMinutes(endTimeB);
 
-      if (getScheduleActionValue(entryA, "on") == getScheduleActionValue(entryB, "on") &&
+      if (getScheduleActionValue(entryA, "on") ==
+              getScheduleActionValue(entryB, "on") &&
           rangesOverlapMinutes(startA, endA, startB, endB)) {
-        error = "Future schedules with the same action cannot overlap on the same date";
+        error =
+            "Future schedules with the same action cannot overlap on the same "
+            "date";
         return false;
       }
     }
   }
+
   return true;
 }
 
+//  SCHEDULE CHECK (loop)
 void checkSchedules() {
   if (!timeSynced)
     return;
@@ -2262,6 +2517,7 @@ void checkSchedules() {
   String today = dn[ti.tm_wday];
 
   for (int sw = 0; sw < NUM_SWITCHES; sw++) {
+    // Regular schedules
     prefs.begin("sched", true);
     String sj = prefs.getString(("s" + String(sw)).c_str(), "[]");
     prefs.end();
@@ -2287,17 +2543,23 @@ void checkSchedules() {
           continue;
 
         String action = getScheduleActionValue(o, "on");
-        int fromMin = parseClockMinutes(getRecurringStartTime(o));
-        if (fromMin >= 0 && curMin == fromMin)
+        String fromT = getRecurringStartTime(o);
+        int fromMin = parseClockMinutes(fromT);
+        if (fromMin >= 0 && curMin == fromMin) {
           queueAutomationAction(sw, action == "on", AUTOMATION_SCHEDULE);
+        }
 
-        int toMin = parseClockMinutes(getRecurringEndTime(o));
-        if (toMin >= 0 && curMin == toMin)
+        String toT = getRecurringEndTime(o);
+        int toMin = parseClockMinutes(toT);
+        if (toMin >= 0 && curMin == toMin) {
           queueAutomationAction(sw, action != "on", AUTOMATION_SCHEDULE);
+        }
       }
+
       sd.clear();
     }
 
+    // Future schedules
     prefs.begin("fsched", false);
     String fj = prefs.getString(("f" + String(sw)).c_str(), "[]");
 
@@ -2310,25 +2572,30 @@ void checkSchedules() {
       }
 
       char ds[11];
-      sprintf(ds, "%04d-%02d-%02d", ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday);
+      sprintf(ds, "%04d-%02d-%02d", ti.tm_year + 1900, ti.tm_mon + 1,
+              ti.tm_mday);
       JsonArray fa = fd.as<JsonArray>();
       bool mod = false;
       for (int x = fa.size() - 1; x >= 0; x--) {
         JsonObject fo = fa[x];
         if (!fo["enabled"].as<bool>())
           continue;
+
         if (fo["date"].as<String>() != String(ds))
           continue;
 
         String action = getScheduleActionValue(fo, "on");
-        int fromMin = parseClockMinutes(getFutureStartTime(fo));
-        int toMin = parseClockMinutes(getFutureEndTime(fo));
+        String fromT = getFutureStartTime(fo);
+        String toT = getFutureEndTime(fo);
+        int fromMin = parseClockMinutes(fromT);
+        int toMin = parseClockMinutes(toT);
         bool removeEntry = false;
 
         if (fromMin >= 0 && curMin == fromMin) {
           queueAutomationAction(sw, action == "on", AUTOMATION_FUTURE_SCHEDULE);
-          if (toMin < 0)
+          if (toMin < 0) {
             removeEntry = true;
+          }
         }
 
         if (toMin >= 0 && curMin == toMin) {
@@ -2348,14 +2615,17 @@ void checkSchedules() {
         prefs.putString(("f" + String(sw)).c_str(), nj);
         notifyStorage();
       }
+
       fd.clear();
     }
+
     prefs.end();
   }
 }
 
 void checkRestartSchedule() {
-  if (!restartScheduleEnabled || restartScheduleMinute < 0 || restartScheduleMinute > 1439 || restartScheduleDayMask == 0)
+  if (!restartScheduleEnabled || restartScheduleMinute < 0 ||
+      restartScheduleMinute > 1439 || restartScheduleDayMask == 0)
     return;
   if (!timeSynced)
     return;
@@ -2373,12 +2643,14 @@ void checkRestartSchedule() {
     return;
 
   char slotBuf[20];
-  sprintf(slotBuf, "%04d-%02d-%02d-%02d:%02d", ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday, ti.tm_hour, ti.tm_min);
+  sprintf(slotBuf, "%04d-%02d-%02d-%02d:%02d", ti.tm_year + 1900, ti.tm_mon + 1,
+          ti.tm_mday, ti.tm_hour, ti.tm_min);
   String currentSlotKey = String(slotBuf);
   if (restartScheduleLastRunKey == currentSlotKey)
     return;
 
-  long stamp = (long)(ti.tm_year + 1900) * 1000000L + (long)ti.tm_yday * 1440L + curMin;
+  long stamp =
+      (long)(ti.tm_year + 1900) * 1000000L + (long)ti.tm_yday * 1440L + curMin;
   if (stamp == lastRestartScheduleStamp)
     return;
 
@@ -2387,10 +2659,13 @@ void checkRestartSchedule() {
   prefs.begin("admin", false);
   prefs.putString("rsLast", restartScheduleLastRunKey);
   prefs.end();
+  Serial.printf("[RESTART] Scheduled restart at %02d:%02d (wday=%d)\n",
+                ti.tm_hour, ti.tm_min, ti.tm_wday);
   restartFlag = true;
   restartAt = millis() + 500;
 }
 
+//  SENSOR AUTOMATION CHECK (loop)
 void checkSensors() {
   float cTemp = 0.0f;
   float cHum = 0.0f;
@@ -2408,6 +2683,7 @@ void checkSensors() {
     String sj = prefs.getString(("x" + String(sw)).c_str(), "");
     prefs.end();
 
+    // Temperature
     if (ahtOk && !tj.isEmpty()) {
       JsonDocument d;
       if (!deserializeJson(d, tj) && d["enabled"].as<bool>()) {
@@ -2422,9 +2698,11 @@ void checkSensors() {
         else if (c == "between")
           act = cTemp >= d["min"].as<float>() && cTemp <= d["max"].as<float>();
         if (act)
-          queueAutomationAction(sw, d["action"].as<String>() == "on", AUTOMATION_TEMPERATURE);
+          queueAutomationAction(sw, d["action"].as<String>() == "on",
+                                AUTOMATION_TEMPERATURE);
       }
     }
+    // Humidity
     if (ahtOk && !hj.isEmpty()) {
       JsonDocument d;
       if (!deserializeJson(d, hj) && d["enabled"].as<bool>()) {
@@ -2439,9 +2717,11 @@ void checkSensors() {
         else if (c == "between")
           act = cHum >= d["min"].as<float>() && cHum <= d["max"].as<float>();
         if (act)
-          queueAutomationAction(sw, d["action"].as<String>() == "on", AUTOMATION_HUMIDITY);
+          queueAutomationAction(sw, d["action"].as<String>() == "on",
+                                AUTOMATION_HUMIDITY);
       }
     }
+    // Sunrise/Sunset
     if (!sj.isEmpty() && locOk && timeSynced) {
       JsonDocument d;
       if (!deserializeJson(d, sj) && d["enabled"].as<bool>()) {
@@ -2464,20 +2744,85 @@ void checkSensors() {
           else if (c == "between_sunrise_sunset")
             act = now >= srMin + off && now <= ssMin + off;
           if (act)
-            queueAutomationAction(sw, d["action"].as<String>() == "on", AUTOMATION_SUN);
+            queueAutomationAction(sw, d["action"].as<String>() == "on",
+                                  AUTOMATION_SUN);
         }
       }
     }
   }
 }
 
+//  WiFi CONNECTION
+// void connectWiFi() {
+//   WiFi.mode(WIFI_STA);
+//   if (!dhcpOn && sIp.length() > 0) {
+//     IPAddress ip, gw, sn, dns;
+//     ip.fromString(sIp);
+//     gw.fromString(sGw);
+//     sn.fromString(sMask);
+//     dns.fromString(sDns);
+//     WiFi.config(ip, gw, sn, dns);
+//   }
+
+//   // Try saved credentials first
+//   prefs.begin("wfcfg", true);
+//   String savedSsid = prefs.getString("ssid", "");
+//   String savedPass = prefs.getString("pass", "");
+//   prefs.end();
+
+//   if (savedSsid.length() > 0) {
+//     WiFi.begin(savedSsid.c_str(), savedPass.c_str());
+//     Serial.print("[WIFI] Connecting to " + savedSsid);
+//   } else {
+//     WiFi.begin();
+//     Serial.print("[WIFI] Connecting");
+//   }
+
+//   for (int i = 0; i < 20 && WiFi.status() != WL_CONNECTED; i++) {
+//     delay(500);
+//     Serial.print(".");
+//   }
+//   Serial.println();
+
+//   if (WiFi.status() == WL_CONNECTED) {
+//     Serial.printf("[WIFI] Connected: %s  IP: %s\n", WiFi.SSID().c_str(),
+//     WiFi.localIP().toString().c_str());
+//   } else {
+//     Serial.println("[WIFI] Failed -> starting config portal...");
+//     WiFiManager wm;
+//     wm.setConfigPortalTimeout(180);
+//     wm.setCaptivePortalEnable(true);
+//     wm.setAPCallback([](WiFiManager *myWiFiManager) {
+//       Serial.println("[WIFI] AP Started - connect to ESP HOME and go to
+//       192.168.4.1");
+//     });
+//     if (!wm.autoConnect("ESP HOME")) {
+//       Serial.println("[WIFI] Portal timeout - restarting...");
+//       ESP.restart();
+//     }
+//     if (WiFi.status() == WL_CONNECTED) {
+//       Serial.printf("[WIFI] Portal OK: %s\n",
+//       WiFi.localIP().toString().c_str());
+//       // Save the credentials WiFiManager just connected with
+//       prefs.begin("wfcfg", false);
+//       prefs.putString("ssid", WiFi.SSID());
+//       prefs.putString("pass", WiFi.psk());
+//       prefs.end();
+//     }
+//   }
+// }
+
 bool connectToSavedWiFi() {
   String savedSsid;
   String savedPass;
-  Serial.println("\n[WIFI] Connecting...");
+
+  Serial.println("\n==============================");
+  Serial.println("WiFi Connection Started");
+  Serial.println("==============================");
 
   if (!getSavedWifiCredentials(savedSsid, savedPass)) {
-    Serial.println("[WIFI] No saved WiFi found! Starting Config Portal.");
+    Serial.println("\n[WARNING] No saved WiFi found!");
+    Serial.println("[INFO] Starting Config Portal...");
     return runWifiConfigPortal();
   }
 
@@ -2487,22 +2832,38 @@ bool connectToSavedWiFi() {
   WiFi.begin(savedSsid.c_str(), savedPass.c_str());
 
   int attempts = 0;
+
   while (attempts < WIFI_CONNECT_MAX_ATTEMPTS) {
+    char attemptStr[16];
+    snprintf(attemptStr, sizeof(attemptStr), "Attempt: %d/%d", attempts + 1,
+             WIFI_CONNECT_MAX_ATTEMPTS);
+    Serial.printf("[INFO] %s\n", attemptStr);
+
     if (WiFi.status() == WL_CONNECTED) {
-      Serial.println("[OK] WiFi Connected");
-      Serial.printf("     SSID: %s\n", WiFi.SSID().c_str());
-      Serial.printf("     IP:   %s\n", WiFi.localIP().toString().c_str());
+      Serial.println("\n[SUCCESS] Connected to Saved WiFi");
+      Serial.printf("SSID       : %s\n", WiFi.SSID().c_str());
+      Serial.printf("IP Address : %s\n", WiFi.localIP().toString().c_str());
       WiFi.setSleep(false);
+      Serial.println("[WIFI] Power save disabled after reconnect");
+      Serial.println("==============================\n");
       delay(2000);
       return true;
     }
+
     delay(WIFI_CONNECT_RETRY_MS);
     attempts++;
   }
-  Serial.println("[WIFI] Connection failed. Starting Config Portal.");
+
+  Serial.println("\n[WARNING] Saved WiFi connection failed!");
+  Serial.println("[INFO] Starting Config Portal...");
+  Serial.println("AP SSID    : ESP HOME");
+  Serial.println("AP IP      : 192.168.4.1");
+  Serial.println("Timeout    : 180 seconds");
+  Serial.println("------------------------------");
   return runWifiConfigPortal();
 }
 
+//  PHYSICAL INPUT SWITCH HANDLING
 void checkPhysicalSwitches() {
   for (int i = 0; i < NUM_SWITCHES; i++) {
     bool reading = digitalRead(inPin[i]);
@@ -2513,57 +2874,86 @@ void checkPhysicalSwitches() {
       if (reading == LOW) {
         bool currentState = readSwState(i);
         setRelayState(i, !currentState, "physical");
+        bool newState = readSwState(i);
+        Serial.printf("[SW] Physical toggle SW%d -> %s\n", i,
+                      newState ? "ON" : "OFF");
       }
     }
     lastInState[i] = reading;
   }
 }
 
-void sendWebFile(AsyncWebServerRequest *request, const char *path, const char *contentType) {
-  // MEMORY GUARD INCREASED TO 35,000 BYTES TO PROTECT SSL AND JSON
-  if (ESP.getFreeHeap() < 35000) {
+void sendWebFile(AsyncWebServerRequest *request, const char *path,
+                 const char *contentType) {
+  // Reject page requests when heap is too low to safely allocate response objects
+  if (ESP.getFreeHeap() < 28000) {
     request->send(503, "text/plain", "Low memory");
     return;
   }
-
   String gzPath = String(path) + ".gz";
   bool noStore = String(contentType) == "text/html";
 
   if (SPIFFS.exists(gzPath)) {
-    AsyncWebServerResponse *response = request->beginResponse(SPIFFS, gzPath, contentType);
+    Serial.printf("[HTTP] %s -> %s\n", request->url().c_str(), gzPath.c_str());
+    AsyncWebServerResponse *response =
+        request->beginResponse(SPIFFS, gzPath, contentType);
     response->addHeader("Content-Encoding", "gzip");
-    if (noStore)
+    if (noStore) {
       response->addHeader("Cache-Control", "no-store");
+    }
     request->send(response);
     return;
   }
 
   if (SPIFFS.exists(path)) {
-    AsyncWebServerResponse *response = request->beginResponse(SPIFFS, path, contentType);
-    if (noStore)
+    Serial.printf("[HTTP] %s -> %s\n", request->url().c_str(), path);
+    AsyncWebServerResponse *response =
+        request->beginResponse(SPIFFS, path, contentType);
+    if (noStore) {
       response->addHeader("Cache-Control", "no-store");
+    }
     request->send(response);
     return;
   }
 
+  Serial.printf("[HTTP] Missing file for %s (expected %s or %s)\n",
+                request->url().c_str(), path, gzPath.c_str());
   request->send(404, "text/plain", "File not found");
 }
 
 //  WEB SERVER: ALL API ENDPOINTS
 void setupWebServer() {
-  // CORS AND MEMORY CLOSE HEADERS
+  // CORS
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
-  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "Content-Type");
-  DefaultHeaders::Instance().addHeader("Connection", "close"); // FORCES BROWSERS TO RELEASE RAM INSTANTLY
+  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods",
+                                       "GET, POST, OPTIONS");
+  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers",
+                                       "Content-Type");
 
-  server.on("/ping", HTTP_GET, [](AsyncWebServerRequest *req) { req->send(200, "text/plain", "pong"); });
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *req) { sendWebFile(req, "/index.html", "text/html"); });
-  server.on("/index.html", HTTP_GET, [](AsyncWebServerRequest *req) { sendWebFile(req, "/index.html", "text/html"); });
-  server.on("/config.html", HTTP_GET, [](AsyncWebServerRequest *req) { sendWebFile(req, "/config.html", "text/html"); });
-  server.on("/index.svg", HTTP_GET, [](AsyncWebServerRequest *req) { sendWebFile(req, "/index.svg", "image/svg+xml"); });
-  server.on("/settings.svg", HTTP_GET, [](AsyncWebServerRequest *req) { sendWebFile(req, "/settings.svg", "image/svg+xml"); });
+  server.on("/ping", HTTP_GET, [](AsyncWebServerRequest *req) {
+    req->send(200, "text/plain", "pong");
+  });
 
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *req) {
+    sendWebFile(req, "/index.html", "text/html");
+  });
+
+  server.on("/index.html", HTTP_GET, [](AsyncWebServerRequest *req) {
+    sendWebFile(req, "/index.html", "text/html");
+  });
+
+  server.on("/config.html", HTTP_GET, [](AsyncWebServerRequest *req) {
+    sendWebFile(req, "/config.html", "text/html");
+  });
+
+  server.on("/index.svg", HTTP_GET, [](AsyncWebServerRequest *req) {
+    sendWebFile(req, "/index.svg", "image/svg+xml");
+  });
+
+  server.on("/settings.svg", HTTP_GET, [](AsyncWebServerRequest *req) {
+    sendWebFile(req, "/settings.svg", "image/svg+xml");
+  });
+  // ---- STATUS ----
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *req) {
     JsonDocument d;
     d["timeSynced"] = timeSynced;
@@ -2572,28 +2962,35 @@ void setupWebServer() {
     d["wifiOk"] = (WiFi.status() == WL_CONNECTED);
     d["fbOn"] = fbOn;
     d["mac"] = WiFi.macAddress();
-
-    // DIRECT ASYNC RESPONSE STREAM (SAVES MASSIVE RAM vs String copying)
-    AsyncResponseStream *response = req->beginResponseStream("application/json");
-    serializeJson(d, *response);
-    req->send(response);
+    String r;
+    serializeJson(d, r);
+    req->send(200, "application/json", r);
   });
-
+  // ---- LOGIN ----
   server.on("/api/login", HTTP_POST, [](AsyncWebServerRequest *req) {
     bool resetAdminRequested = false;
     if (req->hasParam("resetAdmin", true)) {
       String resetValue = req->getParam("resetAdmin", true)->value();
       resetValue.trim();
       resetValue.toLowerCase();
-      resetAdminRequested = (resetValue == "1" || resetValue == "true" || resetValue == "yes" || resetValue == "on");
+      resetAdminRequested = (resetValue == "1" || resetValue == "true" ||
+                             resetValue == "yes" || resetValue == "on");
     }
 
     if (resetAdminRequested) {
       if (consumeBootButtonHoldForReset()) {
+        Serial.println("[AUTH] Admin reset requested: BOOT hold verified");
         resetAdminToFactoryDefault();
-        req->send(200, "application/json", "{\"ok\":true,\"resetAdmin\":true,\"msg\":\"Admin reset to default (esp / 456456).\"}");
+        req->send(200, "application/json",
+                  "{\"ok\":true,\"resetAdmin\":true,\"msg\":\"Admin reset to "
+                  "default (esp / 456456). Sign in now.\"}");
       } else {
-        req->send(400, "application/json", "{\"ok\":false,\"resetAdmin\":true,\"error\":\"Hold BOOT button for 5s first.\"}");
+        Serial.println(
+            "[AUTH] Admin reset requested: BOOT hold not detected yet");
+        req->send(
+            400, "application/json",
+            "{\"ok\":false,\"resetAdmin\":true,\"error\":\"Hold BOOT button "
+            "for 5 seconds first, then press SIGN IN to reset admin.\"}");
       }
       return;
     }
@@ -2606,11 +3003,12 @@ void setupWebServer() {
     String p = req->getParam("pass", true)->value();
     String role;
     if (verifyLogin(u, p, role))
-      req->send(200, "application/json", "{\"ok\":true,\"role\":\"" + role + "\"}");
+      req->send(200, "application/json",
+                "{\"ok\":true,\"role\":\"" + role + "\"}");
     else
       req->send(401, "application/json", "{\"error\":\"Invalid credentials\"}");
   });
-
+  // ---- SWITCHES ----
   server.on("/api/switches", HTTP_GET, [](AsyncWebServerRequest *req) {
     JsonDocument d;
     JsonArray na = d["names"].to<JsonArray>();
@@ -2621,6 +3019,8 @@ void setupWebServer() {
       na.add(swName[i]);
       ic.add(swIcon[i]);
       st.add(readSwState(i));
+
+      // Convert Enum back to String for the Web UI
       if (relayMode[i] == RELAY_MODE_ON)
         rl.add("on");
       else if (relayMode[i] == RELAY_MODE_REMEMBER)
@@ -2628,10 +3028,9 @@ void setupWebServer() {
       else
         rl.add("off");
     }
-    // DIRECT ASYNC STREAM
-    AsyncResponseStream *response = req->beginResponseStream("application/json");
-    serializeJson(d, *response);
-    req->send(response);
+    String r;
+    serializeJson(d, r);
+    req->send(200, "application/json", r);
   });
 
   server.on("/api/switch/toggle", HTTP_POST, [](AsyncWebServerRequest *req) {
@@ -2678,8 +3077,13 @@ void setupWebServer() {
     for (int i = 0; i < NUM_SWITCHES; i++) {
       String k = "relay" + String(i);
       if (req->hasParam(k, true)) {
+        // Read the string from the web request
         String modeStr = req->getParam(k, true)->value();
+
+        // Save the raw string to NVS preferences
         prefs.putString(("r" + String(i)).c_str(), modeStr);
+
+        // Convert to Enum for the active RAM state
         if (modeStr == "on")
           relayMode[i] = RELAY_MODE_ON;
         else if (modeStr == "remember")
@@ -2693,139 +3097,165 @@ void setupWebServer() {
     req->send(200, "application/json", "{\"ok\":true}");
   });
 
+  // Keep Firebase auth user APIs available even in low-memory mode.
   server.on("/api/fb/auth/users", HTTP_GET, [](AsyncWebServerRequest *req) {
     JsonDocument stored;
     loadFirebaseAuthUsersDoc(stored);
 
-    JsonDocument responseDoc;
-    JsonArray out = responseDoc.to<JsonArray>();
+    JsonDocument response;
+    JsonArray out = response.to<JsonArray>();
     for (JsonObject user : stored.as<JsonArray>()) {
       JsonObject item = out.createNestedObject();
       item["email"] = user["email"].as<String>();
     }
 
-    AsyncResponseStream *response = req->beginResponseStream("application/json");
-    serializeJson(responseDoc, *response);
-    req->send(response);
+    String r;
+    serializeJson(response, r);
+    req->send(200, "application/json", r);
   });
 
-  server.on("/api/fb/auth/users/password", HTTP_POST, [](AsyncWebServerRequest *req) {
-    if (!req->hasParam("email", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing email\"}");
-      return;
-    }
-    if (!requireAdminVerification(req))
-      return;
+  server.on(
+      "/api/fb/auth/users/password", HTTP_POST, [](AsyncWebServerRequest *req) {
+        if (!req->hasParam("email", true)) {
+          req->send(400, "application/json", "{\"error\":\"Missing email\"}");
+          return;
+        }
+        if (!requireAdminVerification(req)) {
+          return;
+        }
 
-    String email = normalizeEmail(req->getParam("email", true)->value());
-    if (!isValidEmailAddress(email)) {
-      req->send(400, "application/json", "{\"error\":\"Invalid email address\"}");
-      return;
-    }
+        String email = normalizeEmail(req->getParam("email", true)->value());
+        if (!isValidEmailAddress(email)) {
+          req->send(400, "application/json",
+                    "{\"error\":\"Invalid email address\"}");
+          return;
+        }
 
-    JsonDocument doc;
-    loadFirebaseAuthUsersDoc(doc);
-    JsonArray users = doc.as<JsonArray>();
-    int userIndex = findFirebaseAuthUserIndex(users, email);
-    if (userIndex < 0) {
-      req->send(404, "application/json", "{\"error\":\"Firebase auth user not found\"}");
-      return;
-    }
+        JsonDocument doc;
+        loadFirebaseAuthUsersDoc(doc);
+        JsonArray users = doc.as<JsonArray>();
+        int userIndex = findFirebaseAuthUserIndex(users, email);
+        if (userIndex < 0) {
+          req->send(404, "application/json",
+                    "{\"error\":\"Firebase auth user not found\"}");
+          return;
+        }
 
-    JsonObject user = users[userIndex].as<JsonObject>();
-    String password = user["password"].as<String>();
+        JsonObject user = users[userIndex].as<JsonObject>();
+        String password = user["password"].as<String>();
 
-    JsonDocument responseDoc;
-    responseDoc["ok"] = true;
-    responseDoc["password"] = password;
+        JsonDocument response;
+        response["ok"] = true;
+        response["password"] = password;
+        String r;
+        serializeJson(response, r);
+        req->send(200, "application/json", r);
+      });
 
-    AsyncResponseStream *response = req->beginResponseStream("application/json");
-    serializeJson(responseDoc, *response);
-    req->send(response);
-  });
+  server.on(
+      "/api/fb/auth/users/add", HTTP_POST, [](AsyncWebServerRequest *req) {
+        if (!req->hasParam("email", true) || !req->hasParam("password", true)) {
+          req->send(400, "application/json", "{\"error\":\"Missing params\"}");
+          return;
+        }
+        if (!requireAdminVerification(req)) {
+          return;
+        }
 
-  server.on("/api/fb/auth/users/add", HTTP_POST, [](AsyncWebServerRequest *req) {
-    if (!req->hasParam("email", true) || !req->hasParam("password", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing params\"}");
-      return;
-    }
-    if (!requireAdminVerification(req))
-      return;
+        String email = normalizeEmail(req->getParam("email", true)->value());
+        String password = req->getParam("password", true)->value();
+        if (!isValidEmailAddress(email)) {
+          req->send(400, "application/json",
+                    "{\"error\":\"Invalid email address\"}");
+          return;
+        }
+        if (password.isEmpty()) {
+          req->send(400, "application/json",
+                    "{\"error\":\"Password is required\"}");
+          return;
+        }
 
-    String email = normalizeEmail(req->getParam("email", true)->value());
-    String password = req->getParam("password", true)->value();
-    if (!isValidEmailAddress(email)) {
-      req->send(400, "application/json", "{\"error\":\"Invalid email address\"}");
-      return;
-    }
-    if (password.isEmpty()) {
-      req->send(400, "application/json", "{\"error\":\"Password is required\"}");
-      return;
-    }
+        JsonDocument doc;
+        loadFirebaseAuthUsersDoc(doc);
+        JsonArray users = doc.as<JsonArray>();
+        if (findFirebaseAuthUserIndex(users, email) >= 0) {
+          req->send(409, "application/json",
+                    "{\"error\":\"Firebase auth user already exists\"}");
+          return;
+        }
 
-    JsonDocument doc;
-    loadFirebaseAuthUsersDoc(doc);
-    JsonArray users = doc.as<JsonArray>();
-    if (findFirebaseAuthUserIndex(users, email) >= 0) {
-      req->send(409, "application/json", "{\"error\":\"Firebase auth user already exists\"}");
-      return;
-    }
+        JsonObject user = users.createNestedObject();
+        user["email"] = email;
+        user["password"] = password;
+        saveFirebaseAuthUsersDoc(doc);
+        firebaseRuntimeDirty = true;
+        notifyStorage();
+        req->send(200, "application/json", "{\"ok\":true}");
+      });
 
-    JsonObject user = users.createNestedObject();
-    user["email"] = email;
-    user["password"] = password;
-    saveFirebaseAuthUsersDoc(doc);
-    firebaseRuntimeDirty = true;
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true}");
-  });
+  server.on(
+      "/api/fb/auth/users/remove", HTTP_POST, [](AsyncWebServerRequest *req) {
+        if (!req->hasParam("email", true)) {
+          req->send(400, "application/json", "{\"error\":\"Missing email\"}");
+          return;
+        }
+        if (!requireAdminVerification(req)) {
+          return;
+        }
 
-  server.on("/api/fb/auth/users/remove", HTTP_POST, [](AsyncWebServerRequest *req) {
-    if (!req->hasParam("email", true)) {
-      req->send(400, "application/json", "{\"error\":\"Missing email\"}");
-      return;
-    }
-    if (!requireAdminVerification(req))
-      return;
+        String email = normalizeEmail(req->getParam("email", true)->value());
+        if (!isValidEmailAddress(email)) {
+          req->send(400, "application/json",
+                    "{\"error\":\"Invalid email address\"}");
+          return;
+        }
 
-    String email = normalizeEmail(req->getParam("email", true)->value());
-    if (!isValidEmailAddress(email)) {
-      req->send(400, "application/json", "{\"error\":\"Invalid email address\"}");
-      return;
-    }
+        JsonDocument doc;
+        loadFirebaseAuthUsersDoc(doc);
+        JsonArray users = doc.as<JsonArray>();
+        int userIndex = findFirebaseAuthUserIndex(users, email);
+        if (userIndex < 0) {
+          req->send(404, "application/json",
+                    "{\"error\":\"Firebase auth user not found\"}");
+          return;
+        }
 
-    JsonDocument doc;
-    loadFirebaseAuthUsersDoc(doc);
-    JsonArray users = doc.as<JsonArray>();
-    int userIndex = findFirebaseAuthUserIndex(users, email);
-    if (userIndex < 0) {
-      req->send(404, "application/json", "{\"error\":\"Firebase auth user not found\"}");
-      return;
-    }
-
-    users.remove(userIndex);
-    saveFirebaseAuthUsersDoc(doc);
-    firebaseRuntimeDirty = true;
-    notifyStorage();
-    req->send(200, "application/json", "{\"ok\":true}");
-  });
+        users.remove(userIndex);
+        saveFirebaseAuthUsersDoc(doc);
+        firebaseRuntimeDirty = true;
+        notifyStorage();
+        req->send(200, "application/json", "{\"ok\":true}");
+      });
 
   uint32_t heapAfterCoreRoutes = ESP.getFreeHeap();
   if (heapAfterCoreRoutes < MIN_FREE_HEAP_FOR_EXTENDED_ROUTES) {
     coreRoutesOnly = true;
+    Serial.printf("[SERVER] Low heap after core routes: %u bytes\n",
+                  heapAfterCoreRoutes);
+    Serial.println(
+        "[SERVER] Starting in core-routes-only mode. Extended config APIs are "
+        "skipped.");
   } else {
     coreRoutesOnly = false;
-
+    // ---- TIMERS (volatile) ----
     server.on("/api/timer/set", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("sw", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing sw\"}");
         return;
       }
       int sw = req->getParam("sw", true)->value().toInt();
-      int h = req->hasParam("h", true) ? req->getParam("h", true)->value().toInt() : 0;
-      int m = req->hasParam("m", true) ? req->getParam("m", true)->value().toInt() : 0;
-      int s = req->hasParam("s", true) ? req->getParam("s", true)->value().toInt() : 0;
-      String act = req->hasParam("action", true) ? req->getParam("action", true)->value() : "off";
+      int h = req->hasParam("h", true)
+                  ? req->getParam("h", true)->value().toInt()
+                  : 0;
+      int m = req->hasParam("m", true)
+                  ? req->getParam("m", true)->value().toInt()
+                  : 0;
+      int s = req->hasParam("s", true)
+                  ? req->getParam("s", true)->value().toInt()
+                  : 0;
+      String act = req->hasParam("action", true)
+                       ? req->getParam("action", true)->value()
+                       : "off";
       unsigned long dur = (h * 3600UL + m * 60UL + s) * 1000UL;
       if (dur == 0 || sw < 0 || sw >= NUM_SWITCHES) {
         req->send(400, "application/json", "{\"error\":\"Invalid\"}");
@@ -2854,16 +3284,20 @@ void setupWebServer() {
       unsigned long nowMs = millis();
 
       for (int i = 0; i < NUM_SWITCHES; i++) {
-        if (filterSw >= 0 && i != filterSw)
+        if (filterSw >= 0 && i != filterSw) {
           continue;
-        if (!swTimers[i].active)
+        }
+
+        if (!swTimers[i].active) {
           continue;
+        }
 
         unsigned long remainingMs = 0;
-        if (swTimers[i].paused)
+        if (swTimers[i].paused) {
           remainingMs = swTimers[i].remainingMs;
-        else {
-          remainingMs = swTimers[i].endMs > nowMs ? swTimers[i].endMs - nowMs : 0;
+        } else {
+          remainingMs =
+              swTimers[i].endMs > nowMs ? swTimers[i].endMs - nowMs : 0;
           swTimers[i].remainingMs = remainingMs;
         }
 
@@ -2883,9 +3317,9 @@ void setupWebServer() {
         timer["paused"] = swTimers[i].paused;
       }
 
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(d, *response);
-      req->send(response);
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r);
     });
 
     server.on("/api/timer/pause", HTTP_POST, [](AsyncWebServerRequest *req) {
@@ -2893,11 +3327,13 @@ void setupWebServer() {
         req->send(400, "application/json", "{\"error\":\"Missing sw\"}");
         return;
       }
+
       int sw = req->getParam("sw", true)->value().toInt();
       if (sw < 0 || sw >= NUM_SWITCHES) {
         req->send(400, "application/json", "{\"error\":\"Invalid switch\"}");
         return;
       }
+
       if (!swTimers[sw].active) {
         req->send(404, "application/json", "{\"error\":\"Timer not found\"}");
         return;
@@ -2905,13 +3341,16 @@ void setupWebServer() {
 
       if (!swTimers[sw].paused) {
         unsigned long nowMs = millis();
-        unsigned long remainingMs = swTimers[sw].endMs > nowMs ? swTimers[sw].endMs - nowMs : 0;
+        unsigned long remainingMs =
+            swTimers[sw].endMs > nowMs ? swTimers[sw].endMs - nowMs : 0;
         if (remainingMs == 0) {
           swTimers[sw].active = false;
           swTimers[sw].paused = false;
           swTimers[sw].endMs = 0;
           swTimers[sw].remainingMs = 0;
-          req->send(200, "application/json", "{\"ok\":true,\"active\":false,\"paused\":false,\"remainingSec\":0}");
+          req->send(200, "application/json",
+                    "{\"ok\":true,\"active\":false,\"paused\":false,"
+                    "\"remainingSec\":0}");
           return;
         }
         swTimers[sw].remainingMs = remainingMs;
@@ -2923,10 +3362,9 @@ void setupWebServer() {
       d["active"] = swTimers[sw].active;
       d["paused"] = swTimers[sw].paused;
       d["remainingSec"] = (swTimers[sw].remainingMs + 999) / 1000;
-
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(d, *response);
-      req->send(response);
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r);
     });
 
     server.on("/api/timer/resume", HTTP_POST, [](AsyncWebServerRequest *req) {
@@ -2934,11 +3372,13 @@ void setupWebServer() {
         req->send(400, "application/json", "{\"error\":\"Missing sw\"}");
         return;
       }
+
       int sw = req->getParam("sw", true)->value().toInt();
       if (sw < 0 || sw >= NUM_SWITCHES) {
         req->send(400, "application/json", "{\"error\":\"Invalid switch\"}");
         return;
       }
+
       if (!swTimers[sw].active) {
         req->send(404, "application/json", "{\"error\":\"Timer not found\"}");
         return;
@@ -2949,7 +3389,9 @@ void setupWebServer() {
           swTimers[sw].active = false;
           swTimers[sw].paused = false;
           swTimers[sw].endMs = 0;
-          req->send(200, "application/json", "{\"ok\":true,\"active\":false,\"paused\":false,\"remainingSec\":0}");
+          req->send(200, "application/json",
+                    "{\"ok\":true,\"active\":false,\"paused\":false,"
+                    "\"remainingSec\":0}");
           return;
         }
         swTimers[sw].endMs = millis() + swTimers[sw].remainingMs;
@@ -2961,10 +3403,9 @@ void setupWebServer() {
       d["active"] = swTimers[sw].active;
       d["paused"] = swTimers[sw].paused;
       d["remainingSec"] = (swTimers[sw].remainingMs + 999) / 1000;
-
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(d, *response);
-      req->send(response);
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r);
     });
 
     server.on("/api/timer/clear", HTTP_POST, [](AsyncWebServerRequest *req) {
@@ -2979,13 +3420,13 @@ void setupWebServer() {
       }
       req->send(200, "application/json", "{\"ok\":true}");
     });
-
+    // ---- SCHEDULES (persistent) ----
     server.on("/api/schedules", HTTP_GET, [](AsyncWebServerRequest *req) {
       int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
       prefs.begin("sched", true);
       String j = prefs.getString(("s" + String(sw)).c_str(), "[]");
       prefs.end();
-      req->send(200, "application/json", j); // Reading from prefs directly, lightweight string ok.
+      req->send(200, "application/json", j);
     });
 
     server.on("/api/schedules", HTTP_POST, [](AsyncWebServerRequest *req) {
@@ -3005,7 +3446,8 @@ void setupWebServer() {
         return;
       }
       if (!validateRecurringSchedulesData(data, error)) {
-        req->send(400, "application/json", String("{\"error\":\"") + error + "\"}");
+        req->send(400, "application/json",
+                  String("{\"error\":\"") + error + "\"}");
         return;
       }
       prefs.begin("sched", false);
@@ -3014,7 +3456,7 @@ void setupWebServer() {
       notifyStorage();
       req->send(200, "application/json", "{\"ok\":true}");
     });
-
+    // ---- FUTURE SCHEDULES (persistent) ----
     server.on("/api/fschedules", HTTP_GET, [](AsyncWebServerRequest *req) {
       int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
       prefs.begin("fsched", true);
@@ -3040,7 +3482,8 @@ void setupWebServer() {
         return;
       }
       if (!validateFutureSchedulesData(data, error)) {
-        req->send(400, "application/json", String("{\"error\":\"") + error + "\"}");
+        req->send(400, "application/json",
+                  String("{\"error\":\"") + error + "\"}");
         return;
       }
       prefs.begin("fsched", false);
@@ -3049,7 +3492,7 @@ void setupWebServer() {
       notifyStorage();
       req->send(200, "application/json", "{\"ok\":true}");
     });
-
+    // ---- SENSOR CONTROL (persistent) ----
     server.on("/api/sensor/temp", HTTP_GET, [](AsyncWebServerRequest *req) {
       int sw = req->hasParam("sw") ? req->getParam("sw")->value().toInt() : 0;
       prefs.begin("sensor", true);
@@ -3064,7 +3507,8 @@ void setupWebServer() {
         return;
       }
       if (!ahtOk) {
-        req->send(400, "application/json", "{\"error\":\"AHT10 sensor not initialized\"}");
+        req->send(400, "application/json",
+                  "{\"error\":\"AHT10 sensor not initialized\"}");
         return;
       }
       String data = req->getParam("data", true)->value();
@@ -3095,7 +3539,8 @@ void setupWebServer() {
         return;
       }
       if (!ahtOk) {
-        req->send(400, "application/json", "{\"error\":\"AHT10 sensor not initialized\"}");
+        req->send(400, "application/json",
+                  "{\"error\":\"AHT10 sensor not initialized\"}");
         return;
       }
       String data = req->getParam("data", true)->value();
@@ -3126,7 +3571,8 @@ void setupWebServer() {
         return;
       }
       if (!locOk) {
-        req->send(400, "application/json", "{\"error\":\"Latitude/Longitude not configured\"}");
+        req->send(400, "application/json",
+                  "{\"error\":\"Latitude/Longitude not configured\"}");
         return;
       }
       if (!timeSynced) {
@@ -3152,6 +3598,7 @@ void setupWebServer() {
         req->send(400, "application/json", "{\"error\":\"Missing params\"}");
         return;
       }
+
       int sw = req->getParam("sw", true)->value().toInt();
       if (sw < 0 || sw >= NUM_SWITCHES) {
         req->send(400, "application/json", "{\"error\":\"Invalid switch\"}");
@@ -3170,17 +3617,19 @@ void setupWebServer() {
       else if (type == "sun")
         prefix = 'x';
       else {
-        req->send(400, "application/json", "{\"error\":\"Invalid sensor type\"}");
+        req->send(400, "application/json",
+                  "{\"error\":\"Invalid sensor type\"}");
         return;
       }
 
       prefs.begin("sensor", false);
       prefs.remove((String(prefix) + String(sw)).c_str());
       prefs.end();
+
       notifyStorage();
       req->send(200, "application/json", "{\"ok\":true}");
     });
-
+    // ---- WIFI ----
     server.on("/api/wifi/status", HTTP_GET, [](AsyncWebServerRequest *req) {
       JsonDocument d;
       bool connected = (WiFi.status() == WL_CONNECTED);
@@ -3201,10 +3650,9 @@ void setupWebServer() {
       d["staticMask"] = sMask;
       d["staticGw"] = sGw;
       d["staticDns"] = sDns;
-
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(d, *response);
-      req->send(response);
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r);
     });
 
     server.on("/api/wifi/connect", HTTP_POST, [](AsyncWebServerRequest *req) {
@@ -3212,17 +3660,22 @@ void setupWebServer() {
         req->send(400, "application/json", "{\"error\":\"Missing SSID\"}");
         return;
       }
-      if (!req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
-        req->send(400, "application/json", "{\"error\":\"Admin credentials required\"}");
+      if (!req->hasParam("adminUser", true) ||
+          !req->hasParam("adminPass", true)) {
+        req->send(400, "application/json",
+                  "{\"error\":\"Admin credentials required\"}");
         return;
       }
-      if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
-        req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+      if (!verifyAdmin(req->getParam("adminUser", true)->value(),
+                       req->getParam("adminPass", true)->value())) {
+        req->send(403, "application/json",
+                  "{\"error\":\"Admin verification failed\"}");
         return;
       }
-
       String ssid = req->getParam("ssid", true)->value();
-      String pass = req->hasParam("pass", true) ? req->getParam("pass", true)->value() : "";
+      String pass = req->hasParam("pass", true)
+                        ? req->getParam("pass", true)->value()
+                        : "";
       if (ssid.isEmpty()) {
         req->send(400, "application/json", "{\"error\":\"SSID is required\"}");
         return;
@@ -3232,15 +3685,24 @@ void setupWebServer() {
       prefs.putString("pass", pass);
       prefs.end();
       notifyStorage();
-      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"WiFi credentials saved. Restarting...\"}");
+      req->send(200, "application/json",
+                "{\"ok\":true,\"msg\":\"WiFi credentials saved. Restarting to "
+                "connect.\"}");
       restartFlag = true;
       restartAt = millis() + 1200;
     });
 
-    server.on("/api/wifi/disconnect", HTTP_POST, [](AsyncWebServerRequest *req) { WiFi.disconnect(); req->send(200, "application/json", "{\"ok\":true}"); });
+    server.on("/api/wifi/disconnect", HTTP_POST,
+              [](AsyncWebServerRequest *req) {
+                WiFi.disconnect();
+                req->send(200, "application/json", "{\"ok\":true}");
+              });
 
     server.on("/api/wifi/scan", HTTP_POST, [](AsyncWebServerRequest *req) {
-      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"WiFi portal starting. Connect to ESP HOME at 192.168.4.1.\"}");
+      req->send(200, "application/json",
+                "{\"ok\":true,\"msg\":\"WiFi portal starting. Connect to ESP "
+                "HOME at 192.168.4.1. The current web session will disconnect "
+                "until setup finishes.\"}");
       portalFlag = true;
     });
 
@@ -3254,19 +3716,22 @@ void setupWebServer() {
       d["ssid"] = connected ? WiFi.SSID() : savedSsid;
       d["savedSsid"] = savedSsid;
       d["ip"] = connected ? WiFi.localIP().toString() : "";
-
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(d, *response);
-      req->send(response);
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r);
     });
 
     server.on("/api/wifi/forget", HTTP_POST, [](AsyncWebServerRequest *req) {
-      if (!req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
-        req->send(400, "application/json", "{\"error\":\"Admin credentials required\"}");
+      if (!req->hasParam("adminUser", true) ||
+          !req->hasParam("adminPass", true)) {
+        req->send(400, "application/json",
+                  "{\"error\":\"Admin credentials required\"}");
         return;
       }
-      if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
-        req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+      if (!verifyAdmin(req->getParam("adminUser", true)->value(),
+                       req->getParam("adminPass", true)->value())) {
+        req->send(403, "application/json",
+                  "{\"error\":\"Admin verification failed\"}");
         return;
       }
       prefs.begin("wfcfg", false);
@@ -3274,7 +3739,9 @@ void setupWebServer() {
       prefs.remove("pass");
       prefs.end();
       notifyStorage();
-      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"WiFi credentials forgotten. Restarting.\"}");
+      req->send(200, "application/json",
+                "{\"ok\":true,\"msg\":\"WiFi credentials forgotten. Device "
+                "will disconnect and restart.\"}");
       forgetWifiFlag = true;
       forgetWifiAt = millis() + 1000;
     });
@@ -3284,27 +3751,36 @@ void setupWebServer() {
         req->send(400, "application/json", "{\"error\":\"Missing\"}");
         return;
       }
-      if (!requireAdminVerification(req))
+      if (!requireAdminVerification(req)) {
         return;
+      }
       dhcpOn = req->getParam("dhcp", true)->value() == "true";
       prefs.begin("wfcfg", false);
       prefs.putBool("dhcp", dhcpOn);
       if (!dhcpOn) {
-        if (!req->hasParam("ip", true) || !req->hasParam("mask", true) || !req->hasParam("gw", true) || !req->hasParam("dns", true)) {
+        if (!req->hasParam("ip", true) || !req->hasParam("mask", true) ||
+            !req->hasParam("gw", true) || !req->hasParam("dns", true)) {
           prefs.end();
-          req->send(400, "application/json", "{\"error\":\"Static fields required\"}");
+          req->send(400, "application/json",
+                    "{\"error\":\"Static IP, subnet mask, gateway and DNS are "
+                    "required\"}");
           return;
         }
+
         sIp = req->getParam("ip", true)->value();
         sMask = req->getParam("mask", true)->value();
         sGw = req->getParam("gw", true)->value();
         sDns = req->getParam("dns", true)->value();
+
         IPAddress ip, gw, sn, dns;
-        if (!ip.fromString(sIp) || !gw.fromString(sGw) || !sn.fromString(sMask) || !dns.fromString(sDns)) {
+        if (!ip.fromString(sIp) || !gw.fromString(sGw) ||
+            !sn.fromString(sMask) || !dns.fromString(sDns)) {
           prefs.end();
-          req->send(400, "application/json", "{\"error\":\"Invalid static IP\"}");
+          req->send(400, "application/json",
+                    "{\"error\":\"Invalid static IP settings\"}");
           return;
         }
+
         prefs.putString("sip", sIp);
         prefs.putString("mask", sMask);
         prefs.putString("gw", sGw);
@@ -3312,14 +3788,20 @@ void setupWebServer() {
       }
       prefs.end();
       notifyStorage();
-      if (dhcpOn)
-        req->send(200, "application/json", "{\"ok\":true,\"msg\":\"DHCP enabled. Restarting.\"}");
-      else
-        req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Static IP saved. Restarting.\",\"ip\":\"" + sIp + "\"}");
+      if (dhcpOn) {
+        req->send(200, "application/json",
+                  "{\"ok\":true,\"msg\":\"DHCP enabled. Device will reconnect "
+                  "using DHCP.\"}");
+      } else {
+        req->send(200, "application/json",
+                  "{\"ok\":true,\"msg\":\"Static IP settings saved. Device "
+                  "will reconnect using the configured IP.\",\"ip\":\"" +
+                      sIp + "\"}");
+      }
       restartFlag = true;
       restartAt = millis() + 1200;
     });
-
+    // ---- FIREBASE ----
     server.on("/api/fb", HTTP_GET, [](AsyncWebServerRequest *req) {
       JsonDocument d;
       d["enabled"] = fbOn;
@@ -3328,13 +3810,15 @@ void setupWebServer() {
       prefs.begin("fb", true);
       String rules = prefs.getString("rules", DEFAULT_FIREBASE_RULES_JSON);
       prefs.end();
-      if (rules.isEmpty())
+
+      if (rules.isEmpty()) {
         rules = DEFAULT_FIREBASE_RULES_JSON;
+      }
       d["rules"] = rules;
 
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(d, *response);
-      req->send(response);
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r);
     });
 
     server.on("/api/fb/toggle", HTTP_POST, [](AsyncWebServerRequest *req) {
@@ -3343,8 +3827,9 @@ void setupWebServer() {
         return;
       }
       bool enableFirebase = req->getParam("enabled", true)->value() == "true";
-      if (enableFirebase && !requireAdminVerification(req))
+      if (enableFirebase && !requireAdminVerification(req)) {
         return;
+      }
       fbOn = enableFirebase;
       prefs.begin("fb", false);
       prefs.putBool("en", fbOn);
@@ -3359,8 +3844,9 @@ void setupWebServer() {
         req->send(400, "application/json", "{\"error\":\"Missing\"}");
         return;
       }
-      if (!requireAdminVerification(req))
+      if (!requireAdminVerification(req)) {
         return;
+      }
       fbUrl = req->getParam("url", true)->value();
       prefs.begin("fb", false);
       prefs.putString("url", fbUrl);
@@ -3370,37 +3856,45 @@ void setupWebServer() {
       req->send(200, "application/json", "{\"ok\":true}");
     });
 
-    server.on("/api/fb/reveal-token", HTTP_POST, [](AsyncWebServerRequest *req) {
-      if (!requireAdminVerification(req))
-        return;
-      JsonDocument d;
-      d["ok"] = true;
-      d["hasToken"] = !fbToken.isEmpty();
-      d["token"] = fbToken;
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(d, *response);
-      req->send(response);
-    });
+    server.on("/api/fb/reveal-token", HTTP_POST,
+              [](AsyncWebServerRequest *req) {
+                if (!requireAdminVerification(req)) {
+                  return;
+                }
 
-    server.on("/api/fb/token/reveal", HTTP_POST, [](AsyncWebServerRequest *req) {
-      if (!requireAdminVerification(req))
-        return;
-      JsonDocument d;
-      d["ok"] = true;
-      d["hasToken"] = !fbToken.isEmpty();
-      d["token"] = fbToken;
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(d, *response);
-      req->send(response);
-    });
+                JsonDocument d;
+                d["ok"] = true;
+                d["hasToken"] = !fbToken.isEmpty();
+                d["token"] = fbToken;
+                String r;
+                serializeJson(d, r);
+                req->send(200, "application/json", r);
+              });
+
+    // Backward-compatible alias for existing UI builds.
+    server.on("/api/fb/token/reveal", HTTP_POST,
+              [](AsyncWebServerRequest *req) {
+                if (!requireAdminVerification(req)) {
+                  return;
+                }
+
+                JsonDocument d;
+                d["ok"] = true;
+                d["hasToken"] = !fbToken.isEmpty();
+                d["token"] = fbToken;
+                String r;
+                serializeJson(d, r);
+                req->send(200, "application/json", r);
+              });
 
     server.on("/api/fb/token", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (!req->hasParam("token", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing\"}");
         return;
       }
-      if (!requireAdminVerification(req))
+      if (!requireAdminVerification(req)) {
         return;
+      }
       fbToken = req->getParam("token", true)->value();
       prefs.begin("fb", false);
       prefs.putString("tok", fbToken);
@@ -3412,22 +3906,28 @@ void setupWebServer() {
 
     server.on("/api/fb/test", HTTP_POST, [](AsyncWebServerRequest *req) {
       if (fbUrl.isEmpty() || fbToken.isEmpty()) {
-        req->send(400, "application/json", "{\"error\":\"URL or Token not configured\"}");
+        req->send(400, "application/json",
+                  "{\"error\":\"URL or Token not configured\"}");
         return;
       }
       if (WiFi.status() != WL_CONNECTED) {
-        req->send(400, "application/json", "{\"error\":\"WiFi not connected\"}");
+        req->send(400, "application/json",
+                  "{\"error\":\"WiFi not connected\"}");
         return;
       }
       HTTPClient http;
       String testUrl = fbUrl + "/.json?auth=" + fbToken + "&shallow=true";
       http.begin(testUrl);
       int code = http.GET();
+      String body = http.getString();
       http.end();
       if (code == 200)
-        req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Connection successful\"}");
+        req->send(200, "application/json",
+                  "{\"ok\":true,\"msg\":\"Connection successful\"}");
       else
-        req->send(400, "application/json", "{\"error\":\"Connection failed: HTTP " + String(code) + "\"}");
+        req->send(
+            400, "application/json",
+            "{\"error\":\"Connection failed: HTTP " + String(code) + "\"}");
     });
 
     server.on("/api/fb/rules", HTTP_POST, [](AsyncWebServerRequest *req) {
@@ -3435,16 +3935,18 @@ void setupWebServer() {
         req->send(400, "application/json", "{\"error\":\"Missing rules\"}");
         return;
       }
-      if (!requireAdminVerification(req))
+      if (!requireAdminVerification(req)) {
         return;
+      }
       String rules = req->getParam("rules", true)->value();
       prefs.begin("fb", false);
       prefs.putString("rules", rules);
       prefs.end();
       notifyStorage();
-      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Rules saved!\"}");
+      req->send(200, "application/json",
+                "{\"ok\":true,\"msg\":\"Rules saved!\"}");
     });
-
+    // ---- USERS ----
     server.on("/api/users", HTTP_GET, [](AsyncWebServerRequest *req) {
       prefs.begin("users", true);
       int n = prefs.getInt("cnt", 0);
@@ -3461,20 +3963,23 @@ void setupWebServer() {
         o["role"] = normalizeUserRole(ud["role"].as<String>());
       }
       prefs.end();
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(d, *response);
-      req->send(response);
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r);
     });
 
     server.on("/api/users/add", HTTP_POST, [](AsyncWebServerRequest *req) {
-      if (!req->hasParam("id", true) || !req->hasParam("pass", true) || !req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
+      if (!req->hasParam("id", true) || !req->hasParam("pass", true) ||
+          !req->hasParam("adminUser", true) ||
+          !req->hasParam("adminPass", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing params\"}");
         return;
       }
       if (!hasAdmin()) {
         initDefaultUser();
         if (!hasAdmin()) {
-          req->send(403, "application/json", "{\"error\":\"No admin user exists\"}");
+          req->send(403, "application/json",
+                    "{\"error\":\"No admin user exists\"}");
           return;
         }
       }
@@ -3483,14 +3988,16 @@ void setupWebServer() {
       if (!verifyAdmin(adminUser, adminPass)) {
         initDefaultUser();
         if (!verifyAdmin(adminUser, adminPass)) {
-          req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+          req->send(403, "application/json",
+                    "{\"error\":\"Admin verification failed\"}");
           return;
         }
       }
       String newId = normalizeUserId(req->getParam("id", true)->value());
       String newPass = normalizeUserPass(req->getParam("pass", true)->value());
       if (newId.isEmpty() || newPass.isEmpty()) {
-        req->send(400, "application/json", "{\"error\":\"User ID and password are required\"}");
+        req->send(400, "application/json",
+                  "{\"error\":\"User ID and password are required\"}");
         return;
       }
       JsonDocument nd;
@@ -3501,6 +4008,7 @@ void setupWebServer() {
       serializeJson(nd, nj);
       prefs.begin("users", false);
       int cnt = prefs.getInt("cnt", 0);
+
       for (int i = 0; i < cnt; i++) {
         String js = prefs.getString(("u" + String(i)).c_str(), "");
         if (js.isEmpty())
@@ -3508,12 +4016,15 @@ void setupWebServer() {
         JsonDocument existing;
         if (deserializeJson(existing, js))
           continue;
-        if (normalizeUserId(existing["id"].as<String>()) == newId) {
+        String existingId = normalizeUserId(existing["id"].as<String>());
+        if (existingId == newId) {
           prefs.end();
-          req->send(409, "application/json", "{\"error\":\"User already exists\"}");
+          req->send(409, "application/json",
+                    "{\"error\":\"User already exists\"}");
           return;
         }
       }
+
       prefs.putString(("u" + String(cnt)).c_str(), nj);
       prefs.putInt("cnt", cnt + 1);
       prefs.end();
@@ -3522,14 +4033,16 @@ void setupWebServer() {
     });
 
     server.on("/api/users/remove", HTTP_POST, [](AsyncWebServerRequest *req) {
-      if (!req->hasParam("id", true) || !req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
+      if (!req->hasParam("id", true) || !req->hasParam("adminUser", true) ||
+          !req->hasParam("adminPass", true)) {
         req->send(400, "application/json", "{\"error\":\"Missing params\"}");
         return;
       }
       if (!hasAdmin()) {
         initDefaultUser();
         if (!hasAdmin()) {
-          req->send(403, "application/json", "{\"error\":\"No admin user exists\"}");
+          req->send(403, "application/json",
+                    "{\"error\":\"No admin user exists\"}");
           return;
         }
       }
@@ -3538,17 +4051,21 @@ void setupWebServer() {
       if (!verifyAdmin(adminUser, adminPass)) {
         initDefaultUser();
         if (!verifyAdmin(adminUser, adminPass)) {
-          req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+          req->send(403, "application/json",
+                    "{\"error\":\"Admin verification failed\"}");
           return;
         }
       }
       String uid = normalizeUserId(req->getParam("id", true)->value());
       if (uid.isEmpty()) {
-        req->send(400, "application/json", "{\"error\":\"User ID is required\"}");
+        req->send(400, "application/json",
+                  "{\"error\":\"User ID is required\"}");
         return;
       }
+
       prefs.begin("users", false);
       int cnt = prefs.getInt("cnt", 0);
+
       int matchedUsers = 0;
       int matchedAdmins = 0;
       for (int i = 0; i < cnt; i++) {
@@ -3558,242 +4075,324 @@ void setupWebServer() {
         JsonDocument d;
         if (deserializeJson(d, js))
           continue;
-        if (normalizeUserId(d["id"].as<String>()) == uid) {
+
+        String existingId = normalizeUserId(d["id"].as<String>());
+        if (existingId == uid) {
           matchedUsers++;
-          if (normalizeUserRole(d["role"].as<String>()) == "admin")
+          if (normalizeUserRole(d["role"].as<String>()) == "admin") {
             matchedAdmins++;
+          }
         }
       }
+
       if (matchedUsers <= 0) {
         prefs.end();
         req->send(404, "application/json", "{\"error\":\"User not found\"}");
         return;
       }
+
       if (matchedAdmins > 0) {
         prefs.end();
-        req->send(403, "application/json", "{\"error\":\"Admin user cannot be removed\"}");
+        req->send(403, "application/json",
+                  "{\"error\":\"Admin user cannot be removed\"}");
         return;
       }
+
       int writeIdx = 0;
       for (int i = 0; i < cnt; i++) {
         String js = prefs.getString(("u" + String(i)).c_str(), "");
         if (js.isEmpty())
           continue;
+
         bool shouldRemove = false;
         JsonDocument d;
-        if (!deserializeJson(d, js))
-          shouldRemove = (normalizeUserId(d["id"].as<String>()) == uid);
+        if (!deserializeJson(d, js)) {
+          String existingId = normalizeUserId(d["id"].as<String>());
+          shouldRemove = (existingId == uid);
+        }
+
         if (shouldRemove)
           continue;
-        if (writeIdx != i)
+
+        if (writeIdx != i) {
           prefs.putString(("u" + String(writeIdx)).c_str(), js);
+        }
         writeIdx++;
       }
-      for (int i = writeIdx; i < cnt; i++)
+
+      for (int i = writeIdx; i < cnt; i++) {
         prefs.remove(("u" + String(i)).c_str());
+      }
       prefs.putInt("cnt", writeIdx);
       prefs.end();
       notifyStorage();
-      req->send(200, "application/json", "{\"ok\":true,\"removed\":" + String(matchedUsers) + "}");
+      req->send(200, "application/json",
+                "{\"ok\":true,\"removed\":" + String(matchedUsers) + "}");
     });
 
-    server.on("/api/users/admin/edit", HTTP_POST, [](AsyncWebServerRequest *req) {
-      if (!req->hasParam("id", true) || !req->hasParam("pass", true) || !req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
-        req->send(400, "application/json", "{\"error\":\"Missing params\"}");
-        return;
-      }
-      if (!hasAdmin()) {
-        initDefaultUser();
-        if (!hasAdmin()) {
-          req->send(403, "application/json", "{\"error\":\"No admin user exists\"}");
-          return;
-        }
-      }
-      String adminUser = req->getParam("adminUser", true)->value();
-      String adminPass = req->getParam("adminPass", true)->value();
-      if (!verifyAdmin(adminUser, adminPass)) {
-        initDefaultUser();
-        if (!verifyAdmin(adminUser, adminPass)) {
-          req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
-          return;
-        }
-      }
-      String newAdminId = normalizeUserId(req->getParam("id", true)->value());
-      String newAdminPass = normalizeUserPass(req->getParam("pass", true)->value());
-      if (newAdminId.isEmpty() || newAdminPass.isEmpty()) {
-        req->send(400, "application/json", "{\"error\":\"Admin ID/password required\"}");
-        return;
-      }
-      String currentAdminId = normalizeUserId(adminUser);
-      String currentAdminPass = normalizeUserPass(adminPass);
-      prefs.begin("users", false);
-      int cnt = prefs.getInt("cnt", 0);
-      int targetAdminIndex = -1;
-      for (int i = 0; i < cnt; i++) {
-        String js = prefs.getString(("u" + String(i)).c_str(), "");
-        if (js.isEmpty())
-          continue;
-        JsonDocument d;
-        if (deserializeJson(d, js))
-          continue;
-        if (normalizeUserRole(d["role"].as<String>()) == "admin" && normalizeUserId(d["id"].as<String>()) == currentAdminId && normalizeUserPass(d["pass"].as<String>()) == currentAdminPass) {
-          targetAdminIndex = i;
-          break;
-        }
-      }
-      if (targetAdminIndex < 0) {
-        prefs.end();
-        req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
-        return;
-      }
-      for (int i = 0; i < cnt; i++) {
-        if (i == targetAdminIndex)
-          continue;
-        String js = prefs.getString(("u" + String(i)).c_str(), "");
-        if (js.isEmpty())
-          continue;
-        JsonDocument d;
-        if (deserializeJson(d, js))
-          continue;
-        if (normalizeUserId(d["id"].as<String>()) == newAdminId) {
+    server.on(
+        "/api/users/admin/edit", HTTP_POST, [](AsyncWebServerRequest *req) {
+          if (!req->hasParam("id", true) || !req->hasParam("pass", true) ||
+              !req->hasParam("adminUser", true) ||
+              !req->hasParam("adminPass", true)) {
+            req->send(400, "application/json",
+                      "{\"error\":\"Missing params\"}");
+            return;
+          }
+
+          if (!hasAdmin()) {
+            initDefaultUser();
+            if (!hasAdmin()) {
+              req->send(403, "application/json",
+                        "{\"error\":\"No admin user exists\"}");
+              return;
+            }
+          }
+
+          String adminUser = req->getParam("adminUser", true)->value();
+          String adminPass = req->getParam("adminPass", true)->value();
+          if (!verifyAdmin(adminUser, adminPass)) {
+            initDefaultUser();
+            if (!verifyAdmin(adminUser, adminPass)) {
+              req->send(403, "application/json",
+                        "{\"error\":\"Admin verification failed\"}");
+              return;
+            }
+          }
+
+          String newAdminId =
+              normalizeUserId(req->getParam("id", true)->value());
+          String newAdminPass =
+              normalizeUserPass(req->getParam("pass", true)->value());
+          if (newAdminId.isEmpty() || newAdminPass.isEmpty()) {
+            req->send(
+                400, "application/json",
+                "{\"error\":\"Admin user ID and password are required\"}");
+            return;
+          }
+
+          String currentAdminId = normalizeUserId(adminUser);
+          String currentAdminPass = normalizeUserPass(adminPass);
+
+          prefs.begin("users", false);
+          int cnt = prefs.getInt("cnt", 0);
+          int targetAdminIndex = -1;
+
+          for (int i = 0; i < cnt; i++) {
+            String js = prefs.getString(("u" + String(i)).c_str(), "");
+            if (js.isEmpty())
+              continue;
+
+            JsonDocument d;
+            if (deserializeJson(d, js))
+              continue;
+
+            String id = normalizeUserId(d["id"].as<String>());
+            String pass = normalizeUserPass(d["pass"].as<String>());
+            String role = normalizeUserRole(d["role"].as<String>());
+            if (role == "admin" && id == currentAdminId &&
+                pass == currentAdminPass) {
+              targetAdminIndex = i;
+              break;
+            }
+          }
+
+          if (targetAdminIndex < 0) {
+            prefs.end();
+            req->send(403, "application/json",
+                      "{\"error\":\"Admin verification failed\"}");
+            return;
+          }
+
+          for (int i = 0; i < cnt; i++) {
+            if (i == targetAdminIndex)
+              continue;
+
+            String js = prefs.getString(("u" + String(i)).c_str(), "");
+            if (js.isEmpty())
+              continue;
+
+            JsonDocument d;
+            if (deserializeJson(d, js))
+              continue;
+
+            if (normalizeUserId(d["id"].as<String>()) == newAdminId) {
+              prefs.end();
+              req->send(409, "application/json",
+                        "{\"error\":\"User ID already exists\"}");
+              return;
+            }
+          }
+
+          for (int i = 0; i < cnt; i++) {
+            String js = prefs.getString(("u" + String(i)).c_str(), "");
+            if (js.isEmpty())
+              continue;
+
+            JsonDocument d;
+            if (deserializeJson(d, js))
+              continue;
+
+            bool changed = false;
+            String role = normalizeUserRole(d["role"].as<String>());
+
+            if (i == targetAdminIndex) {
+              d["id"] = newAdminId;
+              d["pass"] = newAdminPass;
+              d["role"] = "admin";
+              changed = true;
+            } else if (role == "admin") {
+              // Keep exactly one admin account in storage.
+              d["role"] = "user";
+              changed = true;
+            }
+
+            if (changed) {
+              String updated;
+              serializeJson(d, updated);
+              prefs.putString(("u" + String(i)).c_str(), updated);
+            }
+          }
+
           prefs.end();
-          req->send(409, "application/json", "{\"error\":\"User ID already exists\"}");
-          return;
-        }
-      }
-      for (int i = 0; i < cnt; i++) {
-        String js = prefs.getString(("u" + String(i)).c_str(), "");
-        if (js.isEmpty())
-          continue;
-        JsonDocument d;
-        if (deserializeJson(d, js))
-          continue;
-        bool changed = false;
-        String role = normalizeUserRole(d["role"].as<String>());
-        if (i == targetAdminIndex) {
-          d["id"] = newAdminId;
-          d["pass"] = newAdminPass;
-          d["role"] = "admin";
-          changed = true;
-        } else if (role == "admin") {
-          d["role"] = "user";
-          changed = true;
-        }
-        if (changed) {
-          String updated;
-          serializeJson(d, updated);
-          prefs.putString(("u" + String(i)).c_str(), updated);
-        }
-      }
-      prefs.end();
-      persistConfiguredPrimaryAdmin(newAdminId, newAdminPass);
-      notifyStorage();
-      req->send(200, "application/json", "{\"ok\":true}");
-    });
+          persistConfiguredPrimaryAdmin(newAdminId, newAdminPass);
+          notifyStorage();
+          req->send(200, "application/json", "{\"ok\":true}");
+        });
+    // ---- ADMINISTRATOR ----
+    server.on("/api/admin/device-name", HTTP_GET,
+              [](AsyncWebServerRequest *req) {
+                JsonDocument d;
+                d["name"] = deviceName;
+                d["defaultName"] = getDefaultDeviceName();
+                String r;
+                serializeJson(d, r);
+                req->send(200, "application/json", r);
+              });
 
-    server.on("/api/admin/device-name", HTTP_GET, [](AsyncWebServerRequest *req) {
-      JsonDocument d;
-      d["name"] = deviceName;
-      d["defaultName"] = getDefaultDeviceName();
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(d, *response);
-      req->send(response);
-    });
+    server.on(
+        "/api/admin/device-name", HTTP_POST, [](AsyncWebServerRequest *req) {
+          if (!req->hasParam("name", true)) {
+            req->send(400, "application/json",
+                      "{\"error\":\"Missing device name\"}");
+            return;
+          }
+          if (!requireAdminVerification(req)) {
+            return;
+          }
 
-    server.on("/api/admin/device-name", HTTP_POST, [](AsyncWebServerRequest *req) {
-      if (!req->hasParam("name", true)) {
-        req->send(400, "application/json", "{\"error\":\"Missing device name\"}");
-        return;
-      }
-      if (!requireAdminVerification(req))
-        return;
-      String newName = req->getParam("name", true)->value();
-      newName.trim();
-      if (newName.isEmpty()) {
-        req->send(400, "application/json", "{\"error\":\"Device name is required\"}");
-        return;
-      }
-      if (newName.length() > 32) {
-        req->send(400, "application/json", "{\"error\":\"Device name too long\"}");
-        return;
-      }
-      String previousName = firebaseDeviceNameValue();
-      deviceName = newName;
-      prefs.begin("admin", false);
-      prefs.putString("devname", deviceName);
-      prefs.end();
-      WiFi.setHostname(deviceName.c_str());
-      onDeviceNameUpdated(previousName);
-      notifyStorage();
-      JsonDocument d;
-      d["ok"] = true;
-      d["name"] = deviceName;
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(d, *response);
-      req->send(response);
-    });
+          String newName = req->getParam("name", true)->value();
+          newName.trim();
+          if (newName.isEmpty()) {
+            req->send(400, "application/json",
+                      "{\"error\":\"Device name is required\"}");
+            return;
+          }
+          if (newName.length() > 32) {
+            req->send(
+                400, "application/json",
+                "{\"error\":\"Device name must be 32 characters or less\"}");
+            return;
+          }
 
-    server.on("/api/admin/schedule-priority", HTTP_GET, [](AsyncWebServerRequest *req) {
-      JsonDocument d;
-      JsonArray arr = d["order"].to<JsonArray>();
-      JsonArray labels = d["labels"].to<JsonArray>();
-      for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++) {
-        uint8_t src = automationPriorityOrder[i];
-        arr.add(automationSourceKey(src));
-        labels.add(automationSourceLabel(src));
-      }
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(d, *response);
-      req->send(response);
-    });
+          String previousName = firebaseDeviceNameValue();
+          deviceName = newName;
+          prefs.begin("admin", false);
+          prefs.putString("devname", deviceName);
+          prefs.end();
 
-    server.on("/api/admin/schedule-priority", HTTP_POST, [](AsyncWebServerRequest *req) {
-      if (!req->hasParam("data", true)) {
-        req->send(400, "application/json", "{\"error\":\"Missing data\"}");
-        return;
-      }
-      if (!requireAdminVerification(req))
-        return;
-      String raw = req->getParam("data", true)->value();
-      JsonDocument doc;
-      if (deserializeJson(doc, raw)) {
-        req->send(400, "application/json", "{\"error\":\"Invalid priority data\"}");
-        return;
-      }
-      JsonArray arr = doc.as<JsonArray>();
-      if (arr.isNull() || arr.size() != AUTOMATION_SOURCE_COUNT) {
-        req->send(400, "application/json", "{\"error\":\"Priority order invalid\"}");
-        return;
-      }
-      bool seen[AUTOMATION_SOURCE_COUNT] = {false, false, false, false, false, false};
-      uint8_t newOrder[AUTOMATION_SOURCE_COUNT];
-      for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++) {
-        int src = automationSourceFromKey(arr[i].as<String>());
-        if (src < 0 || src >= AUTOMATION_SOURCE_COUNT || seen[src]) {
-          req->send(400, "application/json", "{\"error\":\"Priority order duplicates\"}");
-          return;
-        }
-        seen[src] = true;
-        newOrder[i] = (uint8_t)src;
-      }
-      for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++)
-        automationPriorityOrder[i] = newOrder[i];
-      prefs.begin("admin", false);
-      for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++)
-        prefs.putInt(("pr" + String(i)).c_str(), automationPriorityOrder[i]);
-      prefs.end();
-      notifyStorage();
-      req->send(200, "application/json", "{\"ok\":true}");
-    });
+          WiFi.setHostname(deviceName.c_str());
+          onDeviceNameUpdated(previousName);
+          notifyStorage();
+
+          JsonDocument d;
+          d["ok"] = true;
+          d["name"] = deviceName;
+          String r;
+          serializeJson(d, r);
+          req->send(200, "application/json", r);
+        });
+
+    server.on("/api/admin/schedule-priority", HTTP_GET,
+              [](AsyncWebServerRequest *req) {
+                JsonDocument d;
+                JsonArray arr = d["order"].to<JsonArray>();
+                JsonArray labels = d["labels"].to<JsonArray>();
+                for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++) {
+                  uint8_t src = automationPriorityOrder[i];
+                  arr.add(automationSourceKey(src));
+                  labels.add(automationSourceLabel(src));
+                }
+                String r;
+                serializeJson(d, r);
+                req->send(200, "application/json", r);
+              });
+
+    server.on("/api/admin/schedule-priority", HTTP_POST,
+              [](AsyncWebServerRequest *req) {
+                if (!req->hasParam("data", true)) {
+                  req->send(400, "application/json",
+                            "{\"error\":\"Missing data\"}");
+                  return;
+                }
+                if (!requireAdminVerification(req)) {
+                  return;
+                }
+
+                String raw = req->getParam("data", true)->value();
+                JsonDocument doc;
+                if (deserializeJson(doc, raw)) {
+                  req->send(400, "application/json",
+                            "{\"error\":\"Invalid priority data\"}");
+                  return;
+                }
+
+                JsonArray arr = doc.as<JsonArray>();
+                if (arr.isNull() || arr.size() != AUTOMATION_SOURCE_COUNT) {
+                  req->send(400, "application/json",
+                            "{\"error\":\"Priority order must contain all "
+                            "automation types\"}");
+                  return;
+                }
+
+                bool seen[AUTOMATION_SOURCE_COUNT] = {false, false, false,
+                                                      false, false, false};
+                uint8_t newOrder[AUTOMATION_SOURCE_COUNT];
+                for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++) {
+                  int src = automationSourceFromKey(arr[i].as<String>());
+                  if (src < 0 || src >= AUTOMATION_SOURCE_COUNT || seen[src]) {
+                    req->send(400, "application/json",
+                              "{\"error\":\"Priority order contains invalid or "
+                              "duplicate items\"}");
+                    return;
+                  }
+                  seen[src] = true;
+                  newOrder[i] = (uint8_t)src;
+                }
+
+                for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++) {
+                  automationPriorityOrder[i] = newOrder[i];
+                }
+
+                prefs.begin("admin", false);
+                for (int i = 0; i < AUTOMATION_SOURCE_COUNT; i++) {
+                  prefs.putInt(("pr" + String(i)).c_str(),
+                               automationPriorityOrder[i]);
+                }
+                prefs.end();
+
+                notifyStorage();
+                req->send(200, "application/json", "{\"ok\":true}");
+              });
 
     server.on("/api/admin/time", HTTP_GET, [](AsyncWebServerRequest *req) {
       JsonDocument d;
       d["ntp"] = ntpSrv;
       d["tz"] = tzStr;
       d["synced"] = timeSynced;
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(d, *response);
-      req->send(response);
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r);
     });
 
     server.on("/api/admin/time", HTTP_POST, [](AsyncWebServerRequest *req) {
@@ -3816,21 +4415,28 @@ void setupWebServer() {
       d["lat"] = geoLat;
       d["lon"] = geoLon;
       d["configured"] = locOk;
+
       if (!timeSynced) {
         struct tm currentTm;
-        if (readCurrentLocalTime(&currentTm))
+        if (readCurrentLocalTime(&currentTm)) {
           timeSynced = true;
+        }
       }
+
       bool sunReady = locOk && timeSynced;
-      if (sunReady)
+      if (sunReady) {
         calcSunriseSunset();
-      bool hasSunValues = lastCalcDay >= 0 && srMin >= 0 && srMin <= 1439 && ssMin >= 0 && ssMin <= 1439;
+      }
+
+      bool hasSunValues = lastCalcDay >= 0 && srMin >= 0 && srMin <= 1439 &&
+                          ssMin >= 0 && ssMin <= 1439;
+
       d["sunReady"] = hasSunValues;
       d["sunrise"] = hasSunValues ? formatClockFromMinutes(srMin) : "";
       d["sunset"] = hasSunValues ? formatClockFromMinutes(ssMin) : "";
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(d, *response);
-      req->send(response);
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r);
     });
 
     server.on("/api/admin/location", HTTP_POST, [](AsyncWebServerRequest *req) {
@@ -3847,279 +4453,389 @@ void setupWebServer() {
       prefs.putFloat("lon", geoLon);
       prefs.end();
       notifyStorage();
+
       if (!timeSynced) {
         struct tm currentTm;
-        if (readCurrentLocalTime(&currentTm))
+        if (readCurrentLocalTime(&currentTm)) {
           timeSynced = true;
+        }
       }
+
       calcSunriseSunset();
+
       JsonDocument d;
       d["ok"] = true;
       d["lat"] = geoLat;
       d["lon"] = geoLon;
-      bool hasSunValues = lastCalcDay >= 0 && srMin >= 0 && srMin <= 1439 && ssMin >= 0 && ssMin <= 1439;
+      bool sunReady = locOk && timeSynced;
+
+      bool hasSunValues = lastCalcDay >= 0 && srMin >= 0 && srMin <= 1439 &&
+                          ssMin >= 0 && ssMin <= 1439;
+
       d["sunReady"] = hasSunValues;
       d["sunrise"] = hasSunValues ? formatClockFromMinutes(srMin) : "";
       d["sunset"] = hasSunValues ? formatClockFromMinutes(ssMin) : "";
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(d, *response);
-      req->send(response);
+      String r;
+      serializeJson(d, r);
+      req->send(200, "application/json", r);
     });
 
-    server.on("/api/admin/restart-schedule", HTTP_GET, [](AsyncWebServerRequest *req) {
-      JsonDocument d;
-      d["enabled"] = restartScheduleEnabled;
-      d["time"] = restartScheduleEnabled ? formatClockFromMinutes(restartScheduleMinute) : "";
-      JsonArray days = d["days"].to<JsonArray>();
-      const char *dayKeys[] = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
-      for (int i = 0; i < 7; i++) {
-        if (restartScheduleDayMask & (1 << i))
-          days.add(dayKeys[i]);
-      }
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(d, *response);
-      req->send(response);
-    });
+    server.on("/api/admin/restart-schedule", HTTP_GET,
+              [](AsyncWebServerRequest *req) {
+                JsonDocument d;
+                d["enabled"] = restartScheduleEnabled;
+                d["time"] = restartScheduleEnabled
+                                ? formatClockFromMinutes(restartScheduleMinute)
+                                : "";
+                JsonArray days = d["days"].to<JsonArray>();
+                const char *dayKeys[] = {"sun", "mon", "tue", "wed",
+                                         "thu", "fri", "sat"};
+                for (int i = 0; i < 7; i++) {
+                  if (restartScheduleDayMask & (1 << i)) {
+                    days.add(dayKeys[i]);
+                  }
+                }
+                String r;
+                serializeJson(d, r);
+                req->send(200, "application/json", r);
+              });
 
-    server.on("/api/admin/restart-schedule", HTTP_POST, [](AsyncWebServerRequest *req) {
-      if (!req->hasParam("data", true)) {
-        if (!requireAdminVerification(req))
-          return;
-        clearRestartScheduleOnly(true);
-        req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Restart schedule cancelled\"}");
-        return;
-      }
-      if (!requireAdminVerification(req))
-        return;
-      String raw = req->getParam("data", true)->value();
-      JsonDocument doc;
-      if (deserializeJson(doc, raw)) {
-        req->send(400, "application/json", "{\"error\":\"Invalid restart schedule data\"}");
-        return;
-      }
-      JsonObject payload = doc.as<JsonObject>();
-      if (payload.isNull()) {
-        req->send(400, "application/json", "{\"error\":\"Restart schedule must be an object\"}");
-        return;
-      }
-      int scheduleMinute = parseClockMinutes(payload["time"].as<String>());
-      if (scheduleMinute < 0) {
-        req->send(400, "application/json", "{\"error\":\"Restart schedule time must be HH:MM\"}");
-        return;
-      }
-      JsonArray selectedDays = payload["days"].as<JsonArray>();
-      if (selectedDays.isNull() || selectedDays.size() == 0) {
-        req->send(400, "application/json", "{\"error\":\"Select at least one weekday\"}");
-        return;
-      }
-      uint8_t dayMask = 0;
-      for (JsonVariant day : selectedDays) {
-        int idx = weekdayIndexFromText(day.as<String>());
-        if (idx < 0) {
-          req->send(400, "application/json", "{\"error\":\"Restart schedule has invalid weekday\"}");
-          return;
-        }
-        dayMask |= (uint8_t)(1 << idx);
-      }
-      restartScheduleEnabled = true;
-      restartScheduleMinute = scheduleMinute;
-      restartScheduleDayMask = dayMask;
-      lastRestartScheduleStamp = -1;
-      restartScheduleLastRunKey = "";
-      prefs.begin("admin", false);
-      prefs.remove("rsLast");
-      prefs.putBool("rsEn", restartScheduleEnabled);
-      prefs.putInt("rsMin", restartScheduleMinute);
-      prefs.putUInt("rsMask", restartScheduleDayMask);
-      prefs.end();
-      notifyStorage();
-      JsonDocument responseDoc;
-      responseDoc["ok"] = true;
-      responseDoc["enabled"] = true;
-      responseDoc["time"] = formatClockFromMinutes(restartScheduleMinute);
-      JsonArray outDays = responseDoc["days"].to<JsonArray>();
-      const char *dayKeys[] = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
-      for (int i = 0; i < 7; i++) {
-        if (restartScheduleDayMask & (1 << i))
-          outDays.add(dayKeys[i]);
-      }
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(responseDoc, *response);
-      req->send(response);
-    });
+    server.on(
+        "/api/admin/restart-schedule", HTTP_POST,
+        [](AsyncWebServerRequest *req) {
+          if (!req->hasParam("data", true)) {
+            if (!requireAdminVerification(req)) {
+              return;
+            }
 
-    server.on("/api/admin/restart-schedule/cancel", HTTP_POST, [](AsyncWebServerRequest *req) {
-      if (!requireAdminVerification(req))
-        return;
-      clearRestartScheduleOnly(true);
-      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Restart schedule cancelled\"}");
-    });
+            clearRestartScheduleOnly(true);
+            req->send(200, "application/json",
+                      "{\"ok\":true,\"msg\":\"Restart schedule cancelled\"}");
+            return;
+          }
+          if (!requireAdminVerification(req)) {
+            return;
+          }
+
+          String raw = req->getParam("data", true)->value();
+          JsonDocument doc;
+          if (deserializeJson(doc, raw)) {
+            req->send(400, "application/json",
+                      "{\"error\":\"Invalid restart schedule data\"}");
+            return;
+          }
+
+          JsonObject payload = doc.as<JsonObject>();
+          if (payload.isNull()) {
+            req->send(400, "application/json",
+                      "{\"error\":\"Restart schedule must be an object\"}");
+            return;
+          }
+
+          int scheduleMinute = parseClockMinutes(payload["time"].as<String>());
+          if (scheduleMinute < 0) {
+            req->send(400, "application/json",
+                      "{\"error\":\"Restart schedule time must be HH:MM\"}");
+            return;
+          }
+
+          JsonArray selectedDays = payload["days"].as<JsonArray>();
+          if (selectedDays.isNull() || selectedDays.size() == 0) {
+            req->send(400, "application/json",
+                      "{\"error\":\"Select at least one weekday\"}");
+            return;
+          }
+
+          uint8_t dayMask = 0;
+          for (JsonVariant day : selectedDays) {
+            int idx = weekdayIndexFromText(day.as<String>());
+            if (idx < 0) {
+              req->send(400, "application/json",
+                        "{\"error\":\"Restart schedule has invalid weekday\"}");
+              return;
+            }
+            dayMask |= (uint8_t)(1 << idx);
+          }
+
+          restartScheduleEnabled = true;
+          restartScheduleMinute = scheduleMinute;
+          restartScheduleDayMask = dayMask;
+          lastRestartScheduleStamp = -1;
+          restartScheduleLastRunKey = "";
+
+          prefs.begin("admin", false);
+          prefs.remove("rsLast");
+          prefs.putBool("rsEn", restartScheduleEnabled);
+          prefs.putInt("rsMin", restartScheduleMinute);
+          prefs.putUInt("rsMask", restartScheduleDayMask);
+          prefs.end();
+
+          notifyStorage();
+
+          JsonDocument response;
+          response["ok"] = true;
+          response["enabled"] = true;
+          response["time"] = formatClockFromMinutes(restartScheduleMinute);
+          JsonArray outDays = response["days"].to<JsonArray>();
+          const char *dayKeys[] = {"sun", "mon", "tue", "wed",
+                                   "thu", "fri", "sat"};
+          for (int i = 0; i < 7; i++) {
+            if (restartScheduleDayMask & (1 << i)) {
+              outDays.add(dayKeys[i]);
+            }
+          }
+          String r;
+          serializeJson(response, r);
+          req->send(200, "application/json", r);
+        });
+
+    server.on("/api/admin/restart-schedule/cancel", HTTP_POST,
+              [](AsyncWebServerRequest *req) {
+                if (!requireAdminVerification(req)) {
+                  return;
+                }
+
+                clearRestartScheduleOnly(true);
+                req->send(
+                    200, "application/json",
+                    "{\"ok\":true,\"msg\":\"Restart schedule cancelled\"}");
+              });
 
     server.on("/api/admin/restart", HTTP_POST, [](AsyncWebServerRequest *req) {
-      if (!req->hasParam("adminUser", true) || !req->hasParam("adminPass", true)) {
-        req->send(400, "application/json", "{\"error\":\"Admin credentials required\"}");
+      if (!req->hasParam("adminUser", true) ||
+          !req->hasParam("adminPass", true)) {
+        req->send(400, "application/json",
+                  "{\"error\":\"Admin credentials required\"}");
         return;
       }
-      if (!verifyAdmin(req->getParam("adminUser", true)->value(), req->getParam("adminPass", true)->value())) {
-        req->send(403, "application/json", "{\"error\":\"Admin verification failed\"}");
+      if (!verifyAdmin(req->getParam("adminUser", true)->value(),
+                       req->getParam("adminPass", true)->value())) {
+        req->send(403, "application/json",
+                  "{\"error\":\"Admin verification failed\"}");
         return;
       }
-      req->send(200, "application/json", "{\"ok\":true,\"msg\":\"Restarting...\"}");
+      req->send(200, "application/json",
+                "{\"ok\":true,\"msg\":\"Restarting...\"}");
       restartFlag = true;
       restartAt = millis() + 500;
     });
 
-    server.on("/api/admin/reset/storage", HTTP_POST, [](AsyncWebServerRequest *req) {
-      if (!requireAdminVerification(req))
-        return;
-      if (req->hasParam("scope", true)) {
-        String scope = req->getParam("scope", true)->value();
-        scope.trim();
-        scope.toLowerCase();
-        if (scope != "storage") {
-          req->send(400, "application/json", "{\"error\":\"Reset type mismatch\"}");
-          return;
-        }
-      }
-      if (!requireBootHoldResetGesture(req))
-        return;
+    server.on(
+        "/api/admin/reset/storage", HTTP_POST, [](AsyncWebServerRequest *req) {
+          if (!requireAdminVerification(req)) {
+            return;
+          }
+          if (req->hasParam("scope", true)) {
+            String scope = req->getParam("scope", true)->value();
+            scope.trim();
+            scope.toLowerCase();
+            if (scope != "storage") {
+              req->send(
+                  400, "application/json",
+                  "{\"error\":\"Reset type mismatch (expected storage)\"}");
+              return;
+            }
+          }
+          if (!requireBootHoldResetGesture(req)) {
+            return;
+          }
 
-      JsonDocument responseDoc;
-      responseDoc["ok"] = true;
-      responseDoc["type"] = "storage";
-      responseDoc["msg"] = "Reset Storage complete. Device restarting...";
-      responseDoc["restartIn"] = 45;
-      responseDoc["stepGapMs"] = RESET_CHECKPOINT_GAP_MS;
-      responseDoc["finalGapMs"] = RESET_ALL_DONE_GAP_MS;
-      JsonArray steps = responseDoc["steps"].to<JsonArray>();
-      resetSwitchNamesToDefault();
-      addResetStep(steps, "switch-names", "Switch names set to DEVICE-1, DEVICE-2, DEVICE-3, DEVICE-4", 420);
-      resetSwitchIconsToDefault();
-      addResetStep(steps, "switch-icons", "Switch icons set to home for all switches", 360);
-      clearRecurringSchedulesStorage();
-      addResetStep(steps, "schedules", "All recurring schedules cleared", 760);
-      clearFutureSchedulesStorage();
-      addResetStep(steps, "future-schedules", "All future schedules cleared", 720);
-      clearSensorControlStorage();
-      addResetStep(steps, "sensor-control", "All sensor control settings cleared", 680);
-      resetSchedulePriorityToDefault();
-      addResetStep(steps, "schedule-priority", "Schedule priority restored to default order", 540);
-      notifyStorage();
+          JsonDocument response;
+          response["ok"] = true;
+          response["type"] = "storage";
+          response["msg"] = "Reset Storage complete. Device restarting...";
+          response["restartIn"] = 45;
+          response["stepGapMs"] = RESET_CHECKPOINT_GAP_MS;
+          response["finalGapMs"] = RESET_ALL_DONE_GAP_MS;
+          JsonArray steps = response["steps"].to<JsonArray>();
 
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(responseDoc, *response);
-      req->send(response);
-      restartFlag = true;
-      restartAt = millis() + (6UL * RESET_CHECKPOINT_GAP_MS) + RESET_ALL_DONE_GAP_MS + RESET_RESTART_BUFFER_MS;
-    });
+          resetSwitchNamesToDefault();
+          addResetStep(
+              steps, "switch-names",
+              "Switch names set to DEVICE-1, DEVICE-2, DEVICE-3, DEVICE-4",
+              420);
 
-    server.on("/api/admin/reset/settings", HTTP_POST, [](AsyncWebServerRequest *req) {
-      if (!requireAdminVerification(req))
-        return;
-      if (req->hasParam("scope", true)) {
-        String scope = req->getParam("scope", true)->value();
-        scope.trim();
-        scope.toLowerCase();
-        if (scope != "settings") {
-          req->send(400, "application/json", "{\"error\":\"Reset type mismatch\"}");
-          return;
-        }
-      }
-      if (!requireBootHoldResetGesture(req))
-        return;
+          resetSwitchIconsToDefault();
+          addResetStep(steps, "switch-icons",
+                       "Switch icons set to home for all switches", 360);
 
-      JsonDocument responseDoc;
-      responseDoc["ok"] = true;
-      responseDoc["type"] = "settings";
-      responseDoc["msg"] = "Reset Settings complete. Device restarting...";
-      responseDoc["restartIn"] = 45;
-      responseDoc["stepGapMs"] = RESET_CHECKPOINT_GAP_MS;
-      responseDoc["finalGapMs"] = RESET_ALL_DONE_GAP_MS;
-      JsonArray steps = responseDoc["steps"].to<JsonArray>();
-      resetRelayStatesToDefault();
-      addResetStep(steps, "relay-states", "Relay startup state restored to Output OFF for all switches", 640);
-      disableFirebaseOnly();
-      addResetStep(steps, "firebase-toggle", "Firebase disabled", 380);
-      resetDeviceNameToDefault();
-      addResetStep(steps, "device-name", "Device name reset to MAC-based default", 450);
-      resetNtpServerToDefault();
-      addResetStep(steps, "ntp", "NTP server reset to pool.ntp.org", 430);
-      resetTimezoneToDefault();
-      addResetStep(steps, "timezone", "Time zone reset to +00:00 (London)", 520);
-      clearStaticIpConfiguration();
-      addResetStep(steps, "static-ip", "Static IP configuration cleared and DHCP restored", 520);
-      resetLocationToDefault();
-      addResetStep(steps, "location", "Latitude and longitude reset to London defaults", 600);
-      clearRestartScheduleOnly();
-      addResetStep(steps, "restart-schedule", "Automatic restart schedule cleared", 460);
-      notifyStorage();
+          clearRecurringSchedulesStorage();
+          addResetStep(steps, "schedules", "All recurring schedules cleared",
+                       760);
 
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(responseDoc, *response);
-      req->send(response);
-      restartFlag = true;
-      restartAt = millis() + (8UL * RESET_CHECKPOINT_GAP_MS) + RESET_ALL_DONE_GAP_MS + RESET_RESTART_BUFFER_MS;
-    });
+          clearFutureSchedulesStorage();
+          addResetStep(steps, "future-schedules",
+                       "All future schedules cleared", 720);
 
-    server.on("/api/admin/reset/factory", HTTP_POST, [](AsyncWebServerRequest *req) {
-      if (!requireAdminVerification(req))
-        return;
-      if (req->hasParam("scope", true)) {
-        String scope = req->getParam("scope", true)->value();
-        scope.trim();
-        scope.toLowerCase();
-        if (scope != "factory") {
-          req->send(400, "application/json", "{\"error\":\"Reset type mismatch\"}");
-          return;
-        }
-      }
-      if (!requireBootHoldResetGesture(req))
-        return;
+          clearSensorControlStorage();
+          addResetStep(steps, "sensor-control",
+                       "All sensor control settings cleared", 680);
 
-      JsonDocument responseDoc;
-      responseDoc["ok"] = true;
-      responseDoc["type"] = "factory";
-      responseDoc["msg"] = "Factory Reset complete. Device restarting...";
-      responseDoc["restartIn"] = 45;
-      responseDoc["stepGapMs"] = RESET_CHECKPOINT_GAP_MS;
-      responseDoc["finalGapMs"] = RESET_ALL_DONE_GAP_MS;
-      JsonArray steps = responseDoc["steps"].to<JsonArray>();
-      resetSwitchNamesToDefault();
-      resetSwitchIconsToDefault();
-      clearRecurringSchedulesStorage();
-      clearFutureSchedulesStorage();
-      clearSensorControlStorage();
-      clearStaticIpConfiguration();
-      resetSchedulePriorityToDefault();
-      resetLocationToDefault();
-      addResetStep(steps, "reset-storage", "Reset Storage applied", 980);
-      resetRelayStatesToDefault();
-      disableFirebaseOnly();
-      resetDeviceNameToDefault();
-      resetNtpServerToDefault();
-      resetTimezoneToDefault();
-      clearRestartScheduleOnly();
-      addResetStep(steps, "reset-settings", "Reset Settings applied", 760);
-      clearFirebaseCredentialsOnly();
-      addResetStep(steps, "firebase-credentials", "Firebase credentials cleared", 560);
-      resetFirebaseRulesToDefault();
-      addResetStep(steps, "firebase-rules", "Database rules reset to default template", 620);
-      clearFirebaseUsersOnly();
-      addResetStep(steps, "firebase-users", "Firebase users cleared", 700);
-      resetUsersToSingleDefaultAdmin();
-      addResetStep(steps, "default-admin", "Default admin user restored to esp / 456456", 650);
-      addResetStep(steps, "normal-users", "All normal users cleared", 580);
-      addResetStep(steps, "wifi-credentials", "WiFi credentials cleared", 520);
-      notifyStorage();
+          resetSchedulePriorityToDefault();
+          addResetStep(steps, "schedule-priority",
+                       "Schedule priority restored to default order", 540);
 
-      AsyncResponseStream *response = req->beginResponseStream("application/json");
-      serializeJson(responseDoc, *response);
-      req->send(response);
-      factoryResetWifiClearPending = true;
-      factoryResetWifiClearAt = millis() + FACTORY_RESET_WIFI_CLEAR_DELAY_MS;
-      restartFlag = true;
-      restartAt = millis() + FACTORY_RESET_RESTART_DELAY_MS;
-    });
+          notifyStorage();
+
+          String r;
+          serializeJson(response, r);
+          req->send(200, "application/json", r);
+
+          restartFlag = true;
+          restartAt = millis() + (6UL * RESET_CHECKPOINT_GAP_MS) +
+                      RESET_ALL_DONE_GAP_MS + RESET_RESTART_BUFFER_MS;
+        });
+
+    server.on(
+        "/api/admin/reset/settings", HTTP_POST, [](AsyncWebServerRequest *req) {
+          if (!requireAdminVerification(req)) {
+            return;
+          }
+          if (req->hasParam("scope", true)) {
+            String scope = req->getParam("scope", true)->value();
+            scope.trim();
+            scope.toLowerCase();
+            if (scope != "settings") {
+              req->send(
+                  400, "application/json",
+                  "{\"error\":\"Reset type mismatch (expected settings)\"}");
+              return;
+            }
+          }
+          if (!requireBootHoldResetGesture(req)) {
+            return;
+          }
+
+          JsonDocument response;
+          response["ok"] = true;
+          response["type"] = "settings";
+          response["msg"] = "Reset Settings complete. Device restarting...";
+          response["restartIn"] = 45;
+          response["stepGapMs"] = RESET_CHECKPOINT_GAP_MS;
+          response["finalGapMs"] = RESET_ALL_DONE_GAP_MS;
+          JsonArray steps = response["steps"].to<JsonArray>();
+
+          resetRelayStatesToDefault();
+          addResetStep(
+              steps, "relay-states",
+              "Relay startup state restored to Output OFF for all switches",
+              640);
+
+          disableFirebaseOnly();
+          addResetStep(steps, "firebase-toggle", "Firebase disabled", 380);
+
+          resetDeviceNameToDefault();
+          addResetStep(steps, "device-name",
+                       "Device name reset to MAC-based default", 450);
+
+          resetNtpServerToDefault();
+          addResetStep(steps, "ntp", "NTP server reset to pool.ntp.org", 430);
+
+          resetTimezoneToDefault();
+          addResetStep(steps, "timezone", "Time zone reset to +00:00 (London)",
+                       520);
+
+          clearStaticIpConfiguration();
+          addResetStep(steps, "static-ip",
+                       "Static IP configuration cleared and DHCP restored",
+                       520);
+
+          resetLocationToDefault();
+          addResetStep(steps, "location",
+                       "Latitude and longitude reset to London defaults", 600);
+
+          clearRestartScheduleOnly();
+          addResetStep(steps, "restart-schedule",
+                       "Automatic restart schedule cleared", 460);
+
+          notifyStorage();
+
+          String r;
+          serializeJson(response, r);
+          req->send(200, "application/json", r);
+
+          restartFlag = true;
+          restartAt = millis() + (8UL * RESET_CHECKPOINT_GAP_MS) +
+                      RESET_ALL_DONE_GAP_MS + RESET_RESTART_BUFFER_MS;
+        });
+
+    server.on(
+        "/api/admin/reset/factory", HTTP_POST, [](AsyncWebServerRequest *req) {
+          if (!requireAdminVerification(req)) {
+            return;
+          }
+          if (req->hasParam("scope", true)) {
+            String scope = req->getParam("scope", true)->value();
+            scope.trim();
+            scope.toLowerCase();
+            if (scope != "factory") {
+              req->send(
+                  400, "application/json",
+                  "{\"error\":\"Reset type mismatch (expected factory)\"}");
+              return;
+            }
+          }
+          if (!requireBootHoldResetGesture(req)) {
+            return;
+          }
+
+          JsonDocument response;
+          response["ok"] = true;
+          response["type"] = "factory";
+          response["msg"] = "Factory Reset complete. Device restarting...";
+          response["restartIn"] = 45;
+          response["stepGapMs"] = RESET_CHECKPOINT_GAP_MS;
+          response["finalGapMs"] = RESET_ALL_DONE_GAP_MS;
+          JsonArray steps = response["steps"].to<JsonArray>();
+
+          resetSwitchNamesToDefault();
+          resetSwitchIconsToDefault();
+          clearRecurringSchedulesStorage();
+          clearFutureSchedulesStorage();
+          clearSensorControlStorage();
+          clearStaticIpConfiguration();
+          resetSchedulePriorityToDefault();
+          resetLocationToDefault();
+          addResetStep(steps, "reset-storage", "Reset Storage applied", 980);
+
+          resetRelayStatesToDefault();
+          disableFirebaseOnly();
+          resetDeviceNameToDefault();
+          resetNtpServerToDefault();
+          resetTimezoneToDefault();
+          clearRestartScheduleOnly();
+          addResetStep(steps, "reset-settings", "Reset Settings applied", 760);
+
+          clearFirebaseCredentialsOnly();
+          addResetStep(steps, "firebase-credentials",
+                       "Firebase credentials cleared", 560);
+
+          resetFirebaseRulesToDefault();
+          addResetStep(steps, "firebase-rules",
+                       "Database rules reset to default template", 620);
+
+          clearFirebaseUsersOnly();
+          addResetStep(steps, "firebase-users", "Firebase users cleared", 700);
+
+          resetUsersToSingleDefaultAdmin();
+          addResetStep(steps, "default-admin",
+                       "Default admin user restored to esp / 456456", 650);
+          addResetStep(steps, "normal-users", "All normal users cleared", 580);
+          addResetStep(steps, "wifi-credentials", "WiFi credentials cleared",
+                       520);
+          notifyStorage();
+
+          String r;
+          serializeJson(response, r);
+          req->send(200, "application/json", r);
+
+          factoryResetWifiClearPending = true;
+          factoryResetWifiClearAt =
+              millis() + FACTORY_RESET_WIFI_CLEAR_DELAY_MS;
+
+          restartFlag = true;
+          restartAt = millis() + FACTORY_RESET_RESTART_DELAY_MS;
+        });
   }
 
   server.onNotFound([](AsyncWebServerRequest *req) {
@@ -4127,13 +4843,20 @@ void setupWebServer() {
       req->send(204);
       return;
     }
+
     if (req->url().startsWith("/api/")) {
-      if (coreRoutesOnly)
-        req->send(503, "application/json", "{\"error\":\"API disabled in low-memory mode\"}");
-      else
-        req->send(404, "application/json", "{\"error\":\"API route not found\"}");
+      if (coreRoutesOnly) {
+        req->send(503, "application/json",
+                  "{\"error\":\"Extended API disabled in low-memory mode\"}");
+      } else {
+        req->send(404, "application/json",
+                  "{\"error\":\"API route not found\"}");
+      }
+      Serial.printf("[HTTP] API miss %s\n", req->url().c_str());
       return;
     }
+
+    Serial.printf("[HTTP] 404 %s\n", req->url().c_str());
     req->send(404, "text/plain", "Not found");
   });
 
@@ -4141,6 +4864,7 @@ void setupWebServer() {
   Serial.println("[SERVER] Web server started");
 }
 
+//  SETUP
 void setup() {
   std::set_new_handler(oomNewHandler);
   Serial.begin(115200);
@@ -4148,6 +4872,7 @@ void setup() {
   Serial.println("  ESP32 Smart Home Starting");
   Serial.println("==============================");
 
+  // Pin modes
   for (int i = 0; i < NUM_SWITCHES; i++) {
     pinMode(outPin[i], OUTPUT);
     pinMode(inPin[i], INPUT);
@@ -4158,18 +4883,25 @@ void setup() {
   pinMode(BOOT_BUTTON, INPUT_PULLUP);
 
   swStateMutex = xSemaphoreCreateMutex();
+  if (!swStateMutex) {
+    Serial.println("[SYS] Failed to create swState mutex");
+  }
 
   configureFirebaseSslClient(fbSslClient);
   configureFirebaseSslClient(fbStreamSslClient);
   initDeviceId();
   initFirebaseWriteQueue();
 
+  // Startup beep
   digitalWrite(BUZZER_PIN, HIGH);
   delay(100);
   digitalWrite(BUZZER_PIN, LOW);
   delay(2000);
 
+  // On demand WiFi setup
   if (digitalRead(BOOT_BUTTON) == LOW) {
+    Serial.println("[BOOT] Boot button pressed - entering WiFi setup mode...");
+    // Double beep to indicate WiFi setup mode
     digitalWrite(BUZZER_PIN, HIGH);
     delay(100);
     digitalWrite(BUZZER_PIN, LOW);
@@ -4177,17 +4909,54 @@ void setup() {
     digitalWrite(BUZZER_PIN, HIGH);
     delay(100);
     digitalWrite(BUZZER_PIN, LOW);
+
     runWifiConfigPortal(true);
   }
 
-  EEPROM.begin(512);
-  Serial.println("[OK] EEPROM Initialized");
+  // --- Storage Init ---
+  Serial.println("\n==============================");
+  Serial.println("Settings Initialization");
+  Serial.println("==============================");
+  Serial.println("[INFO] Initializing EEPROM...");
   delay(1000);
-  if (!SPIFFS.begin(true))
-    Serial.println("[ERROR] SPIFFS Mount Failed!");
-  else
-    Serial.println("[OK] SPIFFS Mounted Successfully");
+  EEPROM.begin(512);
+  // loadSettings();
+  Serial.println("[SUCCESS] EEPROM Initialized.");
+  Serial.printf("[INFO] EEPROM Size: %d bytes\n", 512);
+  Serial.println("==============================\n");
 
+  delay(1000);
+
+  // --- SPIFFS ---
+  Serial.println("\n==============================");
+  Serial.println("SPIFFS Initialization");
+  Serial.println("==============================");
+  if (!SPIFFS.begin(true)) {
+    // u8g2.drawStr(0, 18, "SPIFFS: ERROR");
+    Serial.println("[ERROR] SPIFFS Mount Failed!");
+    Serial.println("[INFO] Filesystem not available.");
+    Serial.println("==============================\n");
+  } else {
+    // u8g2.drawStr(0, 18, "SPIFFS: OK");
+    Serial.println("[SUCCESS] SPIFFS Mounted Successfully.");
+    Serial.println("[INFO] Listing Files:");
+    Serial.println("------------------------------");
+    File root = SPIFFS.open("/");
+    File file = root.openNextFile();
+    int fileCount = 0;
+    while (file) {
+      Serial.printf("File %02d : %s  |  Size: %d bytes\n", fileCount + 1,
+                    file.name(), file.size());
+      fileCount++;
+      file = root.openNextFile();
+    }
+    Serial.println("------------------------------");
+    Serial.printf("Total Files: %d\n", fileCount);
+    Serial.println("==============================\n");
+    root.close();
+  }
+
+  // Load all settings from NVS
   loadSwitchSettings();
   loadWifiSettings();
   loadFbSettings();
@@ -4195,13 +4964,16 @@ void setup() {
   initDefaultUser();
   Serial.println("[OK] Settings loaded from NVS");
 
+  // AHT10 sensor
   Wire.begin();
   if (aht.begin()) {
     ahtOk = true;
     Serial.println("[OK] AHT10 sensor detected");
-  } else
+  } else {
     Serial.println("[WARN] AHT10 not detected");
+  }
 
+  // WiFi
   WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
     switch (event) {
     case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
@@ -4209,7 +4981,9 @@ void setup() {
       WiFi.reconnect();
       break;
     case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-      pendingWebServerRestart = true;
+      Serial.print("[WIFI] Reconnected! New IP: ");
+      Serial.println(WiFi.localIP());
+      pendingWebServerRestart = true; // Signal the loop to relaunch smoothly
       break;
     default:
       break;
@@ -4217,17 +4991,27 @@ void setup() {
   });
   connectToSavedWiFi();
   delay(1000);
+  // connectWiFi();
 
   if (WiFi.status() == WL_CONNECTED) {
     WiFi.setSleep(false);
+    Serial.println("[WIFI] Power save disabled for stable web server");
+  }
+
+  // Time sync
+  if (WiFi.status() == WL_CONNECTED) {
     syncTime();
+  }
+
+  // Sunrise/Sunset
+  calcSunriseSunset();
+
+  // Web server
+  if (WiFi.status() == WL_CONNECTED) {
     setupWebServer();
   }
 
-  calcSunriseSunset();
   startFirebaseTask();
-
-  pendingWebServerRestart = false;
 
   Serial.println("==============================");
   Serial.println("  System Ready");
@@ -4236,7 +5020,10 @@ void setup() {
   Serial.println("==============================\n");
 }
 
+//  LOOP
 void loop() {
+
+  // 1. SAFELY WRITE TO FLASH (Away from Web callbacks)
   for (int i = 0; i < NUM_SWITCHES; i++) {
     if (nvsRelayDirty[i]) {
       nvsRelayDirty[i] = false;
@@ -4246,21 +5033,36 @@ void loop() {
     }
   }
 
+  // 2. SAFELY RELAUNCH WEBSERVER AFTER WIFI RECONNECT
   if (pendingWebServerRestart) {
     pendingWebServerRestart = false;
+    Serial.println("[SERVER] Relaunching WebServer after WiFi reconnect...");
     server.end();
-    delay(100);
+    delay(100); // Give LwIP a moment to release ports
     setupWebServer();
-    syncTime();
+    syncTime(); // Trigger a background time check just in case
+    Serial.println("[SERVER] WebServer successfully relaunched.");
   }
 
   serviceNotifyStorage();
   updateBootButtonHoldState();
+
+  // Physical switch input
   checkPhysicalSwitches();
+
+  // Collect automation actions and resolve conflicts by configured priority.
   clearPendingAutomationActions();
+
+  // Timer execution (volatile)
   checkTimers();
 
+  // Schedule checks (every 15s)
   unsigned long now = millis();
+  if (now - lastHeapLog >= HEAP_LOG_INTERVAL_MS) {
+    lastHeapLog = now;
+    Serial.printf("[HEAP] Free heap: %u bytes\n", ESP.getFreeHeap());
+  }
+
   if (now - lastSchedCheck >= 15000) {
     lastSchedCheck = now;
     checkSchedules();
@@ -4268,6 +5070,7 @@ void loop() {
     checkRestartSchedule();
   }
 
+  // Sensor checks (every 30s)
   if (now - lastSensorCheck >= 30000) {
     lastSensorCheck = now;
     checkSensors();
@@ -4275,6 +5078,7 @@ void loop() {
 
   applyPendingAutomationActions();
 
+  // WiFi portal request
   if (portalFlag) {
     portalFlag = false;
     server.end();
@@ -4296,11 +5100,16 @@ void loop() {
     WiFi.disconnect(true, true);
   }
 
+  // Critical heap failsafe
   if (!restartFlag && ESP.getFreeHeap() < CRITICAL_LOW_HEAP_RESTART_BYTES) {
+    Serial.printf("[HEAP] Critical low heap %u bytes — scheduling restart\n",
+                  ESP.getFreeHeap());
     restartFlag = true;
     restartAt = millis() + 1500;
   }
 
-  if (restartFlag && millis() >= restartAt)
+  // Restart request
+  if (restartFlag && millis() >= restartAt) {
     ESP.restart();
+  }
 }
