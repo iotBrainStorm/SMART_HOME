@@ -1,3 +1,5 @@
+#include "esp_sntp.h"
+#include "time.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -70,7 +72,15 @@ Adafruit_AHT10 aht;
 bool swState[NUM_SWITCHES] = {false, false, false, false};
 String swName[NUM_SWITCHES] = {"DEVICE-1", "DEVICE-2", "DEVICE-3", "DEVICE-4"};
 String swIcon[NUM_SWITCHES] = {"home", "home", "home", "home"};
-String relayMode[NUM_SWITCHES] = {"off", "off", "off", "off"};
+enum RelayModeType : uint8_t {
+  RELAY_MODE_OFF = 0,
+  RELAY_MODE_ON = 1,
+  RELAY_MODE_REMEMBER = 2
+};
+RelayModeType relayMode[NUM_SWITCHES] = {RELAY_MODE_OFF, RELAY_MODE_OFF, RELAY_MODE_OFF, RELAY_MODE_OFF};
+
+bool pendingWebServerRestart = false;
+bool nvsRelayDirty[NUM_SWITCHES] = {false, false, false, false};
 
 // Timers - volatile (RAM only, lost on power cut)
 struct SwTimer {
@@ -308,12 +318,27 @@ void loadSwitchSettings() {
   for (int i = 0; i < NUM_SWITCHES; i++) {
     swName[i] = prefs.getString(("n" + String(i)).c_str(), swName[i]);
     swIcon[i] = prefs.getString(("i" + String(i)).c_str(), swIcon[i]);
-    relayMode[i] = prefs.getString(("r" + String(i)).c_str(), "off");
+
+    // 1. Read the saved setting as a string
+    String modeStr = prefs.getString(("r" + String(i)).c_str(), "off");
+
+    // 2. Convert the string to our new Enum
+    if (modeStr == "on") {
+      relayMode[i] = RELAY_MODE_ON;
+    } else if (modeStr == "remember") {
+      relayMode[i] = RELAY_MODE_REMEMBER;
+    } else {
+      relayMode[i] = RELAY_MODE_OFF;
+    }
+
+    // 3. Set the initial state using the Enum
     bool initialState = false;
-    if (relayMode[i] == "on")
+    if (relayMode[i] == RELAY_MODE_ON) {
       initialState = true;
-    else if (relayMode[i] == "remember")
+    } else if (relayMode[i] == RELAY_MODE_REMEMBER) {
       initialState = prefs.getBool(("l" + String(i)).c_str(), false);
+    }
+
     writeSwState(i, initialState);
     digitalWrite(outPin[i], initialState ? HIGH : LOW);
   }
@@ -922,9 +947,13 @@ void resetLocationToDefault() {
 void resetRelayStatesToDefault() {
   prefs.begin("sw", false);
   for (int i = 0; i < NUM_SWITCHES; i++) {
-    relayMode[i] = "off";
+    // 1. Set the active RAM state using the Enum
+    relayMode[i] = RELAY_MODE_OFF;
+
     writeSwState(i, false);
     digitalWrite(outPin[i], LOW);
+
+    // 2. Save the string "off" to NVS memory
     prefs.putString(("r" + String(i)).c_str(), "off");
     prefs.remove(("l" + String(i)).c_str());
   }
@@ -1701,7 +1730,7 @@ void processFirebaseWriteQueue() {
   unsigned long writeStartedAt = millis();
   bool ok = firebaseSetBoolAtPath(path, task.state);
   unsigned long writeDurationMs = millis() - writeStartedAt;
-  firebaseLastWriteMs = now;
+  firebaseLastWriteMs = millis();
 
   if (writeDurationMs >= FIREBASE_WRITE_LONG_OP_MS) {
     yield();
@@ -1741,29 +1770,24 @@ void setRelayState(int index, bool state, const String &source) {
 
   digitalWrite(outPin[index], state ? HIGH : LOW);
 
-  if (relayMode[index] == "remember") {
-    prefs.begin("sw", false);
-    prefs.putBool(("l" + String(index)).c_str(), state);
-    prefs.end();
+  // DEFERRED FLASH WRITE: Just set the flag. The loop() will safely write it to flash.
+  if (relayMode[index] == RELAY_MODE_REMEMBER) {
+    nvsRelayDirty[index] = true;
   }
 
   bool firebaseSource = (normalizedSource == "firebase");
   bool webSource = (normalizedSource == "web" || normalizedSource == "api");
-  bool manualSource =
-      (normalizedSource == "manual" || normalizedSource == "physical" ||
-       normalizedSource == "local" || normalizedSource == "automation");
+  bool manualSource = (normalizedSource == "manual" || normalizedSource == "physical" ||
+                       normalizedSource == "local" || normalizedSource == "automation");
 
-  // Source-aware propagation prevents Firebase<->local feedback loops.
   if (firebaseSource) {
     syncRelayStateToWebView(index, state);
     return;
   }
-
   if (webSource) {
     enqueueFirebaseWrite(index, state);
     return;
   }
-
   if (manualSource) {
     syncRelayStateToWebView(index, state);
     enqueueFirebaseWrite(index, state);
@@ -2152,61 +2176,33 @@ bool readCurrentLocalTime(struct tm *ti) {
   return true;
 }
 
-//  TIME SYNC
+void sntpTimeAvailableCallback(struct timeval *t) {
+  Serial.println("[TIME] SNTP sync completed successfully in background!");
+  timeSynced = true;
+  calcSunriseSunset(); // Auto-update sun times when time arrives
+}
+
+// SYNC TIME
 bool syncTime(struct tm *syncedTime = nullptr) {
-  Serial.printf("[TIME] syncTime() called. WiFi=%s\n",
+  Serial.printf("[TIME] Requesting SNTP sync. WiFi=%s\n",
                 WiFi.status() == WL_CONNECTED ? "connected" : "disconnected");
 
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("[TIME] syncTime() aborted: WiFi disconnected");
+  if (WiFi.status() != WL_CONNECTED)
     return false;
-  }
 
   loadTimeSettingsFromAdminStorage();
-
   ntpSrv.trim();
-  if (ntpSrv.isEmpty()) {
+  if (ntpSrv.isEmpty())
     ntpSrv = "pool.ntp.org";
-  }
 
-  IPAddress resolved;
-  if (!WiFi.hostByName(ntpSrv.c_str(), resolved)) {
-    Serial.printf("[TIME] DNS failed for NTP '%s' (DNS=%s)\n", ntpSrv.c_str(),
-                  WiFi.dnsIP().toString().c_str());
-    if (ntpSrv != "pool.ntp.org") {
-      ntpSrv = "pool.ntp.org";
-    }
-    if (!WiFi.hostByName(ntpSrv.c_str(), resolved)) {
-      Serial.printf("[TIME] DNS failed for fallback NTP '%s' (DNS=%s)\n",
-                    ntpSrv.c_str(), WiFi.dnsIP().toString().c_str());
-      return false;
-    }
-  }
+  // Bind the background callback
+  sntp_set_time_sync_notification_cb(sntpTimeAvailableCallback);
 
+  // This triggers the ESP32 to fetch time asynchronously
   configTime(gmtOff, 0, ntpSrv.c_str(), "pool.ntp.org", "time.nist.gov");
 
-  const unsigned long timeoutMs = 20000;
-  const unsigned long pollDelayMs = 250;
-  unsigned long startedAt = millis();
-  struct tm ti;
-
-  while ((millis() - startedAt) < timeoutMs) {
-    if (readCurrentLocalTime(&ti)) {
-      timeSynced = true;
-      if (syncedTime) {
-        *syncedTime = ti;
-      }
-      Serial.printf("[TIME] Synced: %02d:%02d:%02d %02d/%02d/%04d\n",
-                    ti.tm_hour, ti.tm_min, ti.tm_sec, ti.tm_mday, ti.tm_mon + 1,
-                    ti.tm_year + 1900);
-      return true;
-    }
-    delay(pollDelayMs);
-  }
-
-  Serial.println("[TIME] syncTime() timeout waiting for valid local time");
-
-  return false;
+  Serial.println("[TIME] SNTP configured. Syncing in background...");
+  return true;
 }
 
 //  SUNRISE & SUNSET
@@ -3023,7 +3019,14 @@ void setupWebServer() {
       na.add(swName[i]);
       ic.add(swIcon[i]);
       st.add(readSwState(i));
-      rl.add(relayMode[i]);
+
+      // Convert Enum back to String for the Web UI
+      if (relayMode[i] == RELAY_MODE_ON)
+        rl.add("on");
+      else if (relayMode[i] == RELAY_MODE_REMEMBER)
+        rl.add("remember");
+      else
+        rl.add("off");
     }
     String r;
     serializeJson(d, r);
@@ -3074,8 +3077,19 @@ void setupWebServer() {
     for (int i = 0; i < NUM_SWITCHES; i++) {
       String k = "relay" + String(i);
       if (req->hasParam(k, true)) {
-        relayMode[i] = req->getParam(k, true)->value();
-        prefs.putString(("r" + String(i)).c_str(), relayMode[i]);
+        // Read the string from the web request
+        String modeStr = req->getParam(k, true)->value();
+
+        // Save the raw string to NVS preferences
+        prefs.putString(("r" + String(i)).c_str(), modeStr);
+
+        // Convert to Enum for the active RAM state
+        if (modeStr == "on")
+          relayMode[i] = RELAY_MODE_ON;
+        else if (modeStr == "remember")
+          relayMode[i] = RELAY_MODE_REMEMBER;
+        else
+          relayMode[i] = RELAY_MODE_OFF;
       }
     }
     prefs.end();
@@ -4960,6 +4974,21 @@ void setup() {
   }
 
   // WiFi
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+    switch (event) {
+    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+      Serial.println("[WIFI] Disconnected! ESP32 will auto-reconnect...");
+      WiFi.reconnect();
+      break;
+    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+      Serial.print("[WIFI] Reconnected! New IP: ");
+      Serial.println(WiFi.localIP());
+      pendingWebServerRestart = true; // Signal the loop to relaunch smoothly
+      break;
+    default:
+      break;
+    }
+  });
   connectToSavedWiFi();
   delay(1000);
   // connectWiFi();
@@ -4993,6 +5022,28 @@ void setup() {
 
 //  LOOP
 void loop() {
+
+  // 1. SAFELY WRITE TO FLASH (Away from Web callbacks)
+  for (int i = 0; i < NUM_SWITCHES; i++) {
+    if (nvsRelayDirty[i]) {
+      nvsRelayDirty[i] = false;
+      prefs.begin("sw", false);
+      prefs.putBool(("l" + String(i)).c_str(), readSwState(i));
+      prefs.end();
+    }
+  }
+
+  // 2. SAFELY RELAUNCH WEBSERVER AFTER WIFI RECONNECT
+  if (pendingWebServerRestart) {
+    pendingWebServerRestart = false;
+    Serial.println("[SERVER] Relaunching WebServer after WiFi reconnect...");
+    server.end();
+    delay(100); // Give LwIP a moment to release ports
+    setupWebServer();
+    syncTime(); // Trigger a background time check just in case
+    Serial.println("[SERVER] WebServer successfully relaunched.");
+  }
+
   serviceNotifyStorage();
   updateBootButtonHoldState();
 
