@@ -4137,9 +4137,7 @@
         var panelParam = params.get("panel");
         var swParam = params.get("sw");
 
-        if (!tabParam || !tabConfig[tabParam]) {
-          return;
-        }
+        if (!tabParam || !tabConfig[tabParam]) return;
 
         var tabEl = null;
         tabs.forEach(function (t) {
@@ -4159,6 +4157,7 @@
         var panelToShow = validPanel
           ? panelParam
           : tabConfig[currentTab][0].panel;
+
         activatePanel(panelToShow, currentTab);
 
         if (swParam !== null && swParam !== "") {
@@ -4176,19 +4175,35 @@
             if (selectId) {
               var sel = document.getElementById(selectId);
               if (sel) sel.value = String(swIndex);
-              if (selectId === "scheduleSwitch") onScheduleSwitchChange();
-              if (selectId === "futureScheduleSwitch")
-                onFutureScheduleSwitchChange();
             }
           }
         }
 
+        // Just toggle the UI state to 'visible', the staggered init handles the fetches
         if (panelToShow === "panel-auto-schedule") {
-          toggleScheduleList(true);
+          setAutomationListVisibility(
+            "scheduleList",
+            "showSchedulesBtn",
+            true,
+            "Show Schedules",
+            "Hide Schedules",
+          );
         } else if (panelToShow === "panel-auto-future") {
-          toggleFutureScheduleList(true);
+          setAutomationListVisibility(
+            "futureScheduleList",
+            "showFutureSchedulesBtn",
+            true,
+            "Show Future Schedules",
+            "Hide Future Schedules",
+          );
         } else if (panelToShow === "panel-auto-sensor") {
-          toggleSensorAutomationList(true);
+          setAutomationListVisibility(
+            "sensorAutomationList",
+            "showSensorAutomationsBtn",
+            true,
+            "Show Automations",
+            "Hide Automations",
+          );
         }
       }
 
@@ -5729,25 +5744,26 @@
         list.innerHTML =
           '<div class="automation-empty">Loading schedules...</div>';
 
-        var requests = [];
-        for (var sw = 0; sw < 4; sw++) {
-          (function (switchIndex) {
-            requests.push(
-              apiGet("/api/schedules?sw=" + switchIndex)
-                .then(function (arr) {
-                  return {
-                    sw: switchIndex,
-                    items: Array.isArray(arr) ? arr : [],
-                  };
-                })
-                .catch(function () {
-                  return { sw: switchIndex, items: [] };
-                }),
-            );
-          })(sw);
-        }
+        var results = [];
+        var p = Promise.resolve();
 
-        return Promise.all(requests).then(function (results) {
+        // Fetch sequentially to prevent OOM
+        [0, 1, 2, 3].forEach(function (swIndex) {
+          p = p.then(function () {
+            return apiGet("/api/schedules?sw=" + swIndex)
+              .then(function (arr) {
+                results.push({
+                  sw: swIndex,
+                  items: Array.isArray(arr) ? arr : [],
+                });
+              })
+              .catch(function () {
+                results.push({ sw: swIndex, items: [] });
+              });
+          });
+        });
+
+        return p.then(function () {
           scheduleListCache = [];
           results.forEach(function (result) {
             result.items.forEach(function (item, index) {
@@ -5849,25 +5865,26 @@
         list.innerHTML =
           '<div class="automation-empty">Loading future schedules...</div>';
 
-        var requests = [];
-        for (var sw = 0; sw < 4; sw++) {
-          (function (switchIndex) {
-            requests.push(
-              apiGet("/api/fschedules?sw=" + switchIndex)
-                .then(function (arr) {
-                  return {
-                    sw: switchIndex,
-                    items: Array.isArray(arr) ? arr : [],
-                  };
-                })
-                .catch(function () {
-                  return { sw: switchIndex, items: [] };
-                }),
-            );
-          })(sw);
-        }
+        var results = [];
+        var p = Promise.resolve();
 
-        return Promise.all(requests).then(function (results) {
+        // Fetch sequentially
+        [0, 1, 2, 3].forEach(function (swIndex) {
+          p = p.then(function () {
+            return apiGet("/api/fschedules?sw=" + swIndex)
+              .then(function (arr) {
+                results.push({
+                  sw: swIndex,
+                  items: Array.isArray(arr) ? arr : [],
+                });
+              })
+              .catch(function () {
+                results.push({ sw: swIndex, items: [] });
+              });
+          });
+        });
+
+        return p.then(function () {
           futureScheduleListCache = [];
           results.forEach(function (result) {
             result.items.forEach(function (item, index) {
@@ -5931,34 +5948,37 @@
           { type: "humid", url: "/api/sensor/humid?sw=" },
           { type: "sun", url: "/api/sensor/sun?sw=" },
         ];
-        var requests = [];
 
+        var results = [];
+        var p = Promise.resolve();
+
+        // 12 sequential fetches to completely eliminate RAM spikes
         for (var sw = 0; sw < 4; sw++) {
           sensorEndpoints.forEach(function (endpoint) {
-            requests.push(
-              (function (switchIndex, sensorEndpoint) {
+            (function (switchIndex, sensorEndpoint) {
+              p = p.then(function () {
                 return apiGet(sensorEndpoint.url + switchIndex)
                   .then(function (data) {
-                    return {
+                    results.push({
                       sw: switchIndex,
                       type: sensorEndpoint.type,
                       data: data || {},
-                    };
+                    });
                   })
                   .catch(function () {
-                    return {
+                    results.push({
                       sw: switchIndex,
                       type: sensorEndpoint.type,
                       data: {},
-                    };
+                    });
                   });
-              })(sw, endpoint),
-            );
+              });
+            })(sw, endpoint);
           });
         }
 
-        return Promise.all(requests)
-          .then(function (results) {
+        return p
+          .then(function () {
             sensorAutomationListCache = results.filter(function (entry) {
               return hasSensorAutomationData(entry.data);
             });
@@ -8762,6 +8782,46 @@
         setTimeout(
           function () {
             loadFutureSchedulesForSwitch();
+          },
+          (loadDelay += delayStep),
+        );
+
+        // Deep Link List Loaders
+        setTimeout(
+          function () {
+            if (
+              document
+                .getElementById("scheduleList")
+                .classList.contains("active")
+            ) {
+              loadScheduleList();
+            }
+          },
+          (loadDelay += delayStep),
+        );
+
+        setTimeout(
+          function () {
+            if (
+              document
+                .getElementById("futureScheduleList")
+                .classList.contains("active")
+            ) {
+              loadFutureScheduleList();
+            }
+          },
+          (loadDelay += delayStep),
+        );
+
+        setTimeout(
+          function () {
+            if (
+              document
+                .getElementById("sensorAutomationList")
+                .classList.contains("active")
+            ) {
+              loadSensorAutomationList();
+            }
           },
           (loadDelay += delayStep),
         );
