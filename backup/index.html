@@ -1454,14 +1454,18 @@
         });
       });
 
-      /* ── ALL ON / ALL OFF ── */
+      /* ── ALL ON / ALL OFF (Staggered to protect ESP32 memory) ── */
       document
         .getElementById("allOnBtn")
         .addEventListener("click", function () {
           showConfirm("Turn ON all switches?", function () {
+            var delayMs = 0;
             toggles.forEach(function (t) {
-              t.checked = true;
-              t.dispatchEvent(new Event("change"));
+              setTimeout(function () {
+                t.checked = true;
+                t.dispatchEvent(new Event("change"));
+              }, delayMs);
+              delayMs += 150; // Adds a 150ms gap between each request
             });
           });
         });
@@ -1470,9 +1474,13 @@
         .getElementById("allOffBtn")
         .addEventListener("click", function () {
           showConfirm("Turn OFF all switches?", function () {
+            var delayMs = 0;
             toggles.forEach(function (t) {
-              t.checked = false;
-              t.dispatchEvent(new Event("change"));
+              setTimeout(function () {
+                t.checked = false;
+                t.dispatchEvent(new Event("change"));
+              }, delayMs);
+              delayMs += 150; // Adds a 150ms gap between each request
             });
           });
         });

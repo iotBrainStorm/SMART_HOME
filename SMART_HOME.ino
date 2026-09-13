@@ -207,10 +207,10 @@ bool forgetWifiFlag = false;
 unsigned long forgetWifiAt = 0;
 bool coreRoutesOnly = false;
 
-const uint32_t MIN_FREE_HEAP_FOR_EXTENDED_ROUTES = 38000;
-const uint32_t MIN_FREE_HEAP_FOR_FIREBASE_WRITE = 45000;
-const uint32_t MIN_FREE_HEAP_FOR_FIREBASE_LOOP = 38000;
-const uint32_t CRITICAL_LOW_HEAP_RESTART_BYTES = 32000;
+const uint32_t MIN_FREE_HEAP_FOR_EXTENDED_ROUTES = 15000;
+const uint32_t MIN_FREE_HEAP_FOR_FIREBASE_WRITE = 20000;
+const uint32_t MIN_FREE_HEAP_FOR_FIREBASE_LOOP = 15000;
+const uint32_t CRITICAL_LOW_HEAP_RESTART_BYTES = 8000;
 const int WIFI_CONNECT_MAX_ATTEMPTS = 5;
 const unsigned long WIFI_CONNECT_RETRY_MS = 2000;
 const unsigned long WIFI_PORTAL_RECOVERY_RESTART_MS = 200;
@@ -1937,25 +1937,6 @@ void handleFirebaseRuntime() {
   ensureFirebaseStreamConnected();
 }
 
-void firebaseTask(void *param) {
-  (void)param;
-  for (;;) {
-    handleFirebaseRuntime();
-    yield();
-    processFirebaseWriteQueue();
-    vTaskDelay(FIREBASE_TASK_DELAY_TICKS);
-  }
-}
-
-void startFirebaseTask() {
-  if (firebaseTaskHandle)
-    return;
-  BaseType_t created = xTaskCreatePinnedToCore(
-      firebaseTask, "FirebaseTask", 16384, nullptr, 1, &firebaseTaskHandle, 0);
-  if (created == pdPASS)
-    Serial.println("[FB] Firebase task started");
-}
-
 bool readCurrentLocalTime(struct tm *ti) {
   if (!ti)
     return false;
@@ -2520,8 +2501,8 @@ void checkPhysicalSwitches() {
 }
 
 void sendWebFile(AsyncWebServerRequest *request, const char *path, const char *contentType) {
-  // MEMORY GUARD INCREASED TO 35,000 BYTES TO PROTECT SSL AND JSON
-  if (ESP.getFreeHeap() < 35000) {
+  // MEMORY GUARD LOWERED TO ALLOW UI LOADING WHILE FIREBASE IS ON
+  if (ESP.getFreeHeap() < 12000) {
     request->send(503, "text/plain", "Low memory");
     return;
   }
@@ -4225,7 +4206,6 @@ void setup() {
   }
 
   calcSunriseSunset();
-  startFirebaseTask();
 
   pendingWebServerRestart = false;
 
@@ -4253,6 +4233,9 @@ void loop() {
     setupWebServer();
     syncTime();
   }
+
+  handleFirebaseRuntime();
+  processFirebaseWriteQueue();
 
   serviceNotifyStorage();
   updateBootButtonHoldState();
