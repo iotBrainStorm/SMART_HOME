@@ -8616,95 +8616,155 @@
           }
         }
 
-        /* ═══ LOAD INITIAL DATA FROM ESP32 ═══ */
+        /* ═══ LOAD INITIAL DATA FROM ESP32 (STAGGERED TO SAVE MEMORY) ═══ */
+        var loadDelay = 0;
+        var delayStep = 150; // 150ms gap between each request
 
-        /* Load switch data */
-        apiGet("/api/switches")
-          .then(function (d) {
-            var nameInputs = document.querySelectorAll(
-              "#panel-sw-name .cfg-input",
-            );
-            for (var i = 0; i < 4; i++) {
-              if (d.names && d.names[i] && nameInputs[i]) {
-                switchNamesState[i] = d.names[i];
-                nameInputs[i].value = d.names[i];
-                var sub = nameInputs[i]
-                  .closest(".setting-row")
-                  .querySelector(".setting-sub");
-                if (sub) sub.textContent = d.names[i];
-              }
-              if (d.icons && d.icons[i]) {
-                switchIconsState[i] = normalizeIconName(d.icons[i]);
-              }
-              if (d.relays && d.relays[i]) {
-                relayModesState[i] = d.relays[i];
-              }
-            }
-            refreshSwitchSettingsUi();
-          })
-          .catch(function () {});
-
-        refreshWifiPanels();
-
-        /* Load Firebase settings */
-        apiGet("/api/fb")
-          .then(function (d) {
-            if (!d) return;
-            var fbToggle = document.getElementById("firebaseToggle");
-            if (fbToggle) fbToggle.checked = !!d.enabled;
-            var urlInput = document.querySelector("#panel-fb-url .cfg-input");
-            if (urlInput && d.url) urlInput.value = d.url;
-            var tokenInput = document.querySelector(
-              "#panel-fb-token .cfg-input",
-            );
-            if (tokenInput) {
-              setFirebaseTokenMaskedState(!!(d && d.hasToken));
-            }
-            var rulesInput = document.getElementById("firebaseRules");
-            if (rulesInput) {
-              var incomingRules =
-                d && typeof d.rules === "string" ? d.rules.trim() : "";
-              if (incomingRules.indexOf('"devices"') !== -1) {
-                rulesInput.value = DEFAULT_FIREBASE_RULES_JSON;
-              } else {
-                rulesInput.value = incomingRules;
-              }
-            }
-          })
-          .catch(function () {});
-
-        loadFirebaseAuthUsers();
-
-        /* Load Users */
-        loadUsers();
-
-        /* Load Admin time settings */
-        apiGet("/api/admin/time")
-          .then(function (d) {
-            if (d.ntp) document.getElementById("ntpServer").value = d.ntp;
-            if (d.tz) {
-              var sel = document.getElementById("timezoneSelect");
-              for (var i = 0; i < sel.options.length; i++) {
-                if (sel.options[i].value === d.tz) {
-                  sel.selectedIndex = i;
-                  break;
+        // 1. Switch Data
+        setTimeout(
+          function () {
+            apiGet("/api/switches")
+              .then(function (d) {
+                var nameInputs = document.querySelectorAll(
+                  "#panel-sw-name .cfg-input",
+                );
+                for (var i = 0; i < 4; i++) {
+                  if (d.names && d.names[i] && nameInputs[i]) {
+                    switchNamesState[i] = d.names[i];
+                    nameInputs[i].value = d.names[i];
+                    var sub = nameInputs[i]
+                      .closest(".setting-row")
+                      .querySelector(".setting-sub");
+                    if (sub) sub.textContent = d.names[i];
+                  }
+                  if (d.icons && d.icons[i])
+                    switchIconsState[i] = normalizeIconName(d.icons[i]);
+                  if (d.relays && d.relays[i]) relayModesState[i] = d.relays[i];
                 }
-              }
-            }
-          })
-          .catch(function () {});
+                refreshSwitchSettingsUi();
+              })
+              .catch(function () {});
+          },
+          (loadDelay += delayStep),
+        );
 
-        /* Load Admin location */
-        loadAdminLocationSettings();
+        // 2. WiFi Status
+        setTimeout(
+          function () {
+            loadWifiStatus();
+          },
+          (loadDelay += delayStep),
+        );
+        setTimeout(
+          function () {
+            loadSavedWifi();
+          },
+          (loadDelay += delayStep),
+        );
 
-        /* Load Admin device name + priority settings */
-        loadDeviceNameSettings();
-        loadSchedulePrioritySettings();
-        loadRestartScheduleSettings();
+        // 3. Firebase Settings
+        setTimeout(
+          function () {
+            apiGet("/api/fb")
+              .then(function (d) {
+                if (!d) return;
+                var fbToggle = document.getElementById("firebaseToggle");
+                if (fbToggle) fbToggle.checked = !!d.enabled;
+                var urlInput = document.querySelector(
+                  "#panel-fb-url .cfg-input",
+                );
+                if (urlInput && d.url) urlInput.value = d.url;
+                var tokenInput = document.querySelector(
+                  "#panel-fb-token .cfg-input",
+                );
+                if (tokenInput)
+                  setFirebaseTokenMaskedState(!!(d && d.hasToken));
+                var rulesInput = document.getElementById("firebaseRules");
+                if (rulesInput) {
+                  var incomingRules =
+                    d && typeof d.rules === "string" ? d.rules.trim() : "";
+                  if (incomingRules.indexOf('"devices"') !== -1) {
+                    rulesInput.value = DEFAULT_FIREBASE_RULES_JSON;
+                  } else {
+                    rulesInput.value = incomingRules;
+                  }
+                }
+              })
+              .catch(function () {});
+          },
+          (loadDelay += delayStep),
+        );
 
-        /* Load initial schedules */
-        loadSchedulesForSwitch();
-        loadFutureSchedulesForSwitch();
+        // 4. Load remaining panels sequentially
+        setTimeout(
+          function () {
+            loadFirebaseAuthUsers();
+          },
+          (loadDelay += delayStep),
+        );
+        setTimeout(
+          function () {
+            loadUsers();
+          },
+          (loadDelay += delayStep),
+        );
+
+        setTimeout(
+          function () {
+            apiGet("/api/admin/time")
+              .then(function (d) {
+                if (d.ntp) document.getElementById("ntpServer").value = d.ntp;
+                if (d.tz) {
+                  var sel = document.getElementById("timezoneSelect");
+                  for (var i = 0; i < sel.options.length; i++) {
+                    if (sel.options[i].value === d.tz) {
+                      sel.selectedIndex = i;
+                      break;
+                    }
+                  }
+                }
+              })
+              .catch(function () {});
+          },
+          (loadDelay += delayStep),
+        );
+
+        setTimeout(
+          function () {
+            loadAdminLocationSettings();
+          },
+          (loadDelay += delayStep),
+        );
+        setTimeout(
+          function () {
+            loadDeviceNameSettings();
+          },
+          (loadDelay += delayStep),
+        );
+        setTimeout(
+          function () {
+            loadSchedulePrioritySettings();
+          },
+          (loadDelay += delayStep),
+        );
+        setTimeout(
+          function () {
+            loadRestartScheduleSettings();
+          },
+          (loadDelay += delayStep),
+        );
+        setTimeout(
+          function () {
+            loadSchedulesForSwitch();
+          },
+          (loadDelay += delayStep),
+        );
+        setTimeout(
+          function () {
+            loadFutureSchedulesForSwitch();
+          },
+          (loadDelay += delayStep),
+        );
       })();
     </script>
   </body>
