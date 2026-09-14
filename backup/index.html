@@ -1626,7 +1626,7 @@
         if (e.key === "Enter") doLogin();
       });
 
-      /* ── Auto-login if session exists or remembered ── */
+      /* ── Auto-login if session exists or remembered (Staggered Load) ── */
       function initSession() {
         if (isLoggedIn() || checkRemembered()) {
           if (checkRemembered()) {
@@ -1634,10 +1634,20 @@
           }
           loginScreen.classList.add("hidden");
           dashboard.classList.remove("hidden");
-          loadDeviceTimezone();
-          updateClock();
-          loadSwitches();
-          loadAutomationFeatureIndicators();
+
+          // Staggering the initial loads prevents memory spikes
+          setTimeout(function () {
+            loadDeviceTimezone();
+            updateClock();
+          }, 50);
+
+          setTimeout(function () {
+            loadSwitches();
+          }, 250);
+
+          setTimeout(function () {
+            loadAutomationFeatureIndicators();
+          }, 500);
         }
         document.body.classList.remove("app-init");
       }
@@ -1657,7 +1667,7 @@
         ) {
           loadAutomationFeatureIndicators();
         }
-      }, 5000);
+      }, 7000); // Increased from 5000 to 7000 to separate API traffic
 
       /* ── Initialize ── */
       initSession();

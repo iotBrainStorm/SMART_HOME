@@ -398,6 +398,9 @@
         min-height: 270px;
         resize: vertical;
         transition: border-color 0.2s;
+        white-space: pre !important;
+        overflow-wrap: normal !important;
+        overflow-x: auto !important;
       }
 
       .cfg-textarea:focus {
@@ -2671,7 +2674,7 @@
           <div class="info-box">
             <strong>Instructions:</strong><br />
             Go to Project Settings → Service accounts → Database secrets<br />
-            Copy your authentication token
+            Copy your authentication token.
           </div>
           <div
             class="setting-row"
@@ -2701,17 +2704,7 @@
               </button>
             </div>
           </div>
-          <div
-            style="
-              margin-top: 16px;
-              display: flex;
-              gap: 10px;
-              justify-content: flex-end;
-            "
-          >
-            <button class="cfg-btn cfg-btn-secondary" id="testFbBtn">
-              Test Connection
-            </button>
+          <div style="margin-top: 16px; text-align: right">
             <button class="cfg-btn cfg-btn-primary">Save Token</button>
           </div>
         </div>
@@ -8529,11 +8522,10 @@
           }
         }
 
-        /* — Firebase Token Save & Test — */
+        /* — Firebase Token Save — */
         var fbTokenPanel = document.getElementById("panel-fb-token");
         if (fbTokenPanel) {
           var saveTkBtn = fbTokenPanel.querySelector(".cfg-btn-primary");
-          var testBtn = document.getElementById("testFbBtn");
           if (saveTkBtn) {
             saveTkBtn.addEventListener("click", function () {
               var input = fbTokenPanel.querySelector(".cfg-input");
@@ -8565,24 +8557,6 @@
                     });
                 },
               );
-            });
-          }
-          if (testBtn) {
-            testBtn.addEventListener("click", function () {
-              testBtn.textContent = "Testing...";
-              testBtn.disabled = true;
-              apiPost("/api/fb/test", "")
-                .then(function (d) {
-                  testBtn.textContent = "Test Connection";
-                  testBtn.disabled = false;
-                  if (d.ok) alert(d.msg || "Connection successful!");
-                  else alert(d.error || "Test failed");
-                })
-                .catch(function () {
-                  testBtn.textContent = "Test Connection";
-                  testBtn.disabled = false;
-                  alert("Connection error");
-                });
             });
           }
         }
